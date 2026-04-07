@@ -2,7 +2,7 @@
 MedRepAI - Main Application Entry Point
 This is where the FastAPI application is created and configured.
 """
-#  hello tulasi
+#  hello tulasi 1
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
