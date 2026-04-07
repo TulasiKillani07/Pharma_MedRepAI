@@ -1,0 +1,11 @@
+drug_name,brand_name,drug_class,manufacturer,indications,mechanism_of_action,dosage_strength,dosage_form,route,side_effects
+Paracetamol,Crocin,Analgesic,GSK,Fever and pain relief,Inhibits prostaglandin synthesis,500mg,Tablet,Oral,Nausea
+Ibuprofen,Brufen,NSAID,Abbott,Pain and inflammation,COX inhibitor,400mg,Tablet,Oral,Stomach upset
+Aspirin,Disprin,Analgesic,Bayer,Pain fever and blood thinner,Inhibits platelet aggregation,75mg,Tablet,Oral,Bleeding risk
+Amoxicillin,Amoxil,Antibiotic,GSK,Bacterial infections,Inhibits cell wall synthesis,500mg,Capsule,Oral,Diarrhea
+Metformin,Glucophage,Antidiabetic,Merck,Type 2 diabetes,Decreases glucose production,500mg,Tablet,Oral,Nausea
+Atorvastatin,Lipitor,Statin,Pfizer,High cholesterol,HMG-CoA reductase inhibitor,10mg,Tablet,Oral,Muscle pain
+Omeprazole,Prilosec,PPI,AstraZeneca,Acid reflux and ulcers,Proton pump inhibitor,20mg,Capsule,Oral,Headache
+Losartan,Cozaar,ARB,Merck,Hypertension,Angiotensin receptor blocker,50mg,Tablet,Oral,Dizziness
+Amlodipine,Norvasc,CCB,Pfizer,Hypertension,Calcium channel blocker,5mg,Tablet,Oral,Swelling
+Levothyroxine,Synthroid,Thyroid hormone,Abbott,Hypothyroidism,Thyroid hormone replacement,50mcg,Tablet,Oral,Weight loss

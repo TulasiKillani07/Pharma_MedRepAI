@@ -1,0 +1,229 @@
+"""
+MR (Medical Representative) request/response schemas.
+Defines the structure of data for MR operations.
+"""
+
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List
+from datetime import datetime
+
+
+class MRCreateRequest(BaseModel):
+    """
+    Schema for creating a new MR (Admin only).
+    Password is optional - if not provided, default password will be used.
+    """
+    name: str = Field(..., min_length=2, max_length=100, description="MR's full name")
+    email: EmailStr = Field(..., description="MR's email address")
+    password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
+    phone: str = Field(..., description="Phone number")
+    territory: str = Field(..., description="Sales territory/region")
+    assigned_doctors: Optional[List[str]] = Field(default=[], description="List of assigned doctor IDs")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "Rajesh Kumar",
+                "email": "rajesh@xyzpharma.com",
+                "phone": "+919876543210",
+                "territory": "Mumbai North",
+                "assigned_doctors": []
+            }
+        }
+
+
+class MRUpdateRequest(BaseModel):
+    """
+    Schema for updating MR information (Admin only).
+    All fields are optional - only provided fields will be updated.
+    """
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    phone: Optional[str] = None
+    territory: Optional[str] = None
+    assigned_doctors: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "phone": "+919876543211",
+                "territory": "Mumbai South",
+                "assigned_doctors": ["507f1f77bcf86cd799439011"],
+                "is_active": True
+            }
+        }
+
+
+class AssignedDoctorInfo(BaseModel):
+    """
+    Schema for assigned doctor information.
+    """
+    id: str
+    name: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "507f1f77bcf86cd799439012",
+                "name": "Dr. Sarah Sharma"
+            }
+        }
+
+
+class MRResponse(BaseModel):
+    """
+    Schema for MR response (without password).
+    """
+    id: str = Field(..., description="MR's unique ID")
+    name: str
+    email: EmailStr
+    phone: str
+    territory: str
+    assigned_doctors: List[AssignedDoctorInfo]
+    is_active: bool
+    created_at: datetime
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "507f1f77bcf86cd799439011",
+                "name": "Rajesh Kumar",
+                "email": "rajesh@xyzpharma.com",
+                "phone": "+919876543210",
+                "territory": "Mumbai North",
+                "assigned_doctors": [
+                    {
+                        "id": "507f1f77bcf86cd799439012",
+                        "name": "Dr. Sarah Sharma"
+                    }
+                ],
+                "is_active": True,
+                "created_at": "2024-03-30T10:00:00"
+            }
+        }
+
+
+class MRListResponse(BaseModel):
+    """
+    Schema for list of MRs.
+    """
+    total: int = Field(..., description="Total number of MRs")
+    mrs: List[MRResponse]
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total": 2,
+                "mrs": [
+                    {
+                        "id": "507f1f77bcf86cd799439011",
+                        "name": "Rajesh Kumar",
+                "email": "rajesh@xyzpharma.com",
+                        "territory": "Mumbai North",
+                        "is_active": True
+                    }
+                ]
+            }
+        }
+
+
+class MessageResponse(BaseModel):
+    """
+    Generic message response.
+    """
+    message: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Operation successful"
+            }
+        }
+
+
+class MRCreateResponse(BaseModel):
+    """
+    Response for MR creation.
+    """
+    message: str
+    mr_id: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "MR added successfully",
+                "mr_id": "507f1f77bcf86cd799439011"
+            }
+        }
+
+
+class MRUpdateResponse(BaseModel):
+    """
+    Response for MR update with updated fields.
+    """
+    message: str
+    updated_fields: dict
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "MR updated successfully",
+                "updated_fields": {
+                    "phone": "+919876543211",
+                    "territory": "Mumbai South"
+                }
+            }
+        }
+
+
+class BulkUploadErrorDetail(BaseModel):
+    """
+    Schema for individual row error in bulk upload.
+    """
+    row: int = Field(..., description="Row number in CSV/Excel (1-indexed)")
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    error: str = Field(..., description="Error description")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "row": 3,
+                "email": "invalid-email",
+                "error": "Invalid email format"
+            }
+        }
+
+
+class BulkUploadResponse(BaseModel):
+    """
+    Response for bulk MR upload.
+    """
+    total_rows: int = Field(..., description="Total rows in file (excluding header)")
+    successful: int = Field(..., description="Number of MRs successfully added")
+    failed: int = Field(..., description="Number of rows that failed validation")
+    errors: List[BulkUploadErrorDetail] = Field(default=[], description="List of errors for failed rows")
+    message: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total_rows": 100,
+                "successful": 95,
+                "failed": 5,
+                "errors": [
+                    {
+                        "row": 3,
+                        "email": "invalid@email",
+                        "error": "Invalid email format"
+                    },
+                    {
+                        "row": 7,
+                        "email": "existing@example.com",
+                        "error": "Email already exists in database"
+                    }
+                ],
+                "message": "Bulk upload completed. 95 MRs added successfully, 5 rows failed."
+            }
+        }

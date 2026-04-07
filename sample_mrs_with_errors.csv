@@ -1,0 +1,16 @@
+name,email,phone,territory
+Valid MR One,valid1@xyzpharma.com,9876543320,Mumbai North
+Invalid Email MR,invalid-email-format,9876543321,Delhi Central
+Short Phone MR,valid2@xyzpharma.com,12345,Ahmedabad West
+,missing.name@xyzpharma.com,9876543322,Hyderabad South
+Missing Email MR,,9876543323,Gurgaon NCR
+Missing Phone MR,valid3@xyzpharma.com,,Mumbai South
+Valid MR Two,valid4@xyzpharma.com,9876543324,Bangalore East
+Long Phone MR,valid5@xyzpharma.com,98765432345,Kochi Central
+Letters In Phone MR,valid6@xyzpharma.com,98765abc10,Pune West
+Valid MR Three,valid7@xyzpharma.com,9876543325,Bangalore North
+Missing Territory MR,valid8@xyzpharma.com,9876543326,
+Valid MR Four,valid9@xyzpharma.com,9876543327,Delhi South
+Special Chars Phone MR,valid10@xyzpharma.com,9876-543-328,Noida East
+Valid MR Five,valid11@xyzpharma.com,9876543329,Hyderabad North
+Valid MR Six,valid12@xyzpharma.com,9876543330,Kochi South

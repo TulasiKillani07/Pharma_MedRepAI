@@ -1,0 +1,26 @@
+"""
+Doctor model - MongoDB schema for doctors collection.
+"""
+
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
+from datetime import datetime
+
+
+class DoctorBase(BaseModel):
+    """Base schema for Doctor with common fields"""
+    email: EmailStr
+    full_name: str
+    phone: str
+    specialization: str
+    hospital: Optional[str] = None
+    license_number: Optional[str] = None
+    address: Optional[str] = None
+
+
+class DoctorInDB(DoctorBase):
+    """Schema for doctor stored in database"""
+    password_hash: str
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime

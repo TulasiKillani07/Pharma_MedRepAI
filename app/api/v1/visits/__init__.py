@@ -1,0 +1,3 @@
+"""
+Visits module initialization.
+"""
