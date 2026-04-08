@@ -5,7 +5,7 @@ Drug and Drug Field Template Management Endpoints
 from fastapi import APIRouter, Depends, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any
-from app.core.auth import require_admin
+from app.core.auth import require_admin, get_current_user
 from app.api.v1.drugs.schemas import (
     TemplateCreate, TemplateUpdate, TemplateResponse,
     FieldDefinitionCreate, FieldDefinitionUpdate, FieldDefinitionResponse,
@@ -263,23 +263,106 @@ async def create_drug_endpoint(drug_data: DrugCreate):
     return await service.create_drug(drug_data)
 
 
-@router.get("", response_model=DrugListResponse, dependencies=[Depends(require_admin)])
+@router.get("", response_model=DrugListResponse)
 async def get_drugs_endpoint(
+    current_user: Dict = Depends(get_current_user),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000)
 ):
     """
     Get all active drugs with pagination.
-    Admin only.
+    
+    **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Purpose:**
+    View drug catalog/inventory. Doctors and MRs can see available drugs for reference.
+    
+    **Flow:**
+    1. User requests drug list
+    2. Backend fetches active drugs (is_active=true)
+    3. Returns paginated list with all field values
+    
+    **Usage:**
+    ```
+    GET /api/v1/drugs?skip=0&limit=10
+    Headers: Authorization: Bearer <token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "drugs": [
+            {
+                "_id": "drug123",
+                "template_id": "template456",
+                "field_values": [
+                    {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
+                    {"field_id": "f2", "key": "brand_name", "value": "crocin"},
+                    {"field_id": "f3", "key": "manufacturer", "value": "GSK"}
+                ],
+                "created_at": "2024-04-07T10:00:00",
+                "updated_at": "2024-04-07T10:00:00",
+                "is_active": true
+            }
+        ],
+        "total": 150
+    }
+    ```
+    
+    **Pagination:**
+    - skip: Number of records to skip (default: 0)
+    - limit: Number of records to return (default: 100, max: 1000)
     """
     return await service.get_all_drugs(skip, limit)
 
 
-@router.get("/{drug_id}", response_model=DrugResponse, dependencies=[Depends(require_admin)])
-async def get_drug_endpoint(drug_id: str):
+@router.get("/{drug_id}", response_model=DrugResponse)
+async def get_drug_endpoint(
+    drug_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
     """
     Get drug by ID.
-    Admin only.
+    
+    **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Purpose:**
+    View detailed information about a specific drug.
+    
+    **Flow:**
+    1. User requests specific drug by ID
+    2. Backend fetches drug details
+    3. Returns complete drug information with all fields
+    
+    **Usage:**
+    ```
+    GET /api/v1/drugs/drug123
+    Headers: Authorization: Bearer <token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "_id": "drug123",
+        "template_id": "template456",
+        "field_values": [
+            {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
+            {"field_id": "f2", "key": "brand_name", "value": "crocin"},
+            {"field_id": "f3", "key": "drug_class", "value": "Analgesic"},
+            {"field_id": "f4", "key": "manufacturer", "value": "GSK"},
+            {"field_id": "f5", "key": "dosage_form", "value": "Tablet"},
+            {"field_id": "f6", "key": "price", "value": "50"}
+        ],
+        "created_at": "2024-04-07T10:00:00",
+        "updated_at": "2024-04-07T10:00:00",
+        "is_active": true
+    }
+    ```
+    
+    **Use Cases:**
+    - Doctor: Check drug information before prescribing
+    - MR: Reference drug details during doctor visits
+    - Admin: View and manage drug information
     """
     return await service.get_drug_by_id(drug_id)
 
@@ -296,7 +379,50 @@ async def update_drug_endpoint(drug_id: str, drug_data: DrugUpdate):
 @router.delete("/{drug_id}", dependencies=[Depends(require_admin)])
 async def delete_drug_endpoint(drug_id: str):
     """
-    Soft delete a drug.
-    Admin only.
+    Soft delete a drug (deactivate).
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Deactivate a drug instead of permanently deleting it. Drug remains in database but is hidden from listings.
+    
+    **Flow:**
+    1. Admin requests to delete drug
+    2. Backend sets is_active=false
+    3. Drug no longer appears in GET /drugs list
+    4. Drug data is preserved in database
+    
+    **Usage:**
+    ```
+    DELETE /api/v1/drugs/drug123
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "message": "Drug deleted successfully"
+    }
+    ```
+    
+    **Note:** This is a soft delete:
+    - Drug is marked as inactive (is_active=false)
+    - Drug data remains in database
+    - Drug won't appear in drug listings
+    - Can be reactivated by admin via PUT endpoint with is_active=true
+    
+    **To reactivate:**
+    ```
+    PUT /api/v1/drugs/drug123
+    {
+        "field_values": [...],  // Keep existing values
+        // Backend can add is_active field to update schema if needed
+    }
+    ```
+    
+    **Use Cases:**
+    - Drug discontinued by manufacturer
+    - Drug temporarily out of stock
+    - Drug no longer promoted by company
     """
     return await service.delete_drug(drug_id)
