@@ -149,3 +149,258 @@ async def get_admin_dashboard() -> Dict[str, Any]:
         "statistics": statistics,
         "recent_activity": recent_activity
     }
+
+
+
+async def get_mr_dashboard(mr_id: str) -> Dict[str, Any]:
+    """
+    Get MR dashboard data with statistics and visits.
+    
+    Args:
+        mr_id: MR's user ID
+    
+    Returns:
+        dict: Dashboard data with statistics, upcoming_visits, recent_visits
+    """
+    db = get_database()
+    
+    from bson import ObjectId
+    from datetime import date
+    
+    # Get MR information
+    mr = await db["mrs"].find_one({"_id": ObjectId(mr_id)})
+    
+    if not mr:
+        return {
+            "statistics": {
+                "assigned_doctors": 0,
+                "total_visits": 0,
+                "completion_rate": "0%"
+            },
+            "upcoming_visits": [],
+            "recent_visits": []
+        }
+    
+    # ============ STATISTICS ============
+    
+    # Assigned doctors count
+    assigned_doctors = len(mr.get("assigned_doctors", []))
+    
+    # Total visits count
+    total_visits = await db["visits"].count_documents({"mr_id": mr_id})
+    
+    # Completed visits count
+    completed_visits = await db["visits"].count_documents({
+        "mr_id": mr_id,
+        "status": "completed"
+    })
+    
+    # Calculate completion rate
+    if total_visits > 0:
+        completion_rate = f"{int((completed_visits / total_visits) * 100)}%"
+    else:
+        completion_rate = "0%"
+    
+    statistics = {
+        "assigned_doctors": assigned_doctors,
+        "total_visits": total_visits,
+        "completion_rate": completion_rate
+    }
+    
+    # ============ UPCOMING VISITS ============
+    # Get visits with status "scheduled" or "rescheduled", sorted by date
+    today = date.today()
+    
+    upcoming_visits_cursor = db["visits"].find({
+        "mr_id": mr_id,
+        "status": {"$in": ["scheduled", "rescheduled"]},
+        "scheduled_date": {"$gte": datetime.combine(today, datetime.min.time())}
+    }).sort("scheduled_date", 1).limit(5)
+    
+    upcoming_visits_list = await upcoming_visits_cursor.to_list(5)
+    
+    upcoming_visits = []
+    for visit in upcoming_visits_list:
+        # Get doctor specialization
+        doctor_specialization = None
+        if visit.get("doctor_id"):
+            try:
+                doctor = await db["doctors"].find_one(
+                    {"_id": ObjectId(visit["doctor_id"])},
+                    {"specialization": 1}
+                )
+                if doctor:
+                    doctor_specialization = doctor.get("specialization")
+            except:
+                pass
+        
+        upcoming_visits.append({
+            "visit_id": str(visit["_id"]),
+            "doctor_name": visit.get("doctor_name", ""),
+            "doctor_specialization": doctor_specialization,
+            "scheduled_date": visit.get("scheduled_date"),
+            "scheduled_time": visit.get("scheduled_time", ""),
+            "purpose": visit.get("purpose", ""),
+            "location": visit.get("location", ""),
+            "status": visit.get("status", "")
+        })
+    
+    # ============ RECENT VISITS ============
+    # Get visits with status "completed" or "cancelled", sorted by date (most recent first)
+    
+    recent_visits_cursor = db["visits"].find({
+        "mr_id": mr_id,
+        "status": {"$in": ["completed", "cancelled"]}
+    }).sort("updated_at", -1).limit(5)
+    
+    recent_visits_list = await recent_visits_cursor.to_list(5)
+    
+    recent_visits = []
+    for visit in recent_visits_list:
+        recent_visits.append({
+            "visit_id": str(visit["_id"]),
+            "doctor_name": visit.get("doctor_name", ""),
+            "scheduled_date": visit.get("scheduled_date"),
+            "status": visit.get("status", ""),
+            "outcome": visit.get("outcome"),
+            "completed_at": visit.get("completed_at"),
+            "cancelled_at": visit.get("cancelled_at")
+        })
+    
+    return {
+        "statistics": statistics,
+        "upcoming_visits": upcoming_visits,
+        "recent_visits": recent_visits
+    }
+
+
+
+async def get_doctor_dashboard(doctor_id: str) -> Dict[str, Any]:
+    """
+    Get doctor dashboard data with CME events and recent drugs.
+    
+    Args:
+        doctor_id: Doctor's user ID
+    
+    Returns:
+        dict: Dashboard data with statistics, upcoming_cme_events, recent_cme_events, recent_drugs
+    """
+    db = get_database()
+    
+    from bson import ObjectId
+    
+    # ============ STATISTICS ============
+    
+    # Count CME events
+    total_cme_events = await db["cme_events"].count_documents({})
+    upcoming_cme_events = await db["cme_events"].count_documents({"status": "upcoming"})
+    completed_cme_events = await db["cme_events"].count_documents({"status": "completed"})
+    
+    # Count active drugs
+    total_drugs = await db["drugs"].count_documents({"is_active": True})
+    
+    statistics = {
+        "total_cme_events": total_cme_events,
+        "upcoming_cme_events": upcoming_cme_events,
+        "completed_cme_events": completed_cme_events,
+        "total_drugs": total_drugs
+    }
+    
+    # ============ UPCOMING CME EVENTS ============
+    # Get CME events with status "upcoming", sorted by event_date (ascending)
+    
+    upcoming_cme_cursor = db["cme_events"].find({
+        "status": "upcoming"
+    }).sort("event_date", 1).limit(5)
+    
+    upcoming_cme_list = await upcoming_cme_cursor.to_list(5)
+    
+    upcoming_cme_events_list = []
+    for event in upcoming_cme_list:
+        upcoming_cme_events_list.append({
+            "event_id": str(event["_id"]),
+            "title": event.get("title", ""),
+            "description": event.get("description"),
+            "event_date": event.get("event_date"),
+            "event_time": event.get("event_time", ""),
+            "event_type": event.get("event_type", ""),
+            "event_mode": event.get("event_mode", ""),
+            "platform": event.get("platform"),
+            "platform_name": event.get("platform_name"),
+            "meeting_link": event.get("meeting_link"),
+            "venue_name": event.get("venue_name"),
+            "address": event.get("address"),
+            "speaker": event.get("speaker", ""),
+            "max_attendees": event.get("max_attendees"),
+            "status": event.get("status", "")
+        })
+    
+    # ============ RECENT CME EVENTS ============
+    # Get CME events with status "completed", sorted by event_date (descending - most recent first)
+    
+    recent_cme_cursor = db["cme_events"].find({
+        "status": "completed"
+    }).sort("event_date", -1).limit(5)
+    
+    recent_cme_list = await recent_cme_cursor.to_list(5)
+    
+    recent_cme_events_list = []
+    for event in recent_cme_list:
+        recent_cme_events_list.append({
+            "event_id": str(event["_id"]),
+            "title": event.get("title", ""),
+            "description": event.get("description"),
+            "event_date": event.get("event_date"),
+            "event_time": event.get("event_time", ""),
+            "event_type": event.get("event_type", ""),
+            "speaker": event.get("speaker", ""),
+            "event_recording": event.get("event_recording"),
+            "status": event.get("status", "")
+        })
+    
+    # ============ RECENT DRUGS ============
+    # Get active drugs, sorted by created_at (descending - most recent first)
+    
+    recent_drugs_cursor = db["drugs"].find({
+        "is_active": True
+    }).sort("created_at", -1).limit(5)
+    
+    recent_drugs_list = await recent_drugs_cursor.to_list(5)
+    
+    recent_drugs_result = []
+    for drug in recent_drugs_list:
+        # Extract drug_name, brand_name, and other fields from field_values
+        drug_name = ""
+        brand_name = ""
+        drug_class = None
+        manufacturer = None
+        dosage_form = None
+        
+        for field in drug.get("field_values", []):
+            if field["key"] == "drug_name":
+                drug_name = field["value"]
+            elif field["key"] == "brand_name":
+                brand_name = field["value"]
+            elif field["key"] == "drug_class":
+                drug_class = field["value"]
+            elif field["key"] == "manufacturer":
+                manufacturer = field["value"]
+            elif field["key"] == "dosage_form":
+                dosage_form = field["value"]
+        
+        recent_drugs_result.append({
+            "drug_id": str(drug["_id"]),
+            "drug_name": drug_name,
+            "brand_name": brand_name,
+            "drug_class": drug_class,
+            "manufacturer": manufacturer,
+            "dosage_form": dosage_form,
+            "created_at": drug.get("created_at", datetime.utcnow())
+        })
+    
+    return {
+        "statistics": statistics,
+        "upcoming_cme_events": upcoming_cme_events_list,
+        "recent_cme_events": recent_cme_events_list,
+        "recent_drugs": recent_drugs_result
+    }
