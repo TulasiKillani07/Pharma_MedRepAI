@@ -36,6 +36,9 @@ async def connect_to_mongo():
     db.database = db.client[settings.DATABASE_NAME]
     
     print(f"✅ Connected to database: {settings.DATABASE_NAME}")
+    
+    # Initialize collections and indexes
+    await initialize_collections()
 
 
 async def close_mongo_connection():

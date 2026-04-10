@@ -11,6 +11,7 @@ from app.api.v1.visits.routes import router as visits_router
 from app.api.v1.drugs.routes import router as drugs_router
 from app.api.v1.cme.routes import router as cme_router
 from app.api.v1.dashboard.routes import router as dashboard_router
+from app.api.v1.feed.routes import router as feed_router
 
 # Import routers from each feature as we create them
 # from app.api.v1.feed.routes import router as feed_router
@@ -43,3 +44,4 @@ api_router.include_router(cme_router, prefix="/cme", tags=["CME Events"])
 
 # Dashboard routes
 api_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
+api_router.include_router(feed_router, prefix="/network/feed", tags=["Network - Feed"])

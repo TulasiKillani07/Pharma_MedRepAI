@@ -1,1 +1,3 @@
-# Feed feature module
+"""
+Feed/Posts Module
+"""
