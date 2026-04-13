@@ -30,6 +30,7 @@ class PostResponse(BaseModel):
     content: str = Field(..., description="Post content")
     likes_count: int = Field(..., description="Number of likes")
     comments_count: int = Field(..., description="Number of comments")
+    shares_count: int = Field(default=0, description="Number of times shared")
     created_at: datetime = Field(..., description="Post creation timestamp")
     
     class Config:
@@ -44,6 +45,7 @@ class PostResponse(BaseModel):
                 "content": "Excited to share insights from today's conference!",
                 "likes_count": 15,
                 "comments_count": 3,
+                "shares_count": 5,
                 "created_at": "2024-04-09T10:30:00"
             }
         }
@@ -221,5 +223,50 @@ class CommentListResponse(BaseModel):
                 "page": 1,
                 "limit": 20,
                 "total_pages": 1
+            }
+        }
+
+
+
+class SharePostRequest(BaseModel):
+    """Schema for sharing a post via DM"""
+    user_ids: List[str] = Field(..., min_length=1, max_length=10, description="User IDs to share with (max 10)")
+    message: Optional[str] = Field(None, max_length=500, description="Optional personal message")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_ids": ["user123", "user456"],
+                "message": "Thought you'd find this interesting!"
+            }
+        }
+
+
+class ShareFailure(BaseModel):
+    """Schema for failed share attempt"""
+    user_id: str = Field(..., description="User ID that failed")
+    reason: str = Field(..., description="Reason for failure")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "user789",
+                "reason": "Not connected"
+            }
+        }
+
+
+class SharePostResponse(BaseModel):
+    """Schema for share post response"""
+    message: str = Field(..., description="Success message")
+    shared_to: int = Field(..., description="Number of users successfully shared to")
+    failed: List[ShareFailure] = Field(default=[], description="List of failed share attempts")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Post shared successfully",
+                "shared_to": 2,
+                "failed": []
             }
         }

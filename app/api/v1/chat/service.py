@@ -271,17 +271,26 @@ async def get_messages(
     # Format messages
     messages = []
     for msg in messages_list:
-        messages.append({
+        message_data = {
             "message_id": str(msg["_id"]),
             "conversation_id": msg["conversation_id"],
             "sender_id": msg["sender_id"],
             "sender_name": msg["sender_name"],
             "sender_role": msg["sender_role"],
             "content": msg["content"],
+            "message_type": msg.get("message_type", "text"),
             "is_read": msg["is_read"],
             "read_at": msg.get("read_at"),
             "created_at": msg["created_at"]
-        })
+        }
+        
+        # Add shared_post data if message type is shared_post
+        if msg.get("message_type") == "shared_post" and "shared_post" in msg:
+            message_data["shared_post"] = msg["shared_post"]
+        else:
+            message_data["shared_post"] = None
+        
+        messages.append(message_data)
     
     return {
         "messages": messages,
@@ -372,6 +381,8 @@ async def send_message(
         "sender_name": current_user.get("name", ""),
         "sender_role": current_user.get("role", ""),
         "content": content,
+        "message_type": "text",
+        "shared_post": None,
         "is_read": False,
         "read_at": None,
         "created_at": message_doc["created_at"]

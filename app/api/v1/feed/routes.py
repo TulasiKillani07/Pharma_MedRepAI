@@ -5,7 +5,12 @@ Feed/Posts API Endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Optional
 from app.core.auth import get_current_user
-from app.api.v1.feed.schemas import PostCreate, PostResponse, PostFeedResponse, LikeResponse, LikeListResponse, LikeStatusResponse, CommentCreate, CommentResponse, CommentListResponse
+from app.api.v1.feed.schemas import (
+    PostCreate, PostResponse, PostFeedResponse, 
+    LikeResponse, LikeListResponse, LikeStatusResponse, 
+    CommentCreate, CommentResponse, CommentListResponse,
+    SharePostRequest, SharePostResponse
+)
 from app.api.v1.feed import service
 
 
@@ -392,6 +397,117 @@ async def admin_delete_post_endpoint(
         )
     
     return await service.admin_delete_post(post_id)
+
+
+@posts_router.post("/{post_id}/share", response_model=SharePostResponse)
+async def share_post_endpoint(
+    post_id: str,
+    share_data: SharePostRequest,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Share a post via direct message to connected users.
+    
+    **Access:** Doctor, MR only
+    
+    **Purpose:**
+    Share a post by sending it as a direct message to one or more connected users.
+    
+    **Flow:**
+    1. User clicks "Share" on a post
+    2. Selects connected users from list (max 10)
+    3. Optionally adds personal message
+    4. System sends post as special message to each user
+    5. Recipients see shared post in their messages
+    
+    **Path Parameters:**
+    - `post_id`: Post ID to share
+    
+    **Request Body:**
+    ```json
+    {
+        "user_ids": ["user123", "user456"],
+        "message": "Thought you'd find this interesting!"
+    }
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "message": "Post shared successfully",
+        "shared_to": 2,
+        "failed": []
+    }
+    ```
+    
+    **Partial Success Example:**
+    ```json
+    {
+        "message": "Post shared to 2 user(s)",
+        "shared_to": 2,
+        "failed": [
+            {
+                "user_id": "user789",
+                "reason": "Not connected"
+            }
+        ]
+    }
+    ```
+    
+    **Rules:**
+    - Can only share to connected users (status="accepted")
+    - Cannot share to yourself
+    - Cannot share to blocked users
+    - Max 10 recipients per share
+    - Optional personal message (max 500 chars)
+    - Creates/uses existing conversation
+    - Increments post shares_count
+    - Message type: "shared_post"
+    
+    **Message Format:**
+    Recipients see a special message containing:
+    - Your optional personal message
+    - Post preview (author, content, likes, comments)
+    - Link to view full post
+    
+    **Errors:**
+    - 400: Invalid post ID or too many recipients
+    - 403: Not authorized (Admin cannot share)
+    - 404: Post not found or deleted
+    
+    **Use Cases:**
+    - Share interesting posts with colleagues
+    - Send relevant content to connections
+    - Recommend posts privately
+    - Discuss posts in private conversations
+    
+    **Frontend Display:**
+    In recipient's messages:
+    ```
+    📤 Shared a post
+    "Thought you'd find this interesting!"
+    
+    [Post Preview]
+    Dr. Sarah Sharma
+    "New drug insights..."
+    ❤️ 10  💬 5  📤 3
+    [View Full Post]
+    ```
+    """
+    # Check role
+    role = current_user.get("role")
+    if role not in ["DOCTOR", "MR"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only doctors and MRs can share posts"
+        )
+    
+    return await service.share_post(
+        post_id,
+        share_data.user_ids,
+        share_data.message,
+        current_user
+    )
 
 
 

@@ -19,6 +19,30 @@ class MessageCreate(BaseModel):
         }
 
 
+class SharedPostData(BaseModel):
+    """Schema for shared post data in message"""
+    post_id: str = Field(..., description="Post ID")
+    author_name: str = Field(..., description="Post author name")
+    author_role: str = Field(..., description="Post author role")
+    content: str = Field(..., description="Post content")
+    likes_count: int = Field(..., description="Number of likes")
+    comments_count: int = Field(..., description="Number of comments")
+    created_at: datetime = Field(..., description="Post creation time")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "post_id": "post123",
+                "author_name": "Dr. John Doe",
+                "author_role": "DOCTOR",
+                "content": "New drug insights...",
+                "likes_count": 10,
+                "comments_count": 5,
+                "created_at": "2024-04-10T10:00:00"
+            }
+        }
+
+
 class MessageResponse(BaseModel):
     """Schema for message response"""
     message_id: str = Field(..., description="Message ID")
@@ -27,6 +51,8 @@ class MessageResponse(BaseModel):
     sender_name: str = Field(..., description="Sender name")
     sender_role: str = Field(..., description="Sender role")
     content: str = Field(..., description="Message content")
+    message_type: str = Field(default="text", description="Message type: text or shared_post")
+    shared_post: Optional[SharedPostData] = Field(None, description="Shared post data (only if message_type=shared_post)")
     is_read: bool = Field(..., description="Read status")
     read_at: Optional[datetime] = Field(None, description="When message was read")
     created_at: datetime = Field(..., description="Message creation time")
@@ -39,7 +65,17 @@ class MessageResponse(BaseModel):
                 "sender_id": "user123",
                 "sender_name": "Dr. Sarah Sharma",
                 "sender_role": "DOCTOR",
-                "content": "Hello!",
+                "content": "Thought you'd find this interesting!",
+                "message_type": "shared_post",
+                "shared_post": {
+                    "post_id": "post123",
+                    "author_name": "Dr. John Doe",
+                    "author_role": "DOCTOR",
+                    "content": "New drug insights...",
+                    "likes_count": 10,
+                    "comments_count": 5,
+                    "created_at": "2024-04-10T10:00:00"
+                },
                 "is_read": True,
                 "read_at": "2024-04-10T15:35:00",
                 "created_at": "2024-04-10T15:30:00"
