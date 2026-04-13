@@ -90,6 +90,16 @@ async def initialize_collections():
         await database.create_collection("connections")
         print("✅ Created connections collection")
     
+    # Create conversations collection if it doesn't exist
+    if "conversations" not in existing_collections:
+        await database.create_collection("conversations")
+        print("✅ Created conversations collection")
+    
+    # Create messages collection if it doesn't exist
+    if "messages" not in existing_collections:
+        await database.create_collection("messages")
+        print("✅ Created messages collection")
+    
     # Create indexes on post_likes collection
     try:
         # Index 1: Compound index on (post_id, user_id) - Prevents duplicate likes
@@ -172,6 +182,43 @@ async def initialize_collections():
             name="connection_receiver_idx"
         )
         print("✅ Created index on connections.receiver_id")
+        
+        # Create indexes on conversations collection
+        # Index 1: Index on participants - Fast conversation lookup
+        await database["conversations"].create_index(
+            "participants",
+            name="conversation_participants_idx"
+        )
+        print("✅ Created index on conversations.participants")
+        
+        # Index 2: Index on last_message_at - Fast sorting for inbox
+        await database["conversations"].create_index(
+            "last_message_at",
+            name="conversation_last_message_idx"
+        )
+        print("✅ Created index on conversations.last_message_at")
+        
+        # Create indexes on messages collection
+        # Index 1: Index on conversation_id - Fast message retrieval
+        await database["messages"].create_index(
+            "conversation_id",
+            name="message_conversation_idx"
+        )
+        print("✅ Created index on messages.conversation_id")
+        
+        # Index 2: Compound index on (conversation_id, created_at) - Fast sorted messages
+        await database["messages"].create_index(
+            [("conversation_id", 1), ("created_at", -1)],
+            name="message_conversation_time_idx"
+        )
+        print("✅ Created compound index on messages.(conversation_id, created_at)")
+        
+        # Index 3: Compound index on (conversation_id, is_read) - Fast unread count
+        await database["messages"].create_index(
+            [("conversation_id", 1), ("is_read", 1)],
+            name="message_conversation_read_idx"
+        )
+        print("✅ Created compound index on messages.(conversation_id, is_read)")
         
     except Exception as e:
         print(f"⚠️ Index creation note: {e}")

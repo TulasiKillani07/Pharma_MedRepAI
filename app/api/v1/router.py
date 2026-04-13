@@ -13,10 +13,7 @@ from app.api.v1.cme.routes import router as cme_router
 from app.api.v1.dashboard.routes import router as dashboard_router
 from app.api.v1.feed.routes import posts_router, likes_router, comments_router
 from app.api.v1.connections.routes import router as connections_router
-
-# Import routers from each feature as we create them
-# from app.api.v1.feed.routes import router as feed_router
-# from app.api.v1.chat.routes import router as chat_router
+from app.api.v1.chat.routes import router as chat_router
 
 
 # Create main API router
@@ -45,7 +42,10 @@ api_router.include_router(cme_router, prefix="/cme", tags=["CME Events"])
 
 # Dashboard routes
 api_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
+
+# Network routes
 api_router.include_router(connections_router, prefix="/network/connections", tags=["Network - Connections"])
+api_router.include_router(chat_router, prefix="/network/chat", tags=["Network - Chat"])
 api_router.include_router(comments_router, prefix="/network/posts", tags=["Network - Comments"])
 api_router.include_router(likes_router, prefix="/network/posts", tags=["Network - Likes"])
 api_router.include_router(posts_router, prefix="/network/posts", tags=["Network - Posts"])

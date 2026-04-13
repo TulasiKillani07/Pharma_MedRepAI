@@ -1,1 +1,3 @@
-# Chat feature module
+"""
+Chat/Messaging Module
+"""
