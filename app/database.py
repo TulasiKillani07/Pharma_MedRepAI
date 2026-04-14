@@ -100,6 +100,12 @@ async def initialize_collections():
         await database.create_collection("messages")
         print("✅ Created messages collection")
     
+    # Create groups collection if it doesn't exist
+    if "groups" not in existing_collections:
+        await database.create_collection("groups")
+        print("✅ Created groups collection")
+        print("✅ Created messages collection")
+    
     # Create indexes on post_likes collection
     try:
         # Index 1: Compound index on (post_id, user_id) - Prevents duplicate likes
@@ -222,5 +228,38 @@ async def initialize_collections():
         
     except Exception as e:
         print(f"⚠️ Index creation note: {e}")
+    
+    # Create indexes on groups collection
+    try:
+        # Index 1: Index on members - Fast group lookup for user
+        await database["groups"].create_index(
+            "members",
+            name="group_members_idx"
+        )
+        print("✅ Created index on groups.members")
+        
+        # Index 2: Index on last_message_at - Fast sorting for group list
+        await database["groups"].create_index(
+            "last_message_at",
+            name="group_last_message_idx"
+        )
+        print("✅ Created index on groups.last_message_at")
+        
+        # Index 3: Index on created_by - Fast creator lookup
+        await database["groups"].create_index(
+            "created_by",
+            name="group_creator_idx"
+        )
+        print("✅ Created index on groups.created_by")
+        
+        # Index 4: Index on admins - Fast admin lookup
+        await database["groups"].create_index(
+            "admins",
+            name="group_admins_idx"
+        )
+        print("✅ Created index on groups.admins")
+        
+    except Exception as e:
+        print(f"⚠️ Group index creation note: {e}")
     
     print("✅ Collections and indexes initialized")
