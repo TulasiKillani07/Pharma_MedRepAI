@@ -164,10 +164,16 @@ async def get_my_groups(current_user: Dict) -> Dict[str, Any]:
     user_id = current_user["_id"]
     
     # Get all groups where user is current member OR in left_members
+    # Exclude soft-deleted groups
     groups_cursor = db["groups"].find({
-        "$or": [
-            {"members": user_id},
-            {f"left_members.{user_id}": {"$exists": True}}
+        "$and": [
+            {
+                "$or": [
+                    {"members": user_id},
+                    {f"left_members.{user_id}": {"$exists": True}}
+                ]
+            },
+            {"is_active": {"$ne": False}}  # Exclude soft-deleted groups
         ]
     }).sort("last_message_at", -1)
     
@@ -313,49 +319,6 @@ async def update_group(
     )
     
     return {"message": "Group updated successfully"}
-
-
-async def delete_group(group_id: str, current_user: Dict) -> Dict[str, str]:
-    """
-    Delete a group (creator only).
-    
-    Args:
-        group_id: Group ID
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: Success message
-    
-    Raises:
-        HTTPException: If validation fails
-    """
-    db = get_database()
-    
-    # Get group
-    try:
-        group = await db["groups"].find_one({"_id": ObjectId(group_id)})
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid group ID")
-    
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-    
-    # Check if user is creator
-    user_id = current_user["_id"]
-    if user_id != group["created_by"]:
-        raise HTTPException(status_code=403, detail="Only the creator can delete the group")
-    
-    # Delete group
-    await db["groups"].delete_one({"_id": ObjectId(group_id)})
-    
-    # Delete all group messages
-    await db["messages"].delete_many({
-        "conversation_id": group_id,
-        "conversation_type": "group"
-    })
-    
-    return {"message": "Group deleted successfully"}
-
 
 
 async def add_members(
@@ -991,3 +954,72 @@ async def mark_group_as_read(
         "message": "Messages marked as read",
         "marked_count": result.modified_count
     }
+
+
+
+async def clear_left_group(group_id: str, current_user: Dict) -> Dict[str, str]:
+    """
+    Clear/delete a left group from user's view.
+    If last user, soft delete the group.
+    
+    Args:
+        group_id: Group ID
+        current_user: Current authenticated user
+    
+    Returns:
+        dict: Success message
+    
+    Raises:
+        HTTPException: If validation fails
+    """
+    db = get_database()
+    
+    # Get group
+    try:
+        group = await db["groups"].find_one({"_id": ObjectId(group_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid group ID")
+    
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    user_id = current_user["_id"]
+    
+    # Check if user has left this group
+    left_members = group.get("left_members", {})
+    if user_id not in left_members:
+        raise HTTPException(
+            status_code=400,
+            detail="You can only clear groups you have left. Use leave endpoint first."
+        )
+    
+    # Remove user from left_members
+    await db["groups"].update_one(
+        {"_id": ObjectId(group_id)},
+        {
+            "$unset": {
+                f"left_members.{user_id}": ""
+            }
+        }
+    )
+    
+    # Check if this was the last user
+    # Get updated group
+    updated_group = await db["groups"].find_one({"_id": ObjectId(group_id)})
+    current_members = updated_group.get("members", [])
+    remaining_left_members = updated_group.get("left_members", {})
+    
+    # If no current members AND no left members → soft delete
+    if len(current_members) == 0 and len(remaining_left_members) == 0:
+        await db["groups"].update_one(
+            {"_id": ObjectId(group_id)},
+            {
+                "$set": {
+                    "is_active": False,
+                    "deleted_at": datetime.utcnow()
+                }
+            }
+        )
+        return {"message": "Group chat cleared. Group archived as you were the last user."}
+    
+    return {"message": "Group chat cleared from your view"}

@@ -260,55 +260,6 @@ async def update_group_endpoint(
     )
 
 
-@router.delete("/{group_id}")
-async def delete_group_endpoint(
-    group_id: str,
-    current_user: Dict = Depends(get_current_user)
-):
-    """
-    Delete a group (creator only).
-    
-    **Access:** Group creator only
-    
-    **Purpose:**
-    Permanently delete a group and all its messages.
-    
-    **Flow:**
-    1. Creator requests to delete group
-    2. System validates user is creator
-    3. Deletes group and all messages
-    4. Group removed from all members' lists
-    
-    **Path Parameters:**
-    - `group_id`: Group ID
-    
-    **Response:**
-    ```json
-    {
-        "message": "Group deleted successfully"
-    }
-    ```
-    
-    **Rules:**
-    - Only creator can delete
-    - Permanently deletes group and messages
-    - Cannot be undone
-    
-    **Use Cases:**
-    - Remove obsolete groups
-    - Clean up unused groups
-    """
-    # Check role
-    role = current_user.get("role")
-    if role not in ["DOCTOR", "MR"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only doctors and MRs can delete groups"
-        )
-    
-    return await service.delete_group(group_id, current_user)
-
-
 @router.post("/{group_id}/members", response_model=AddMembersResponse)
 async def add_members_endpoint(
     group_id: str,
@@ -785,3 +736,76 @@ async def mark_group_as_read_endpoint(
         )
     
     return await service.mark_group_as_read(group_id, current_user)
+
+
+
+@router.delete("/{group_id}/clear-chat")
+async def clear_left_group_endpoint(
+    group_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Clear/delete a left group from your view.
+    
+    **Access:** Users who have left the group
+    
+    **Purpose:**
+    Remove a left group from your groups list (like WhatsApp's "Delete Chat").
+    
+    **Flow:**
+    1. User leaves a group
+    2. Group appears in list with status="left"
+    3. User decides they don't want to see it anymore
+    4. User clicks "Delete Chat" or "Clear Chat"
+    5. Group is removed from their view only
+    6. Other members are not affected
+    
+    **Path Parameters:**
+    - `group_id`: Group ID to clear
+    
+    **Response:**
+    ```json
+    {
+        "message": "Group chat cleared from your view"
+    }
+    ```
+    
+    **Rules:**
+    - Can only clear groups you have left
+    - Must leave the group first before clearing
+    - Doesn't affect other members
+    - Cannot undo (group won't appear in your list anymore)
+    - Old messages are not deleted from database
+    
+    **Errors:**
+    - 400: You haven't left this group yet
+    - 403: Not authorized
+    - 404: Group not found
+    
+    **Use Cases:**
+    - Clean up left groups from your list
+    - Remove old group chats you don't need
+    - Declutter your groups list
+    
+    **Difference from Delete Group:**
+    - **Delete Group** (creator only): Deletes entire group for everyone
+    - **Clear Chat** (left members): Removes from your view only
+    
+    **Example:**
+    ```
+    User leaves "Old Project Group"
+    → Group shows in list with status="left"
+    → User calls DELETE /groups/{id}/clear-chat
+    → Group disappears from user's list
+    → Other members still see the group
+    ```
+    """
+    # Check role
+    role = current_user.get("role")
+    if role not in ["DOCTOR", "MR"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only doctors and MRs can clear groups"
+        )
+    
+    return await service.clear_left_group(group_id, current_user)
