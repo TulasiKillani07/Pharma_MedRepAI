@@ -23,6 +23,10 @@ class ProfileUpdateRequest(BaseModel):
     # MR-specific fields
     territory: Optional[str] = Field(None, max_length=100, description="Territory/Region (MR only)")
     
+    # Admin/Manager-specific fields (personal profile only, NOT company)
+    admin_bio: Optional[str] = Field(None, max_length=500, description="Admin/Manager bio")
+    admin_avatar_url: Optional[str] = Field(None, max_length=500, description="Admin/Manager avatar URL")
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -57,6 +61,10 @@ class ProfileResponse(BaseModel):
     
     # MR-specific
     territory: Optional[str] = None
+    
+    # Admin/Manager-specific (personal profile only)
+    admin_bio: Optional[str] = None
+    admin_avatar_url: Optional[str] = None
     
     # Metadata
     is_active: bool
@@ -122,5 +130,64 @@ class PublicProfileResponse(BaseModel):
                 "territory": None,
                 "is_connected": True,
                 "connection_status": "connected"
+            }
+        }
+
+
+class CompanyUpdateRequest(BaseModel):
+    """Request schema for updating company profile (Admin/Manager only)"""
+    company_name: Optional[str] = Field(None, max_length=200, description="Company name")
+    company_logo_url: Optional[str] = Field(None, max_length=500, description="Company logo URL")
+    company_description: Optional[str] = Field(None, max_length=1000, description="Company description")
+    company_address: Optional[str] = Field(None, max_length=300, description="Company address")
+    company_city: Optional[str] = Field(None, max_length=100, description="Company city")
+    company_state: Optional[str] = Field(None, max_length=100, description="Company state")
+    company_country: Optional[str] = Field(None, max_length=100, description="Company country")
+    company_pincode: Optional[str] = Field(None, max_length=20, description="Company pincode")
+    company_website: Optional[str] = Field(None, max_length=200, description="Company website")
+    company_industry: Optional[str] = Field(None, max_length=100, description="Company industry")
+    company_founded_year: Optional[int] = Field(None, ge=1800, le=2100, description="Company founded year")
+    company_size: Optional[str] = Field(None, max_length=50, description="Company size e.g. '50-200'")
+    company_gst_number: Optional[str] = Field(None, max_length=50, description="Company GST number")
+    company_pan_number: Optional[str] = Field(None, max_length=50, description="Company PAN number")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "company_name": "XYZ Pharma",
+                "company_logo_url": "https://example.com/logo.png",
+                "company_description": "Leading pharmaceutical company",
+                "company_city": "Mumbai",
+                "company_state": "Maharashtra"
+            }
+        }
+
+
+class CompanyProfileResponse(BaseModel):
+    """Response schema for viewing company profile (public fields only)"""
+    company_name: str
+    company_logo_url: Optional[str] = None
+    company_description: Optional[str] = None
+    company_city: Optional[str] = None
+    company_state: Optional[str] = None
+    company_country: Optional[str] = None
+    company_website: Optional[str] = None
+    company_industry: Optional[str] = None
+    company_founded_year: Optional[int] = None
+    company_size: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "company_name": "XYZ Pharma",
+                "company_logo_url": "https://example.com/logos/xyz.png",
+                "company_description": "Leading pharmaceutical company in India",
+                "company_city": "Mumbai",
+                "company_state": "Maharashtra",
+                "company_country": "India",
+                "company_website": "https://xyzpharma.com",
+                "company_industry": "Pharmaceuticals",
+                "company_founded_year": 2010,
+                "company_size": "50-200"
             }
         }

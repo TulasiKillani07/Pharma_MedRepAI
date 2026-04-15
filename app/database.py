@@ -262,4 +262,56 @@ async def initialize_collections():
     except Exception as e:
         print(f"⚠️ Group index creation note: {e}")
     
+    # Create company collection (single document for company info)
+    try:
+        if "company" not in existing_collections:
+            await database.create_collection("company")
+            print("✅ Created company collection")
+        
+        # Check if company document exists, if not create default
+        # Use upsert with unique constraint to prevent race condition
+        from datetime import datetime
+        result = await database["company"].update_one(
+            {},  # Match any document
+            {
+                "$setOnInsert": {  # Only set these if inserting new document
+                    "company_name": "Your Company Name",
+                    "company_logo_url": None,
+                    "company_description": None,
+                    "company_address": None,
+                    "company_city": None,
+                    "company_state": None,
+                    "company_country": None,
+                    "company_pincode": None,
+                    "company_website": None,
+                    "company_industry": None,
+                    "company_founded_year": None,
+                    "company_size": None,
+                    "company_gst_number": None,
+                    "company_pan_number": None,
+                    "is_active": True,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            },
+            upsert=True  # Create if doesn't exist
+        )
+        
+        if result.upserted_id:
+            print("✅ Created default company document")
+        else:
+            print("✅ Company document already exists")
+            
+        # Ensure only one company document exists (cleanup if multiple)
+        company_count = await database["company"].count_documents({})
+        if company_count > 1:
+            print(f"⚠️ Found {company_count} company documents, keeping only the first one")
+            # Keep the first document, delete others
+            first_company = await database["company"].find_one({})
+            await database["company"].delete_many({"_id": {"$ne": first_company["_id"]}})
+            print("✅ Cleaned up duplicate company documents")
+            
+    except Exception as e:
+        print(f"⚠️ Company collection creation note: {e}")
+    
     print("✅ Collections and indexes initialized")

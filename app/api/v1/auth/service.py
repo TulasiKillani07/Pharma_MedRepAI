@@ -101,7 +101,7 @@ async def login_user(email: str, password: str, role: UserRole) -> dict:
 
 async def register_admin(email: str, password: str, full_name: str, phone: str, company_name: str) -> dict:
     """
-    Register a new company admin.
+    Register a new company admin and update company name.
     
     Args:
         email: Admin email
@@ -117,13 +117,12 @@ async def register_admin(email: str, password: str, full_name: str, phone: str, 
         HTTPException: If email already exists
     
     Note: This is for self-registration of the first admin.
-    In production, you might want to restrict this or require an invitation code.
+    Updates the single company document with the provided company name.
     """
     db = get_database()
-    collection = db.company_admins
     
     # Check if email already exists
-    existing_user = await collection.find_one({"email": email})
+    existing_user = await db.company_admins.find_one({"email": email})
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -133,20 +132,31 @@ async def register_admin(email: str, password: str, full_name: str, phone: str, 
     # Hash password
     password_hash = hash_password(password)
     
-    # Create admin document
+    # Create admin document (NO company_name here - it's in separate collection)
     admin_doc = {
         "email": email,
         "password_hash": password_hash,
         "full_name": full_name,
         "phone": phone,
-        "company_name": company_name,
+        "role": "ADMIN",  # Explicitly set role
         "is_active": True,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
     
-    # Insert into database
-    result = await collection.insert_one(admin_doc)
+    # Insert admin into database
+    result = await db.company_admins.insert_one(admin_doc)
+    
+    # Update company name in the separate company collection
+    await db.company.update_one(
+        {},  # Match the single company document
+        {
+            "$set": {
+                "company_name": company_name,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
     
     return {
         "message": "Admin registered successfully",
