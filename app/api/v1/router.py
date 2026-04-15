@@ -15,6 +15,7 @@ from app.api.v1.feed.routes import posts_router, likes_router, comments_router
 from app.api.v1.connections.routes import router as connections_router
 from app.api.v1.chat.routes import router as chat_router
 from app.api.v1.groups.routes import router as groups_router
+from app.api.v1.profile.routes import router as profile_router
 
 
 # Create main API router
@@ -51,3 +52,6 @@ api_router.include_router(chat_router, prefix="/network/chat", tags=["Network - 
 api_router.include_router(comments_router, prefix="/network/posts", tags=["Network - Comments"])
 api_router.include_router(likes_router, prefix="/network/posts", tags=["Network - Likes"])
 api_router.include_router(posts_router, prefix="/network/posts", tags=["Network - Posts"])
+
+# Profile routes
+api_router.include_router(profile_router, prefix="/profile", tags=["Profile"])
