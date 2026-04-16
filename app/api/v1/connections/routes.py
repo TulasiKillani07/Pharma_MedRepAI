@@ -5,7 +5,7 @@ Connections API Endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Optional
 from app.core.auth import get_current_user
-from app.api.v1.connections.schemas import (
+from app.models.connection_model import (
     DiscoverResponse,
     ConnectionRequestResponse,
     ConnectionRequestListResponse,

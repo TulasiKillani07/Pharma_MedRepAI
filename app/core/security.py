@@ -7,11 +7,34 @@ from typing import Optional, Dict, Any
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.config import settings
+import hashlib
 
 
 # Password hashing context using bcrypt
 # This is used to hash passwords before storing and verify them during login
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _truncate_password(password: str) -> bytes:
+    """
+    Truncate password to 72 bytes for bcrypt compatibility.
+    Uses SHA256 hash for passwords longer than 72 bytes to maintain security.
+    
+    Args:
+        password: Plain text password
+    
+    Returns:
+        bytes: Password truncated/hashed to fit bcrypt's 72 byte limit
+    """
+    password_bytes = password.encode('utf-8')
+    
+    # If password is longer than 72 bytes, hash it first with SHA256
+    # This maintains security while fitting bcrypt's limit
+    if len(password_bytes) > 72:
+        # Use SHA256 to create a fixed-length hash
+        return hashlib.sha256(password_bytes).hexdigest().encode('utf-8')
+    
+    return password_bytes
 
 
 def hash_password(password: str) -> str:
@@ -34,13 +57,12 @@ def hash_password(password: str) -> str:
     - If database is compromised, passwords are still safe
     - Bcrypt is slow by design (prevents brute force attacks)
     
-    Note: Bcrypt has a 72 byte limit. Passwords longer than 72 bytes will be truncated.
+    Note: Bcrypt has a 72 byte limit. Passwords longer than 72 bytes 
+    are first hashed with SHA256 to maintain security.
     """
-    # Bcrypt has a 72 byte limit, truncate if necessary
-    if len(password.encode('utf-8')) > 72:
-        password = password[:72]
-    
-    return pwd_context.hash(password)
+    # Truncate/hash password to fit bcrypt's 72 byte limit
+    truncated = _truncate_password(password)
+    return pwd_context.hash(truncated)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -61,11 +83,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         >>> verify_password("wrongpassword", hashed)
         False
     """
-    # Truncate password to 72 bytes if necessary (same as hash_password)
-    if len(plain_password.encode('utf-8')) > 72:
-        plain_password = plain_password[:72]
-    
-    return pwd_context.verify(plain_password, hashed_password)
+    # Truncate/hash password to fit bcrypt's 72 byte limit (same as hash_password)
+    truncated = _truncate_password(plain_password)
+    return pwd_context.verify(truncated, hashed_password)
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
