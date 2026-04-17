@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from bson import ObjectId
 from app.database import get_database
 from app.api.v1.cme.schemas import CMEEventCreate, CMEEventUpdate
+from app.api.v1.notifications.helpers import notify_cme_created, notify_cme_recording
 
 
 async def create_cme_event(event_data: CMEEventCreate) -> Dict[str, Any]:
@@ -55,6 +56,20 @@ async def create_cme_event(event_data: CMEEventCreate) -> Dict[str, Any]:
     
     result = await db["cme_events"].insert_one(event_doc)
     event_doc["_id"] = str(result.inserted_id)
+    
+    # Send notification to all doctors
+    doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
+    doctors_list = await doctors_cursor.to_list(None)
+    doctor_ids = [str(doc["_id"]) for doc in doctors_list]
+    
+    if doctor_ids:
+        await notify_cme_created(
+            cme_id=str(result.inserted_id),
+            cme_title=event_data.title,
+            event_date=event_data.event_date.strftime("%Y-%m-%d"),
+            event_time=event_data.event_time,
+            doctor_ids=doctor_ids
+        )
     
     return event_doc
 
@@ -186,6 +201,19 @@ async def update_cme_event(event_id: str, event_data: CMEEventUpdate) -> Dict[st
             )
         
         update_data["event_recording"] = event_data.event_recording
+        
+        # Send notification to all doctors about recording availability
+        doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
+        doctors_list = await doctors_cursor.to_list(None)
+        doctor_ids = [str(doc["_id"]) for doc in doctors_list]
+        
+        if doctor_ids:
+            await notify_cme_recording(
+                cme_id=event_id,
+                cme_title=event.get("title", ""),
+                recording_url=event_data.event_recording,
+                attendee_ids=doctor_ids
+            )
     
     # Update in database
     result = await db["cme_events"].update_one(

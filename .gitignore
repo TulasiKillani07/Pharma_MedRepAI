@@ -44,3 +44,10 @@ Thumbs.db
 # Database
 *.db
 *.sqlite3
+
+# Documentation/Summary files (temporary development notes)
+SCHEMA_MODEL_SEPARATION_FIX.md
+SCHEMA_MODEL_SEPARATION_COMPLETE.md
+SCHEMA_FIX_STATUS.md
+NOTIFICATION_INTEGRATION_COMPLETE.md
+CODING_STANDARDS.md

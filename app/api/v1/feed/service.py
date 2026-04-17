@@ -7,6 +7,11 @@ from typing import Dict, Any, List, Optional
 from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
+from app.api.v1.notifications.helpers import (
+    notify_post_liked,
+    notify_post_commented,
+    notify_post_shared
+)
 
 
 async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
@@ -472,6 +477,15 @@ async def toggle_like(post_id: str, current_user: Dict) -> Dict[str, Any]:
         # Get updated count
         updated_post = await db["posts"].find_one({"_id": ObjectId(post_id)})
         
+        # Notify post author (don't notify if user likes their own post)
+        if post["author_id"] != user_id:
+            await notify_post_liked(
+                post_id=post_id,
+                post_author_id=post["author_id"],
+                liker_name=current_user.get("name", ""),
+                liker_id=user_id
+            )
+        
         return {
             "liked": True,
             "likes_count": updated_post["likes_count"],
@@ -749,6 +763,16 @@ async def add_comment(post_id: str, content: str, current_user: Dict) -> Dict[st
         {"_id": ObjectId(post_id)},
         {"$inc": {"comments_count": 1}}
     )
+    
+    # Notify post author (don't notify if user comments on their own post)
+    if post["author_id"] != current_user["_id"]:
+        await notify_post_commented(
+            post_id=post_id,
+            post_author_id=post["author_id"],
+            commenter_name=current_user.get("name", ""),
+            commenter_id=current_user["_id"],
+            comment_id=str(result.inserted_id)
+        )
     
     return {
         "comment_id": str(result.inserted_id),
@@ -1179,6 +1203,15 @@ async def share_post(
             }
             
             await db["messages"].insert_one(message_doc)
+            
+            # Notify recipient about shared post
+            await notify_post_shared(
+                receiver_id=user_id,
+                post_id=post_id,
+                sharer_name=current_user.get("name", ""),
+                sharer_id=current_user_id,
+                personal_message=message
+            )
             
             # Update conversation
             preview = f"📤 Shared a post"

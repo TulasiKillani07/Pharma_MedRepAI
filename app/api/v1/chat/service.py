@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
+from app.api.v1.notifications.helpers import notify_new_message
 
 
 async def check_connection(user1_id: str, user2_id: str) -> bool:
@@ -373,6 +374,16 @@ async def send_message(
         {"_id": ObjectId(conversation_id)},
         {"$set": update_doc}
     )
+    
+    # Send notification to other user
+    if other_user_id:
+        await notify_new_message(
+            receiver_id=other_user_id,
+            sender_name=current_user.get("name", ""),
+            sender_id=user_id,
+            conversation_id=conversation_id,
+            message_preview=content
+        )
     
     return {
         "message_id": str(result.inserted_id),

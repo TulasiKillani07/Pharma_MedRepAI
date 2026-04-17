@@ -229,8 +229,12 @@ async def initialize_collections():
     except Exception as e:
         print(f"⚠️ Index creation note: {e}")
     
-    # Create indexes on groups collection
+    # Create groups collection if it doesn't exist
     try:
+        if "groups" not in existing_collections:
+            await database.create_collection("groups")
+            print("✅ Created groups collection")
+        
         # Index 1: Index on members - Fast group lookup for user
         await database["groups"].create_index(
             "members",
@@ -261,6 +265,37 @@ async def initialize_collections():
         
     except Exception as e:
         print(f"⚠️ Group index creation note: {e}")
+    
+    # Create notifications collection if it doesn't exist
+    try:
+        if "notifications" not in existing_collections:
+            await database.create_collection("notifications")
+            print("✅ Created notifications collection")
+        
+        # Index 1: Compound index on (user_id, created_at) - Fast user notifications sorted by time
+        await database["notifications"].create_index(
+            [("user_id", 1), ("created_at", -1)],
+            name="notification_user_time_idx"
+        )
+        print("✅ Created compound index on notifications.(user_id, created_at)")
+        
+        # Index 2: Compound index on (user_id, is_read) - Fast unread count
+        await database["notifications"].create_index(
+            [("user_id", 1), ("is_read", 1)],
+            name="notification_user_read_idx"
+        )
+        print("✅ Created compound index on notifications.(user_id, is_read)")
+        
+        # Index 3: TTL index on expires_at - Auto-delete expired notifications
+        await database["notifications"].create_index(
+            "expires_at",
+            name="notification_expires_idx",
+            expireAfterSeconds=0
+        )
+        print("✅ Created TTL index on notifications.expires_at (auto-delete after 30 days)")
+        
+    except Exception as e:
+        print(f"⚠️ Notification index creation note: {e}")
     
     # Create company collection (single document for company info)
     try:

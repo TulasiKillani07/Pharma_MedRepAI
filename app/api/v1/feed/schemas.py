@@ -1,5 +1,5 @@
 """
-Feed/Posts Request/Response Schemas
+Feed/Post Request/Response Schemas
 """
 
 from typing import List, Optional
@@ -84,7 +84,6 @@ class PostFeedResponse(BaseModel):
         }
 
 
-
 class LikeResponse(BaseModel):
     """Schema for like/unlike response"""
     liked: bool = Field(..., description="True if liked, False if unliked")
@@ -160,7 +159,6 @@ class LikeStatusResponse(BaseModel):
         }
 
 
-
 class CommentCreate(BaseModel):
     """Schema for creating a comment"""
     content: str = Field(..., min_length=1, max_length=1000, description="Comment content")
@@ -225,7 +223,6 @@ class CommentListResponse(BaseModel):
                 "total_pages": 1
             }
         }
-
 
 
 class SharePostRequest(BaseModel):

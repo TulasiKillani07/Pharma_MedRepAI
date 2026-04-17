@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
+from app.api.v1.notifications.helpers import notify_group_message, notify_group_added
 
 
 async def get_user_details(user_id: str) -> Dict[str, Any]:
@@ -420,6 +421,15 @@ async def add_members(
             }
         )
         
+        # Send notification to new member
+        await notify_group_added(
+            user_id=new_member_id,
+            group_id=group_id,
+            group_name=group["group_name"],
+            added_by_name=current_user.get("name", ""),
+            added_by_id=user_id
+        )
+        
         added_count += 1
     
     return {
@@ -775,6 +785,17 @@ async def send_group_message(
                 **unread_updates
             }
         }
+    )
+    
+    # Send notification to all group members except sender
+    await notify_group_message(
+        group_id=group_id,
+        group_name=group["group_name"],
+        sender_name=current_user.get("name", ""),
+        sender_id=user_id,
+        message_preview=content,
+        member_ids=group["members"],
+        exclude_sender=True
     )
     
     return {

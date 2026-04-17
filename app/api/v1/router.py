@@ -16,6 +16,7 @@ from app.api.v1.connections.routes import router as connections_router
 from app.api.v1.chat.routes import router as chat_router
 from app.api.v1.groups.routes import router as groups_router
 from app.api.v1.profile.routes import router as profile_router
+from app.api.v1.notifications.routes import router as notifications_router
 
 
 # Create main API router
@@ -55,3 +56,6 @@ api_router.include_router(posts_router, prefix="/network/posts", tags=["Network 
 
 # Profile routes
 api_router.include_router(profile_router, prefix="/profile", tags=["Profile"])
+
+# Notification routes
+api_router.include_router(notifications_router, prefix="/notifications", tags=["Notifications"])

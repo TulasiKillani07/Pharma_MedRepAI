@@ -15,6 +15,7 @@ from app.api.v1.drugs.schemas import (
     DrugCreate, DrugUpdate
 )
 import uuid
+from app.api.v1.notifications.helpers import notify_drug_added
 
 
 # ============ HELPER FUNCTIONS ============
@@ -349,6 +350,33 @@ async def create_drug(drug_data: DrugCreate) -> Dict[str, Any]:
     
     result = await db["drugs"].insert_one(drug_doc)
     drug_doc["_id"] = str(result.inserted_id)
+    
+    # Send notification to all doctors and MRs
+    doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
+    mrs_cursor = db["mrs"].find({"is_active": True}, {"_id": 1})
+    
+    doctors_list = await doctors_cursor.to_list(None)
+    mrs_list = await mrs_cursor.to_list(None)
+    
+    user_ids = [str(doc["_id"]) for doc in doctors_list] + [str(mr["_id"]) for mr in mrs_list]
+    
+    # Extract drug_name and manufacturer from field_values
+    drug_name = "New Drug"
+    manufacturer = "Unknown"
+    
+    for fv in drug_data.field_values:
+        if fv.key == "drug_name":
+            drug_name = fv.value or drug_name
+        elif fv.key == "manufacturer":
+            manufacturer = fv.value or manufacturer
+    
+    if user_ids:
+        await notify_drug_added(
+            drug_id=str(result.inserted_id),
+            drug_name=drug_name,
+            manufacturer=manufacturer,
+            user_ids=user_ids
+        )
     
     return drug_doc
 
@@ -718,6 +746,26 @@ async def bulk_upload_drugs(file: UploadFile) -> Dict[str, Any]:
                 "brand_name": brand_name,
                 "error": f"Database error: {str(e)}"
             })
+    
+    # Send bulk notification for successfully added drugs
+    if successful > 0:
+        # Get all doctors and MRs
+        doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
+        mrs_cursor = db["mrs"].find({"is_active": True}, {"_id": 1})
+        
+        doctors_list = await doctors_cursor.to_list(None)
+        mrs_list = await mrs_cursor.to_list(None)
+        
+        user_ids = [str(doc["_id"]) for doc in doctors_list] + [str(mr["_id"]) for mr in mrs_list]
+        
+        if user_ids:
+            # Send a single notification about bulk upload
+            await notify_drug_added(
+                drug_id="bulk",
+                drug_name=f"{successful} new drugs",
+                manufacturer="Various",
+                user_ids=user_ids
+            )
     
     # Prepare response message
     if failed == 0:

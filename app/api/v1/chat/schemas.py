@@ -1,5 +1,5 @@
 """
-Chat Request/Response Schemas
+Chat/Message Request/Response Schemas
 """
 
 from typing import List, Optional

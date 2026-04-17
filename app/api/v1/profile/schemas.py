@@ -1,5 +1,5 @@
 """
-Profile Schemas
+Profile Request/Response Schemas
 """
 
 from pydantic import BaseModel, Field

@@ -8,6 +8,12 @@ from fastapi import HTTPException, status
 from bson import ObjectId
 from app.database import get_database
 from app.config import settings
+from app.api.v1.notifications.helpers import (
+    notify_visit_scheduled,
+    notify_visit_rescheduled,
+    notify_visit_completed,
+    notify_visit_cancelled
+)
 
 
 def get_company_database():
@@ -108,6 +114,17 @@ async def schedule_visit(
     
     # Insert into database
     result = await company_db.visits.insert_one(visit_doc)
+    
+    # Send notification to doctor
+    await notify_visit_scheduled(
+        doctor_id=doctor_id,
+        visit_id=str(result.inserted_id),
+        mr_name=mr["name"],
+        mr_id=mr_id,
+        scheduled_date=scheduled_date.strftime("%Y-%m-%d"),
+        scheduled_time=scheduled_time,
+        purpose=purpose
+    )
     
     return {
         "message": "Visit scheduled successfully",
@@ -321,6 +338,17 @@ async def reschedule_visit(
         }
     )
     
+    # Send notification to doctor
+    await notify_visit_rescheduled(
+        doctor_id=visit["doctor_id"],
+        visit_id=visit_id,
+        mr_name=visit["mr_name"],
+        old_date=visit["scheduled_date"].strftime("%Y-%m-%d"),
+        new_date=scheduled_date.strftime("%Y-%m-%d"),
+        new_time=scheduled_time,
+        reason=reason
+    )
+    
     return {"message": "Visit rescheduled successfully"}
 
 
@@ -393,6 +421,15 @@ async def complete_visit(
         }
     )
     
+    # Send notification to MR (self-notification for confirmation)
+    await notify_visit_completed(
+        mr_id=user_id,
+        visit_id=visit_id,
+        doctor_name=visit["doctor_name"],
+        doctor_id=visit["doctor_id"],
+        completed_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    )
+    
     return {"message": "Visit completed successfully"}
 
 
@@ -460,6 +497,15 @@ async def cancel_visit(
                 "updated_at": datetime.utcnow()
             }
         }
+    )
+    
+    # Send notification to doctor
+    await notify_visit_cancelled(
+        user_id=visit["doctor_id"],
+        visit_id=visit_id,
+        cancelled_by_name=visit["mr_name"],
+        scheduled_date=visit["scheduled_date"].strftime("%Y-%m-%d"),
+        cancel_reason=reason
     )
     
     return {"message": "Visit cancelled successfully"}

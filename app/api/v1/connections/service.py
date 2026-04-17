@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
+from app.api.v1.notifications.helpers import notify_connection_request, notify_connection_accepted
 
 
 async def discover_users(
@@ -200,6 +201,15 @@ async def send_connection_request(
     
     result = await db["connections"].insert_one(connection_doc)
     
+    # Notify receiver about connection request
+    await notify_connection_request(
+        receiver_id=receiver_id,
+        requester_name=current_user.get("name", ""),
+        requester_id=requester_id,
+        requester_role=current_user.get("role", ""),
+        connection_id=str(result.inserted_id)
+    )
+    
     return {
         "connection_id": str(result.inserted_id),
         "receiver_name": receiver.get("name", ""),
@@ -387,6 +397,15 @@ async def accept_request(
                 "updated_at": datetime.utcnow()
             }
         }
+    )
+    
+    # Notify requester that connection was accepted
+    await notify_connection_accepted(
+        requester_id=connection["requester_id"],
+        accepter_name=current_user.get("name", ""),
+        accepter_id=current_user["_id"],
+        accepter_role=current_user.get("role", ""),
+        connection_id=connection_id
     )
     
     return {

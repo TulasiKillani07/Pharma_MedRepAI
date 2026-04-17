@@ -5,7 +5,7 @@ Profile API Endpoints
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict
 from app.core.auth import get_current_user
-from app.models.profile_model import (
+from app.api.v1.profile.schemas import (
     ProfileUpdateRequest,
     ProfileResponse,
     PublicProfileResponse,
