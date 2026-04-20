@@ -8,6 +8,7 @@ from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
 from app.api.v1.notifications.helpers import notify_new_message
+from app.models.message_model import MessageInDB, ConversationInDB, MessageType
 
 
 async def check_connection(user1_id: str, user2_id: str) -> bool:
@@ -118,10 +119,10 @@ async def start_conversation(
             "message": "Conversation already exists"
         }
     
-    # Create new conversation
-    conversation_doc = {
-        "participants": participants,
-        "participant_details": [
+    # RULE 1: INSERT with model
+    conversation = ConversationInDB(
+        participants=participants,
+        participant_details=[
             {
                 "user_id": current_user_id,
                 "name": current_user.get("name", ""),
@@ -133,17 +134,13 @@ async def start_conversation(
                 "role": other_user["role"]
             }
         ],
-        "last_message": None,
-        "last_message_at": None,
-        "unread_count": {
+        unread_count={
             current_user_id: 0,
             other_user_id: 0
-        },
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+        }
+    )
     
-    result = await db["conversations"].insert_one(conversation_doc)
+    result = await db["conversations"].insert_one(conversation.model_dump())
     
     return {
         "conversation_id": str(result.inserted_id),
@@ -337,19 +334,17 @@ async def send_message(
     if user_id not in conversation["participants"]:
         raise HTTPException(status_code=403, detail="You are not part of this conversation")
     
-    # Create message
-    message_doc = {
-        "conversation_id": conversation_id,
-        "sender_id": user_id,
-        "sender_name": current_user.get("name", ""),
-        "sender_role": current_user.get("role", ""),
-        "content": content,
-        "is_read": False,
-        "read_at": None,
-        "created_at": datetime.utcnow()
-    }
+    # RULE 1: INSERT with model
+    message = MessageInDB(
+        conversation_id=conversation_id,
+        sender_id=user_id,
+        sender_name=current_user.get("name", ""),
+        sender_role=current_user.get("role", ""),
+        content=content,
+        message_type=MessageType.TEXT
+    )
     
-    result = await db["messages"].insert_one(message_doc)
+    result = await db["messages"].insert_one(message.model_dump())
     
     # Update conversation
     # Get other user ID
@@ -362,7 +357,7 @@ async def send_message(
     # Update last message and increment unread count for other user
     update_doc = {
         "last_message": content[:100],  # Store first 100 chars as preview
-        "last_message_at": message_doc["created_at"],
+        "last_message_at": message.created_at,
         "updated_at": datetime.utcnow()
     }
     

@@ -16,6 +16,7 @@ from app.api.v1.drugs.schemas import (
 )
 import uuid
 from app.api.v1.notifications.helpers import notify_drug_added
+from app.models.drug_model import DrugInDB, DrugFieldTemplateInDB, DrugFieldType
 
 
 # ============ HELPER FUNCTIONS ============
@@ -147,18 +148,18 @@ async def create_template(template_data: TemplateCreate) -> Dict[str, Any]:
     if existing:
         raise HTTPException(status_code=400, detail="Template already exists. Only one template is allowed.")
     
-    template_doc = {
-        "template_name": template_data.template_name,
-        "fields": get_default_fixed_fields(),
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-        "is_active": True
+    # RULE 1: INSERT with model
+    template = DrugFieldTemplateInDB(
+        template_name=template_data.template_name,
+        fields=get_default_fixed_fields()
+    )
+    
+    result = await db["drug_field_templates"].insert_one(template.model_dump())
+    
+    return {
+        "_id": str(result.inserted_id),
+        **template.model_dump()
     }
-    
-    result = await db["drug_field_templates"].insert_one(template_doc)
-    template_doc["_id"] = str(result.inserted_id)
-    
-    return template_doc
 
 
 async def get_template() -> Optional[Dict[str, Any]]:

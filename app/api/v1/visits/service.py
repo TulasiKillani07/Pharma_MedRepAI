@@ -14,6 +14,7 @@ from app.api.v1.notifications.helpers import (
     notify_visit_completed,
     notify_visit_cancelled
 )
+from app.models.visit_model import VisitInDB, VisitStatus
 
 
 def get_company_database():
@@ -95,22 +96,23 @@ async def schedule_visit(
             detail=f"Doctor {doctor['name']} already has a scheduled visit. Please complete or cancel it first."
         )
     
-    # Create visit document
-    visit_doc = {
-        "mr_id": mr_id,
-        "mr_name": mr["name"],
-        "doctor_id": doctor_id,
-        "doctor_name": doctor["name"],
-        "scheduled_date": datetime.combine(scheduled_date, datetime.min.time()),  # Convert date to datetime
-        "scheduled_time": scheduled_time,
-        "purpose": purpose,
-        "location": location,
-        "notes": notes,
-        "status": "scheduled",
-        "reschedule_history": [],
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # RULE 1: INSERT with model (RULE 7: Convert date to datetime)
+    visit = VisitInDB(
+        mr_id=mr_id,
+        mr_name=mr["name"],
+        doctor_id=doctor_id,
+        doctor_name=doctor["name"],
+        scheduled_date=scheduled_date,  # Model accepts date type
+        scheduled_time=scheduled_time,
+        purpose=purpose,
+        location=location,
+        notes=notes,
+        status=VisitStatus.SCHEDULED
+    )
+    
+    # Convert to dict and adjust date for MongoDB
+    visit_doc = visit.model_dump()
+    visit_doc["scheduled_date"] = datetime.combine(scheduled_date, datetime.min.time())
     
     # Insert into database
     result = await company_db.visits.insert_one(visit_doc)

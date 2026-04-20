@@ -8,6 +8,7 @@ from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
 from app.api.v1.notifications.helpers import notify_group_message, notify_group_added
+from app.models.group_model import GroupInDB
 
 
 async def get_user_details(user_id: str) -> Dict[str, Any]:
@@ -110,27 +111,23 @@ async def create_group(
         except HTTPException:
             continue
     
-    # Create group document
-    group_doc = {
-        "group_name": group_name,
-        "group_description": group_description,
-        "created_by": creator_id,
-        "admins": [creator_id],
-        "members": all_members,
-        "member_details": member_details,
-        "last_message": None,
-        "last_message_at": None,
-        "unread_count": {m: 0 for m in all_members},
-        "settings": {
+    # RULE 1: INSERT with model
+    group = GroupInDB(
+        group_name=group_name,
+        group_description=group_description,
+        created_by=creator_id,
+        admins=[creator_id],
+        members=all_members,
+        member_details=member_details,
+        unread_count={m: 0 for m in all_members},
+        settings={
             "only_admins_can_send": False,
             "allow_members_to_add": False,
             "max_members": 50
-        },
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+        }
+    )
     
-    result = await db["groups"].insert_one(group_doc)
+    result = await db["groups"].insert_one(group.model_dump())
     
     response = {
         "group_id": str(result.inserted_id),
@@ -139,7 +136,7 @@ async def create_group(
         "created_by": creator_id,
         "members_count": len(all_members),
         "admins_count": 1,
-        "created_at": group_doc["created_at"]
+        "created_at": group.created_at
     }
     
     # Add failed members info if any

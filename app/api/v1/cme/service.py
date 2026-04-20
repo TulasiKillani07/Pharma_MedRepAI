@@ -9,6 +9,7 @@ from bson import ObjectId
 from app.database import get_database
 from app.api.v1.cme.schemas import CMEEventCreate, CMEEventUpdate
 from app.api.v1.notifications.helpers import notify_cme_created, notify_cme_recording
+from app.models.cme_model import CMEEventInDB, CMEEventMode, CMEEventStatus
 
 
 async def create_cme_event(event_data: CMEEventCreate) -> Dict[str, Any]:
@@ -31,31 +32,28 @@ async def create_cme_event(event_data: CMEEventCreate) -> Dict[str, Any]:
     else:
         raise HTTPException(status_code=400, detail="Event mode must be 'online' or 'offline'")
     
-    # Convert date to datetime
+    # Convert date to datetime (RULE 7: Schema-to-model conversion)
     event_datetime = datetime.combine(event_data.event_date, datetime.min.time())
     
-    event_doc = {
-        "title": event_data.title,
-        "description": event_data.description,
-        "event_date": event_datetime,
-        "event_time": event_data.event_time,
-        "event_type": event_data.event_type,
-        "max_attendees": event_data.max_attendees,
-        "event_mode": event_data.event_mode,
-        "platform": event_data.platform,
-        "platform_name": event_data.platform_name,
-        "meeting_link": event_data.meeting_link,
-        "venue_name": event_data.venue_name,
-        "address": event_data.address,
-        "speaker": event_data.speaker,
-        "status": event_data.status,
-        "event_recording": None,  # Always null on creation
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # RULE 1: INSERT with model
+    event = CMEEventInDB(
+        title=event_data.title,
+        description=event_data.description,
+        event_date=event_datetime,
+        event_time=event_data.event_time,
+        event_type=event_data.event_type,
+        max_attendees=event_data.max_attendees,
+        event_mode=CMEEventMode(event_data.event_mode),
+        platform=event_data.platform,
+        platform_name=event_data.platform_name,
+        meeting_link=event_data.meeting_link,
+        venue_name=event_data.venue_name,
+        address=event_data.address,
+        speaker=event_data.speaker,
+        status=CMEEventStatus(event_data.status)
+    )
     
-    result = await db["cme_events"].insert_one(event_doc)
-    event_doc["_id"] = str(result.inserted_id)
+    result = await db["cme_events"].insert_one(event.model_dump())
     
     # Send notification to all doctors
     doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
@@ -71,7 +69,8 @@ async def create_cme_event(event_data: CMEEventCreate) -> Dict[str, Any]:
             doctor_ids=doctor_ids
         )
     
-    return event_doc
+    # Return the created event
+    return await get_cme_event_by_id(str(result.inserted_id))
 
 
 async def get_all_cme_events(

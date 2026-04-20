@@ -12,6 +12,7 @@ from app.api.v1.notifications.helpers import (
     notify_post_commented,
     notify_post_shared
 )
+from app.models.post_model import PostInDB, LikeInDB, CommentInDB
 
 
 async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
@@ -41,21 +42,20 @@ async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
     elif author_role == "MR":
         author_territory = current_user.get("territory")
     
-    # Create post document
-    post_doc = {
-        "author_id": author_id,
+    # RULE 1: INSERT with model
+    post = PostInDB(
+        author_id=author_id,
+        content=content
+    )
+    
+    # Add author details (DB-specific fields not in model)
+    post_doc = post.model_dump()
+    post_doc.update({
         "author_name": author_name,
         "author_role": author_role,
         "author_specialization": author_specialization,
-        "author_territory": author_territory,
-        "content": content,
-        "likes_count": 0,
-        "comments_count": 0,
-        "shares_count": 0,
-        "is_active": True,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+        "author_territory": author_territory
+    })
     
     # Insert into database
     result = await db["posts"].insert_one(post_doc)
@@ -459,14 +459,20 @@ async def toggle_like(post_id: str, current_user: Dict) -> Dict[str, Any]:
         }
     else:
         # User hasn't liked → LIKE
-        # Store post_id as string (the ObjectId hex representation)
-        await db["post_likes"].insert_one({
-            "post_id": str(post["_id"]),  # Convert ObjectId to string
-            "user_id": user_id,
+        # RULE 1: INSERT with model
+        like = LikeInDB(
+            post_id=str(post["_id"]),
+            user_id=user_id
+        )
+        
+        # Add user details (DB-specific fields)
+        like_doc = like.model_dump()
+        like_doc.update({
             "user_name": current_user.get("name", ""),
-            "user_role": current_user.get("role", ""),
-            "created_at": datetime.utcnow()
+            "user_role": current_user.get("role", "")
         })
+        
+        await db["post_likes"].insert_one(like_doc)
         
         # Increment likes_count
         await db["posts"].update_one(
@@ -743,17 +749,20 @@ async def add_comment(post_id: str, content: str, current_user: Dict) -> Dict[st
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    # Create comment document
-    comment_doc = {
-        "post_id": str(post["_id"]),
-        "author_id": current_user["_id"],
+    # RULE 1: INSERT with model
+    comment = CommentInDB(
+        post_id=str(post["_id"]),
+        author_id=current_user["_id"],
+        content=content
+    )
+    
+    # Add author details (DB-specific fields)
+    comment_doc = comment.model_dump()
+    comment_doc.update({
         "author_name": current_user.get("name", ""),
         "author_role": current_user.get("role", ""),
-        "content": content,
-        "is_active": True,
-        "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
-    }
+    })
     
     # Insert comment
     result = await db["post_comments"].insert_one(comment_doc)

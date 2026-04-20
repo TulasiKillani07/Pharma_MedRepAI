@@ -8,6 +8,7 @@ from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
 from app.api.v1.notifications.helpers import notify_connection_request, notify_connection_accepted
+from app.models.connection_model import ConnectionInDB, ConnectionStatus
 
 
 async def discover_users(
@@ -150,6 +151,10 @@ async def send_connection_request(
     
     requester_id = current_user["_id"]
     
+    # Validate receiver_id format first
+    if not ObjectId.is_valid(receiver_id):
+        raise HTTPException(status_code=400, detail="Invalid receiver ID format")
+    
     # Cannot send request to self
     if requester_id == receiver_id:
         raise HTTPException(status_code=400, detail="Cannot send connection request to yourself")
@@ -182,24 +187,30 @@ async def send_connection_request(
         elif existing["status"] == "blocked":
             raise HTTPException(status_code=400, detail="Cannot send request to this user")
     
-    # Create connection request
-    connection_doc = {
-        "requester_id": requester_id,
-        "requester_name": current_user.get("name", ""),
-        "requester_role": current_user.get("role", ""),
-        "requester_specialization": current_user.get("specialization"),
-        "requester_territory": current_user.get("territory"),
-        "receiver_id": receiver_id,
-        "receiver_name": receiver.get("name", ""),
-        "receiver_role": receiver.get("role", ""),
-        "receiver_specialization": receiver.get("specialization"),
-        "receiver_territory": receiver.get("territory"),
-        "status": "pending",
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # Get requester details (current user)
+    requester = await db["doctors"].find_one({"_id": ObjectId(requester_id)})
+    if not requester:
+        requester = await db["mrs"].find_one({"_id": ObjectId(requester_id)})
     
-    result = await db["connections"].insert_one(connection_doc)
+    if not requester:
+        raise HTTPException(status_code=404, detail="Requester not found")
+    
+    # Create connection request using model (RULE 1: INSERT with model)
+    connection = ConnectionInDB(
+        requester_id=requester_id,
+        receiver_id=receiver_id,
+        requester_name=requester.get("name", ""),
+        requester_role=requester.get("role", ""),
+        requester_specialization=requester.get("specialization"),
+        requester_territory=requester.get("territory"),
+        receiver_name=receiver.get("name", ""),
+        receiver_role=receiver.get("role", ""),
+        receiver_specialization=receiver.get("specialization"),
+        receiver_territory=receiver.get("territory"),
+        status=ConnectionStatus.PENDING
+    )
+    
+    result = await db["connections"].insert_one(connection.model_dump())
     
     # Notify receiver about connection request
     await notify_connection_request(
@@ -247,7 +258,7 @@ async def get_received_requests(
     # Get total count
     total = await db["connections"].count_documents({
         "receiver_id": user_id,
-        "status": "pending"
+        "status": ConnectionStatus.PENDING  # ✅ No .value needed
     })
     
     # Calculate pagination
@@ -257,7 +268,7 @@ async def get_received_requests(
     # Get requests
     requests_cursor = db["connections"].find({
         "receiver_id": user_id,
-        "status": "pending"
+        "status": ConnectionStatus.PENDING  # ✅ No .value needed
     }).sort("created_at", -1).skip(skip).limit(limit)
     
     requests_list = await requests_cursor.to_list(limit)
@@ -314,7 +325,7 @@ async def get_sent_requests(
     # Get total count
     total = await db["connections"].count_documents({
         "requester_id": user_id,
-        "status": "pending"
+        "status": ConnectionStatus.PENDING  # ✅ No .value needed
     })
     
     # Calculate pagination
@@ -324,7 +335,7 @@ async def get_sent_requests(
     # Get requests
     requests_cursor = db["connections"].find({
         "requester_id": user_id,
-        "status": "pending"
+        "status": ConnectionStatus.PENDING  # ✅ No .value needed
     }).sort("created_at", -1).skip(skip).limit(limit)
     
     requests_list = await requests_cursor.to_list(limit)
@@ -385,15 +396,16 @@ async def accept_request(
         raise HTTPException(status_code=403, detail="You can only accept requests sent to you")
     
     # Check if status is pending
-    if connection["status"] != "pending":
+    if connection["status"] != ConnectionStatus.PENDING:  # ✅ No .value needed
         raise HTTPException(status_code=400, detail="Connection request is not pending")
     
-    # Update status to accepted
+    # Update status to accepted (RULE 2: UPDATE with Enum)
     await db["connections"].update_one(
         {"_id": ObjectId(connection_id)},
         {
             "$set": {
-                "status": "accepted",
+                "status": ConnectionStatus.ACCEPTED,  # ✅ No .value needed
+                "accepted_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
         }
@@ -447,15 +459,16 @@ async def reject_request(
         raise HTTPException(status_code=403, detail="You can only reject requests sent to you")
     
     # Check if status is pending
-    if connection["status"] != "pending":
+    if connection["status"] != ConnectionStatus.PENDING:  # ✅ No .value needed
         raise HTTPException(status_code=400, detail="Connection request is not pending")
     
-    # Update status to rejected
+    # Update status to rejected (RULE 2: UPDATE with Enum)
     await db["connections"].update_one(
         {"_id": ObjectId(connection_id)},
         {
             "$set": {
-                "status": "rejected",
+                "status": ConnectionStatus.REJECTED,  # ✅ No .value needed
+                "rejected_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
         }
@@ -497,7 +510,7 @@ async def cancel_request(
         raise HTTPException(status_code=403, detail="You can only cancel requests you sent")
     
     # Check if status is pending
-    if connection["status"] != "pending":
+    if connection["status"] != ConnectionStatus.PENDING:  # ✅ No .value needed
         raise HTTPException(status_code=400, detail="Connection request is not pending")
     
     # Delete the request
@@ -535,8 +548,8 @@ async def get_my_connections(
     # Get total count
     total = await db["connections"].count_documents({
         "$or": [
-            {"requester_id": user_id, "status": "accepted"},
-            {"receiver_id": user_id, "status": "accepted"}
+            {"requester_id": user_id, "status": ConnectionStatus.ACCEPTED},  # ✅ No .value needed
+            {"receiver_id": user_id, "status": ConnectionStatus.ACCEPTED}
         ]
     })
     
@@ -547,8 +560,8 @@ async def get_my_connections(
     # Get connections
     connections_cursor = db["connections"].find({
         "$or": [
-            {"requester_id": user_id, "status": "accepted"},
-            {"receiver_id": user_id, "status": "accepted"}
+            {"requester_id": user_id, "status": ConnectionStatus.ACCEPTED},  # ✅ No .value needed
+            {"receiver_id": user_id, "status": ConnectionStatus.ACCEPTED}
         ]
     }).sort("updated_at", -1).skip(skip).limit(limit)
     
@@ -621,7 +634,7 @@ async def remove_connection(
         raise HTTPException(status_code=403, detail="You can only remove your own connections")
     
     # Check if status is accepted
-    if connection["status"] != "accepted":
+    if connection["status"] != ConnectionStatus.ACCEPTED:  # ✅ No .value needed
         raise HTTPException(status_code=400, detail="Connection is not established")
     
     # Delete the connection
@@ -651,6 +664,10 @@ async def block_user(
     
     requester_id = current_user["_id"]
     
+    # Validate user_id_to_block format first
+    if not ObjectId.is_valid(user_id_to_block):
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     # Cannot block self
     if requester_id == user_id_to_block:
         raise HTTPException(status_code=400, detail="Cannot block yourself")
@@ -672,34 +689,40 @@ async def block_user(
     })
     
     if existing:
-        # Update existing connection to blocked
+        # Update existing connection to blocked (RULE 2: UPDATE with Enum)
         await db["connections"].update_one(
             {"_id": existing["_id"]},
             {
                 "$set": {
-                    "status": "blocked",
+                    "status": ConnectionStatus.BLOCKED,  # ✅ No .value needed
                     "updated_at": datetime.utcnow()
                 }
             }
         )
     else:
-        # Create new blocked connection
-        connection_doc = {
-            "requester_id": requester_id,
-            "requester_name": current_user.get("name", ""),
-            "requester_role": current_user.get("role", ""),
-            "requester_specialization": current_user.get("specialization"),
-            "requester_territory": current_user.get("territory"),
-            "receiver_id": user_id_to_block,
-            "receiver_name": user.get("name", ""),
-            "receiver_role": user.get("role", ""),
-            "receiver_specialization": user.get("specialization"),
-            "receiver_territory": user.get("territory"),
-            "status": "blocked",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
-        await db["connections"].insert_one(connection_doc)
+        # Get requester details (current user)
+        requester = await db["doctors"].find_one({"_id": ObjectId(requester_id)})
+        if not requester:
+            requester = await db["mrs"].find_one({"_id": ObjectId(requester_id)})
+        
+        if not requester:
+            raise HTTPException(status_code=404, detail="Requester not found")
+        
+        # Create new blocked connection (RULE 1: INSERT with model)
+        connection = ConnectionInDB(
+            requester_id=requester_id,
+            receiver_id=user_id_to_block,
+            requester_name=requester.get("name", ""),
+            requester_role=requester.get("role", ""),
+            requester_specialization=requester.get("specialization"),
+            requester_territory=requester.get("territory"),
+            receiver_name=user.get("name", ""),
+            receiver_role=user.get("role", ""),
+            receiver_specialization=user.get("specialization"),
+            receiver_territory=user.get("territory"),
+            status=ConnectionStatus.BLOCKED
+        )
+        await db["connections"].insert_one(connection.model_dump())
     
     return {"message": "User blocked successfully"}
 
@@ -725,11 +748,15 @@ async def unblock_user(
     
     requester_id = current_user["_id"]
     
+    # Validate user_id_to_unblock format first
+    if not ObjectId.is_valid(user_id_to_unblock):
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+    
     # Find blocked connection
     connection = await db["connections"].find_one({
         "$or": [
-            {"requester_id": requester_id, "receiver_id": user_id_to_unblock, "status": "blocked"},
-            {"requester_id": user_id_to_unblock, "receiver_id": requester_id, "status": "blocked"}
+            {"requester_id": requester_id, "receiver_id": user_id_to_unblock, "status": ConnectionStatus.BLOCKED},  # ✅ No .value needed
+            {"requester_id": user_id_to_unblock, "receiver_id": requester_id, "status": ConnectionStatus.BLOCKED}
         ]
     })
     

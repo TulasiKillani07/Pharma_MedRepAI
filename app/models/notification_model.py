@@ -2,12 +2,13 @@
 Notification model - MongoDB document structure for notifications collection.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
+from enum import Enum
 
 
-class NotificationType:
+class NotificationType(str, Enum):
     """Notification type constants"""
     # Network notifications
     CONNECTION_REQUEST = "connection_request"
@@ -36,12 +37,32 @@ class NotificationType:
 
 
 class NotificationInDB(BaseModel):
-    """Database model for notification document"""
-    user_id: str
-    type: str
-    title: str
-    message: str
-    data: Dict[str, Any]
-    is_read: bool = False
-    read_at: Optional[datetime] = None
-    created_at: datetime
+    """
+    Write model for notification document (INSERT operations)
+    
+    Collection: notifications
+    Indexes:
+    - Compound: (user_id, created_at) DESC
+    - Compound: (user_id, is_read)
+    - TTL: created_at (30 days)
+    """
+    user_id: str = Field(..., description="Recipient user ID (internal, no validation needed)")
+    type: NotificationType = Field(..., description="Notification type")
+    title: str = Field(..., min_length=1, max_length=200, description="Notification title")
+    message: str = Field(..., min_length=1, max_length=500, description="Notification message")
+    data: Dict[str, Any] = Field(default_factory=dict, description="Type-specific data")
+    is_read: bool = Field(default=False, description="Read status")
+    read_at: Optional[datetime] = Field(None, description="When marked as read")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    
+    class Config:
+        extra = "forbid"  # Strict - no extra fields allowed for writes
+
+
+class NotificationDocument(NotificationInDB):
+    """
+    Read model for notification document (if validation needed)
+    Inherits all fields from NotificationInDB
+    """
+    class Config:
+        extra = "allow"  # Flexible - allow extra fields from DB

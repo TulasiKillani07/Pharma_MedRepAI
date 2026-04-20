@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 from bson import ObjectId
 from app.database import get_database
 from fastapi import HTTPException
-from app.models.notification_model import NotificationType
+from app.models.notification_model import NotificationType, NotificationInDB
 import math
 
 
@@ -33,19 +33,20 @@ async def create_notification(
     """
     db = get_database()
     
-    notification = {
-        "user_id": user_id,
-        "type": notification_type,
-        "title": title,
-        "message": message,
-        "data": data,
-        "is_read": False,
-        "read_at": None,
-        "created_at": datetime.utcnow(),
-        "expires_at": datetime.utcnow() + timedelta(days=30)  # Auto-delete after 30 days
-    }
+    # RULE 1: INSERT with model
+    notification = NotificationInDB(
+        user_id=user_id,
+        type=NotificationType(notification_type),  # Convert string to Enum
+        title=title,
+        message=message,
+        data=data
+    )
     
-    result = await db.notifications.insert_one(notification)
+    # Add TTL field for MongoDB (not in model as it's DB-specific)
+    notification_doc = notification.model_dump()
+    notification_doc["expires_at"] = datetime.utcnow() + timedelta(days=30)
+    
+    result = await db.notifications.insert_one(notification_doc)
     return str(result.inserted_id)
 
 
@@ -73,18 +74,19 @@ async def create_bulk_notifications(
     
     notifications = []
     for user_id in user_ids:
-        notification = {
-            "user_id": user_id,
-            "type": notification_type,
-            "title": title,
-            "message": message,
-            "data": data,
-            "is_read": False,
-            "read_at": None,
-            "created_at": datetime.utcnow(),
-            "expires_at": datetime.utcnow() + timedelta(days=30)
-        }
-        notifications.append(notification)
+        # RULE 1: INSERT with model
+        notification = NotificationInDB(
+            user_id=user_id,
+            type=NotificationType(notification_type),
+            title=title,
+            message=message,
+            data=data
+        )
+        
+        # Add TTL field for MongoDB
+        notification_doc = notification.model_dump()
+        notification_doc["expires_at"] = datetime.utcnow() + timedelta(days=30)
+        notifications.append(notification_doc)
     
     if notifications:
         result = await db.notifications.insert_many(notifications)
