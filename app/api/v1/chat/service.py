@@ -391,7 +391,7 @@ async def send_message(
         "shared_post": None,
         "is_read": False,
         "read_at": None,
-        "created_at": message_doc["created_at"]
+        "created_at": message.created_at
     }
 
 

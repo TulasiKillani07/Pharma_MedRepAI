@@ -258,7 +258,7 @@ async def get_my_posts(
     limit: int = 20
 ) -> Dict[str, Any]:
     """
-    Get current user's posts (including deleted ones).
+    Get current user's posts (only active posts, like Instagram/Facebook).
     
     Args:
         current_user: Current authenticated user
@@ -278,8 +278,11 @@ async def get_my_posts(
     
     user_id = current_user["_id"]
     
-    # Build query (show all posts including deleted for owner)
-    query_filter = {"author_id": user_id}
+    # Build query (show only active posts, deleted posts are gone forever)
+    query_filter = {
+        "author_id": user_id,
+        "is_active": True
+    }
     
     # Get total count
     total = await db["posts"].count_documents(query_filter)

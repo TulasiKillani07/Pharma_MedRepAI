@@ -522,15 +522,17 @@ async def cancel_request(
 async def get_my_connections(
     current_user: Dict,
     page: int = 1,
-    limit: int = 20
+    limit: int = 20,
+    status: str = "accepted"
 ) -> Dict[str, Any]:
     """
-    Get current user's connections.
+    Get current user's connections filtered by status.
     
     Args:
         current_user: Current authenticated user
         page: Page number
         limit: Connections per page
+        status: Filter by status (accepted, blocked, pending)
     
     Returns:
         dict: Paginated list of connections
@@ -545,11 +547,21 @@ async def get_my_connections(
     
     user_id = current_user["_id"]
     
+    # Convert status string to enum
+    if status == "accepted":
+        status_enum = ConnectionStatus.ACCEPTED
+    elif status == "blocked":
+        status_enum = ConnectionStatus.BLOCKED
+    elif status == "pending":
+        status_enum = ConnectionStatus.PENDING
+    else:
+        status_enum = ConnectionStatus.ACCEPTED  # Default
+    
     # Get total count
     total = await db["connections"].count_documents({
         "$or": [
-            {"requester_id": user_id, "status": ConnectionStatus.ACCEPTED},  # ✅ No .value needed
-            {"receiver_id": user_id, "status": ConnectionStatus.ACCEPTED}
+            {"requester_id": user_id, "status": status_enum},
+            {"receiver_id": user_id, "status": status_enum}
         ]
     })
     
@@ -560,8 +572,8 @@ async def get_my_connections(
     # Get connections
     connections_cursor = db["connections"].find({
         "$or": [
-            {"requester_id": user_id, "status": ConnectionStatus.ACCEPTED},  # ✅ No .value needed
-            {"receiver_id": user_id, "status": ConnectionStatus.ACCEPTED}
+            {"requester_id": user_id, "status": status_enum},
+            {"receiver_id": user_id, "status": status_enum}
         ]
     }).sort("updated_at", -1).skip(skip).limit(limit)
     
@@ -763,7 +775,21 @@ async def unblock_user(
     if not connection:
         raise HTTPException(status_code=404, detail="No blocked connection found with this user")
     
-    # Delete the blocked connection
-    await db["connections"].delete_one({"_id": connection["_id"]})
-    
-    return {"message": "User unblocked successfully"}
+    # Check if there was an accepted connection before blocking
+    # If accepted_at exists, it means they were connected before
+    if connection.get("accepted_at"):
+        # Restore the connection to accepted status
+        await db["connections"].update_one(
+            {"_id": connection["_id"]},
+            {
+                "$set": {
+                    "status": ConnectionStatus.ACCEPTED,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        return {"message": "User unblocked and connection restored"}
+    else:
+        # They were never connected, just blocked - delete the connection
+        await db["connections"].delete_one({"_id": connection["_id"]})
+        return {"message": "User unblocked successfully"}

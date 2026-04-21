@@ -451,24 +451,29 @@ async def cancel_request_endpoint(
 async def get_my_connections_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Connections per page (max 50)"),
+    status: Optional[str] = Query("accepted", regex="^(accepted|blocked|pending)$", description="Filter by connection status"),
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Get current user's connections.
+    Get current user's connections filtered by status.
     
     **Access:** Doctor, MR
     
     **Purpose:**
-    View all your established connections.
+    View your connections, blocked users, or pending requests.
     
     **Flow:**
-    1. User opens "My Connections" section
-    2. System retrieves all accepted connections
+    1. User opens "My Connections" or "Blocked Users" section
+    2. System retrieves connections filtered by status
     3. Returns paginated list sorted by most recent
     
     **Query Parameters:**
     - `page`: Page number (default: 1)
     - `limit`: Connections per page (default: 20, max: 50)
+    - `status`: Filter by status (default: "accepted")
+      - `accepted`: Your established connections
+      - `blocked`: Users you have blocked
+      - `pending`: Pending connection requests (sent or received)
     
     **Response:**
     ```json
@@ -489,10 +494,15 @@ async def get_my_connections_endpoint(
     }
     ```
     
+    **Examples:**
+    - `GET /connections` - Get accepted connections (default)
+    - `GET /connections?status=blocked` - Get blocked users
+    - `GET /connections?status=pending` - Get pending requests
+    
     **Use Cases:**
     - View your network
-    - Browse connections
-    - Find connected users
+    - Manage blocked users
+    - Check pending requests
     """
     # Check role
     user_role = current_user.get("role")
@@ -502,7 +512,7 @@ async def get_my_connections_endpoint(
             detail="Only doctors and MRs can access this endpoint"
         )
     
-    return await service.get_my_connections(current_user, page, limit)
+    return await service.get_my_connections(current_user, page, limit, status)
 
 
 @router.delete("/{connection_id}")
