@@ -4,7 +4,7 @@ Visit service - Business logic for visit operations.
 
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
 from bson import ObjectId
 from app.database import get_database
 from app.config import settings
@@ -15,6 +15,8 @@ from app.api.v1.notifications.helpers import (
     notify_visit_cancelled
 )
 from app.models.visit_model import VisitInDB, VisitStatus
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
 def get_company_database():
@@ -29,7 +31,8 @@ async def schedule_visit(
     purpose: str,
     location: str,
     notes: Optional[str],
-    current_user: Dict[str, Any]
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
 ) -> Dict[str, Any]:
     """
     Schedule a new visit.
@@ -126,6 +129,24 @@ async def schedule_visit(
         scheduled_date=scheduled_date.strftime("%Y-%m-%d"),
         scheduled_time=scheduled_time,
         purpose=purpose
+    )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.VISIT_SCHEDULED,
+        actor=current_user,
+        target_type=TargetType.VISIT,
+        target_id=str(result.inserted_id),
+        target_name=None,
+        details={
+            "doctor_id": doctor_id,
+            "doctor_name": doctor["name"],
+            "scheduled_date": scheduled_date.strftime("%Y-%m-%d"),
+            "scheduled_time": scheduled_time,
+            "purpose": purpose
+        },
+        severity=LogSeverity.INFO,
+        request=request
     )
     
     return {
@@ -358,7 +379,8 @@ async def complete_visit(
     visit_id: str,
     outcome: str,
     feedback: Optional[str],
-    current_user: Dict[str, Any]
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
 ) -> Dict[str, str]:
     """
     Complete a visit.
@@ -432,13 +454,31 @@ async def complete_visit(
         completed_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M")
     )
     
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.VISIT_COMPLETED,
+        actor=current_user,
+        target_type=TargetType.VISIT,
+        target_id=visit_id,
+        target_name=None,
+        details={
+            "doctor_id": visit["doctor_id"],
+            "doctor_name": visit["doctor_name"],
+            "outcome": outcome,
+            "scheduled_date": visit["scheduled_date"].strftime("%Y-%m-%d")
+        },
+        severity=LogSeverity.INFO,
+        request=request
+    )
+    
     return {"message": "Visit completed successfully"}
 
 
 async def cancel_visit(
     visit_id: str,
     reason: str,
-    current_user: Dict[str, Any]
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
 ) -> Dict[str, str]:
     """
     Cancel a visit.
@@ -508,6 +548,23 @@ async def cancel_visit(
         cancelled_by_name=visit["mr_name"],
         scheduled_date=visit["scheduled_date"].strftime("%Y-%m-%d"),
         cancel_reason=reason
+    )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.VISIT_CANCELLED,
+        actor=current_user,
+        target_type=TargetType.VISIT,
+        target_id=visit_id,
+        target_name=None,
+        details={
+            "doctor_id": visit["doctor_id"],
+            "doctor_name": visit["doctor_name"],
+            "reason": reason,
+            "scheduled_date": visit["scheduled_date"].strftime("%Y-%m-%d")
+        },
+        severity=LogSeverity.WARNING,
+        request=request
     )
     
     return {"message": "Visit cancelled successfully"}

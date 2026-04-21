@@ -13,6 +13,8 @@ from app.api.v1.notifications.helpers import (
     notify_post_shared
 )
 from app.models.post_model import PostInDB, LikeInDB, CommentInDB
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
 async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
@@ -363,12 +365,13 @@ async def delete_post(post_id: str, current_user: Dict) -> Dict[str, str]:
     return {"message": "Post deleted successfully"}
 
 
-async def admin_delete_post(post_id: str) -> Dict[str, str]:
+async def admin_delete_post(post_id: str, current_user: Dict) -> Dict[str, str]:
     """
     Admin delete any post (soft delete for moderation).
     
     Args:
         post_id: Post ID
+        current_user: Current authenticated user (admin)
     
     Returns:
         dict: Success message
@@ -395,6 +398,21 @@ async def admin_delete_post(post_id: str) -> Dict[str, str]:
                 "updated_at": datetime.utcnow()
             }
         }
+    )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.POST_DELETED,
+        actor=current_user,
+        target_type=TargetType.POST,
+        target_id=post_id,
+        target_name=None,
+        details={
+            "post_author_id": post.get("author_id"),
+            "post_author_name": post.get("author_name"),
+            "content_preview": post.get("content", "")[:100]
+        },
+        severity=LogSeverity.WARNING
     )
     
     return {"message": "Post deleted successfully by admin"}
@@ -1007,7 +1025,8 @@ async def delete_comment(
 
 async def admin_delete_comment(
     post_id: str,
-    comment_id: str
+    comment_id: str,
+    current_user: Dict
 ) -> Dict[str, str]:
     """
     Admin delete any comment (soft delete for moderation).
@@ -1015,6 +1034,7 @@ async def admin_delete_comment(
     Args:
         post_id: Post ID
         comment_id: Comment ID
+        current_user: Current authenticated user (admin)
     
     Returns:
         dict: Success message
@@ -1056,6 +1076,22 @@ async def admin_delete_comment(
         )
     except Exception:
         pass  # Post might be deleted, but comment deletion should still succeed
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.COMMENT_DELETED,
+        actor=current_user,
+        target_type=TargetType.COMMENT,
+        target_id=comment_id,
+        target_name=None,
+        details={
+            "post_id": post_id,
+            "comment_author_id": comment.get("author_id"),
+            "comment_author_name": comment.get("author_name"),
+            "content_preview": comment.get("content", "")[:100]
+        },
+        severity=LogSeverity.WARNING
+    )
     
     return {"message": "Comment deleted successfully by admin"}
 

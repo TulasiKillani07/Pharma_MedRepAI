@@ -396,7 +396,7 @@ async def admin_delete_post_endpoint(
             detail="Only admins can use this endpoint"
         )
     
-    return await service.admin_delete_post(post_id)
+    return await service.admin_delete_post(post_id, current_user)
 
 
 @posts_router.post("/{post_id}/share", response_model=SharePostResponse)
@@ -1091,4 +1091,4 @@ async def admin_delete_comment_endpoint(
             detail="Only admins can use this endpoint"
         )
     
-    return await service.admin_delete_comment(post_id, comment_id)
+    return await service.admin_delete_comment(post_id, comment_id, current_user)

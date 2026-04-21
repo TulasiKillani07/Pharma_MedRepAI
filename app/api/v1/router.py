@@ -17,6 +17,7 @@ from app.api.v1.chat.routes import router as chat_router
 from app.api.v1.groups.routes import router as groups_router
 from app.api.v1.profile.routes import router as profile_router
 from app.api.v1.notifications.routes import router as notifications_router
+from app.api.v1.activity_logs.routes import router as activity_logs_router
 
 
 # Create main API router
@@ -59,3 +60,6 @@ api_router.include_router(profile_router, prefix="/profile", tags=["Profile"])
 
 # Notification routes
 api_router.include_router(notifications_router, prefix="/notifications", tags=["Notifications"])
+
+# Activity logs routes (Admin only)
+api_router.include_router(activity_logs_router, prefix="/admin/activity-logs", tags=["Admin - Activity Logs"])

@@ -2,7 +2,7 @@
 Visit routes - API endpoints for visit management.
 """
 
-from fastapi import APIRouter, Depends, Query, status, HTTPException
+from fastapi import APIRouter, Depends, Query, status, HTTPException, Request
 from typing import Dict, Any, Optional
 from datetime import date
 from app.api.v1.visits.schemas import (
@@ -33,7 +33,8 @@ router = APIRouter()
 
 @router.post("", response_model=VisitCreateResponse, status_code=status.HTTP_201_CREATED, summary="Schedule Visit")
 async def schedule_visit_endpoint(
-    request: VisitCreateRequest,
+    visit_request: VisitCreateRequest,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
@@ -67,13 +68,14 @@ async def schedule_visit_endpoint(
         )
     
     return await schedule_visit(
-        doctor_id=request.doctor_id,
-        scheduled_date=request.scheduled_date,
-        scheduled_time=request.scheduled_time,
-        purpose=request.purpose,
-        location=request.location,
-        notes=request.notes,
-        current_user=current_user
+        doctor_id=visit_request.doctor_id,
+        scheduled_date=visit_request.scheduled_date,
+        scheduled_time=visit_request.scheduled_time,
+        purpose=visit_request.purpose,
+        location=visit_request.location,
+        notes=visit_request.notes,
+        current_user=current_user,
+        request=request
     )
 
 
@@ -188,7 +190,8 @@ async def reschedule_visit_endpoint(
 @router.put("/{visit_id}/complete", response_model=MessageResponse, summary="Complete Visit")
 async def complete_visit_endpoint(
     visit_id: str,
-    request: VisitCompleteRequest,
+    complete_request: VisitCompleteRequest,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
@@ -215,16 +218,18 @@ async def complete_visit_endpoint(
     
     return await complete_visit(
         visit_id=visit_id,
-        outcome=request.outcome,
-        feedback=request.feedback,
-        current_user=current_user
+        outcome=complete_request.outcome,
+        feedback=complete_request.feedback,
+        current_user=current_user,
+        request=request
     )
 
 
 @router.put("/{visit_id}/cancel", response_model=MessageResponse, summary="Cancel Visit")
 async def cancel_visit_endpoint(
     visit_id: str,
-    request: VisitCancelRequest,
+    cancel_request: VisitCancelRequest,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
@@ -250,6 +255,7 @@ async def cancel_visit_endpoint(
     
     return await cancel_visit(
         visit_id=visit_id,
-        reason=request.reason,
-        current_user=current_user
+        reason=cancel_request.reason,
+        current_user=current_user,
+        request=request
     )

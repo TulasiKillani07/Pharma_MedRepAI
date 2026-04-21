@@ -16,8 +16,8 @@ router = APIRouter()
 
 # ============ ADMIN ENDPOINTS (Create, Update, Delete) ============
 
-@router.post("", response_model=CMEEventResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
-async def create_cme_event_endpoint(event_data: CMEEventCreate):
+@router.post("", response_model=CMEEventResponse, status_code=status.HTTP_201_CREATED)
+async def create_cme_event_endpoint(event_data: CMEEventCreate, current_user: Dict = Depends(require_admin)):
     """
     Create a new CME (Continuing Medical Education) event.
     
@@ -163,11 +163,11 @@ async def create_cme_event_endpoint(event_data: CMEEventCreate):
     - event_recording is always null on creation
     - Can only be added via PUT /api/v1/cme/{id} after status is "completed"
     """
-    return await service.create_cme_event(event_data)
+    return await service.create_cme_event(event_data, current_user)
 
 
-@router.put("/{event_id}", response_model=CMEEventResponse, dependencies=[Depends(require_admin)])
-async def update_cme_event_endpoint(event_id: str, event_data: CMEEventUpdate):
+@router.put("/{event_id}", response_model=CMEEventResponse)
+async def update_cme_event_endpoint(event_id: str, event_data: CMEEventUpdate, current_user: Dict = Depends(require_admin)):
     """
     Update a CME event.
     
@@ -281,7 +281,7 @@ async def update_cme_event_endpoint(event_id: str, event_data: CMEEventUpdate):
     - Status must be manually updated by admin
     - No auto-calculation based on date
     """
-    return await service.update_cme_event(event_id, event_data)
+    return await service.update_cme_event(event_id, event_data, current_user)
 
 
 # ============ DOCTOR ENDPOINTS (View Only) ============

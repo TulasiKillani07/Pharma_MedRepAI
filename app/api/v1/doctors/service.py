@@ -12,6 +12,8 @@ from io import BytesIO
 from app.database import get_database
 from app.core.security import hash_password
 from app.config import settings
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
 def get_company_database():
@@ -93,6 +95,21 @@ async def create_doctor(
     
     # Insert into database
     result = await company_db.doctors.insert_one(doctor_doc)
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_CREATED,
+        actor=current_user,
+        target_type=TargetType.DOCTOR,
+        target_id=str(result.inserted_id),
+        target_name=name,
+        details={
+            "email": email,
+            "specialization": specialization,
+            "hospital": hospital
+        },
+        severity=LogSeverity.INFO
+    )
     
     return {
         "message": "Doctor added successfully",
@@ -240,7 +257,7 @@ async def update_doctor(
     
     # Check authorization
     user_role = current_user.get("role")
-    user_id = current_user.get("sub")
+    user_id = current_user.get("_id")  # Changed from "sub" to "_id"
     
     # If user is a doctor, they can only update their own profile
     if user_role == "DOCTOR":
@@ -283,6 +300,32 @@ async def update_doctor(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Doctor not found"
         )
+    
+    # Get doctor details for logging
+    doctor = await company_db.doctors.find_one({"_id": ObjectId(doctor_id)})
+    
+    # Determine action type and severity based on what was updated
+    if "is_active" in updated_fields:
+        if updated_fields["is_active"]:
+            action_type = ActivityLogAction.USER_ACTIVATED
+            severity = LogSeverity.INFO
+        else:
+            action_type = ActivityLogAction.USER_DEACTIVATED
+            severity = LogSeverity.CRITICAL
+    else:
+        action_type = ActivityLogAction.USER_UPDATED
+        severity = LogSeverity.INFO
+    
+    # Log activity
+    await log_activity(
+        action_type=action_type,
+        actor=current_user,
+        target_type=TargetType.DOCTOR,
+        target_id=doctor_id,
+        target_name=doctor.get("name"),
+        details={"updated_fields": list(updated_fields.keys())},
+        severity=severity
+    )
     
     return {
         "message": "Doctor updated successfully",
@@ -333,6 +376,20 @@ async def delete_doctor(doctor_id: str, current_user: Dict[str, Any]) -> Dict[st
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Doctor not found"
         )
+    
+    # Get doctor details for logging
+    doctor = await company_db.doctors.find_one({"_id": ObjectId(doctor_id)})
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_DEACTIVATED,
+        actor=current_user,
+        target_type=TargetType.DOCTOR,
+        target_id=doctor_id,
+        target_name=doctor.get("name"),
+        details={"reason": "Admin deactivation"},
+        severity=LogSeverity.CRITICAL
+    )
     
     return {"message": "Doctor deactivated successfully"}
 
@@ -533,6 +590,23 @@ async def bulk_upload_doctors(
         message = f"Bulk upload failed. All {failed} rows had errors."
     else:
         message = f"Bulk upload completed. {successful} doctors added successfully, {failed} rows failed."
+    
+    # Log bulk upload activity
+    if successful > 0:
+        await log_activity(
+            action_type=ActivityLogAction.BULK_UPLOAD_DOCTORS,
+            actor=current_user,
+            target_type=TargetType.DOCTOR,
+            target_id=None,
+            target_name=None,
+            details={
+                "total_rows": total_rows,
+                "successful": successful,
+                "failed": failed,
+                "filename": file.filename
+            },
+            severity=LogSeverity.INFO
+        )
     
     return {
         "total_rows": total_rows,

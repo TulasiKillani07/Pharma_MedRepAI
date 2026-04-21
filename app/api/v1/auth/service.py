@@ -3,15 +3,18 @@ Authentication service - Business logic for login and registration.
 """
 
 from datetime import datetime
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
 from app.database import get_database
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.roles import UserRole, get_collection_name
 from app.config import settings
 from bson import ObjectId
+from typing import Optional
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
-async def login_user(email: str, password: str, role: UserRole) -> dict:
+async def login_user(email: str, password: str, role: UserRole, request: Optional[Request] = None) -> dict:
     """
     Authenticate user and return JWT token.
     
@@ -90,6 +93,35 @@ async def login_user(email: str, password: str, role: UserRole) -> dict:
         "name": name_field,
         "role": role.value
     }
+    
+    # Log successful login
+    actor_dict = {
+        "_id": str(user["_id"]),
+        "name": name_field,
+        "role": role.value
+    }
+    
+    # Determine target type based on role
+    if role == UserRole.DOCTOR:
+        target_type = TargetType.DOCTOR
+        actor_role = ActorRole.DOCTOR
+    elif role == UserRole.MR:
+        target_type = TargetType.MR
+        actor_role = ActorRole.MR
+    else:  # ADMIN
+        target_type = TargetType.SYSTEM
+        actor_role = ActorRole.ADMIN
+    
+    await log_activity(
+        action_type=ActivityLogAction.USER_LOGIN,
+        actor=actor_dict,
+        target_type=target_type,
+        target_id=str(user["_id"]),
+        target_name=name_field,
+        details={"email": email, "role": role.value},
+        severity=LogSeverity.INFO,
+        request=request
+    )
     
     return {
         "access_token": access_token,

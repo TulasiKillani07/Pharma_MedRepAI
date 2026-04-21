@@ -2,7 +2,7 @@
 Profile API Endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Dict
 from app.core.auth import get_current_user
 from app.api.v1.profile.schemas import (
@@ -94,6 +94,7 @@ async def get_my_profile_endpoint(
 @router.put("/me")
 async def update_my_profile_endpoint(
     profile_data: ProfileUpdateRequest,
+    request: Request,
     current_user: Dict = Depends(get_current_user)
 ):
     """
@@ -192,7 +193,7 @@ async def update_my_profile_endpoint(
     # Convert Pydantic model to dict, excluding unset fields
     update_data = profile_data.model_dump(exclude_unset=True)
     
-    return await service.update_my_profile(update_data, current_user)
+    return await service.update_my_profile(update_data, current_user, request)
 
 
 @router.get("/company", response_model=CompanyProfileResponse)

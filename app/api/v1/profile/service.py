@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from bson import ObjectId
 from app.database import get_database
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
 async def get_my_profile(current_user: Dict) -> Dict[str, Any]:
@@ -93,7 +95,8 @@ async def get_my_profile(current_user: Dict) -> Dict[str, Any]:
 
 async def update_my_profile(
     update_data: Dict[str, Any],
-    current_user: Dict
+    current_user: Dict,
+    request: Optional[Request] = None
 ) -> Dict[str, str]:
     """
     Update current user's profile.
@@ -218,6 +221,25 @@ async def update_my_profile(
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    # Log activity
+    target_type = TargetType.DOCTOR if role == "DOCTOR" else TargetType.MR if role == "MR" else TargetType.SYSTEM
+    
+    # Only log for doctors and MRs (not admin/manager personal profile updates)
+    if role in ["DOCTOR", "MR"]:
+        # Get updated user details for logging
+        updated_user = await db[collection].find_one({"_id": ObjectId(user_id)})
+        
+        await log_activity(
+            action_type=ActivityLogAction.USER_UPDATED,
+            actor=current_user,
+            target_type=target_type,
+            target_id=user_id,
+            target_name=updated_user.get("name"),
+            details={"updated_fields": list(update_doc.keys())},
+            severity=LogSeverity.INFO,
+            request=request
+        )
     
     return {"message": "Profile updated successfully"}
 

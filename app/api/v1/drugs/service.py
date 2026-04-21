@@ -17,6 +17,8 @@ from app.api.v1.drugs.schemas import (
 import uuid
 from app.api.v1.notifications.helpers import notify_drug_added
 from app.models.drug_model import DrugInDB, DrugFieldTemplateInDB, DrugFieldType
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
 # ============ HELPER FUNCTIONS ============
@@ -308,7 +310,7 @@ async def update_field(template_id: str, field_id: str, field_data: FieldDefinit
 
 # ============ DRUG SERVICES ============
 
-async def create_drug(drug_data: DrugCreate) -> Dict[str, Any]:
+async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, Any]:
     """Create a new drug"""
     db = get_database()
     
@@ -378,6 +380,20 @@ async def create_drug(drug_data: DrugCreate) -> Dict[str, Any]:
             manufacturer=manufacturer,
             user_ids=user_ids
         )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.DRUG_CREATED,
+        actor=current_user,
+        target_type=TargetType.DRUG,
+        target_id=str(result.inserted_id),
+        target_name=drug_name,
+        details={
+            "drug_name": drug_name,
+            "manufacturer": manufacturer
+        },
+        severity=LogSeverity.INFO
+    )
     
     return drug_doc
 
@@ -512,7 +528,7 @@ async def download_drug_template() -> StreamingResponse:
     )
 
 
-async def bulk_upload_drugs(file: UploadFile) -> Dict[str, Any]:
+async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, Any]:
     """
     Bulk upload drugs from CSV or Excel file.
     Auto-creates dynamic fields for custom columns.
@@ -778,6 +794,24 @@ async def bulk_upload_drugs(file: UploadFile) -> Dict[str, Any]:
     
     if custom_fields_added:
         message += f" {len(custom_fields_added)} custom fields added to template."
+    
+    # Log bulk upload activity
+    if successful > 0:
+        await log_activity(
+            action_type=ActivityLogAction.DRUG_BULK_UPLOAD,
+            actor=current_user,
+            target_type=TargetType.DRUG,
+            target_id=None,
+            target_name=None,
+            details={
+                "total_rows": total_rows,
+                "successful": successful,
+                "failed": failed,
+                "custom_fields_added": len(custom_fields_added),
+                "filename": file.filename
+            },
+            severity=LogSeverity.INFO
+        )
     
     return {
         "total_rows": total_rows,

@@ -92,9 +92,10 @@ async def download_template_endpoint():
     return await service.download_drug_template()
 
 
-@router.post("/bulk-upload", response_model=BulkUploadResponse, dependencies=[Depends(require_admin)])
+@router.post("/bulk-upload", response_model=BulkUploadResponse)
 async def bulk_upload_drugs_endpoint(
-    file: UploadFile = File(..., description="CSV or Excel file with drug data")
+    file: UploadFile = File(..., description="CSV or Excel file with drug data"),
+    current_user: Dict = Depends(require_admin)
 ):
     """
     Bulk upload drugs from CSV or Excel file with auto-creation of custom fields.
@@ -225,7 +226,7 @@ async def bulk_upload_drugs_endpoint(
     - Custom fields can be managed later via field APIs
     - Template grows automatically based on CSV columns
     """
-    return await service.bulk_upload_drugs(file)
+    return await service.bulk_upload_drugs(file, current_user)
 
 
 # ============ FIELD ENDPOINTS ============
@@ -254,13 +255,13 @@ async def update_field_endpoint(template_id: str, field_id: str, field_data: Fie
 
 # ============ DRUG ENDPOINTS ============
 
-@router.post("", response_model=DrugResponse, dependencies=[Depends(require_admin)])
-async def create_drug_endpoint(drug_data: DrugCreate):
+@router.post("", response_model=DrugResponse)
+async def create_drug_endpoint(drug_data: DrugCreate, current_user: Dict = Depends(require_admin)):
     """
     Create a new drug.
     Admin only.
     """
-    return await service.create_drug(drug_data)
+    return await service.create_drug(drug_data, current_user)
 
 
 @router.get("", response_model=DrugListResponse)

@@ -12,6 +12,8 @@ from io import BytesIO
 from app.database import get_database
 from app.core.security import hash_password
 from app.config import settings
+from app.api.v1.activity_logs.helpers import log_activity
+from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
 def get_company_database():
@@ -109,6 +111,21 @@ async def create_mr(
     
     # Insert into database
     result = await company_db.mrs.insert_one(mr_doc)
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_CREATED,
+        actor=current_user,
+        target_type=TargetType.MR,
+        target_id=str(result.inserted_id),
+        target_name=name,
+        details={
+            "email": email,
+            "territory": territory,
+            "assigned_doctors_count": len(assigned_doctors) if assigned_doctors else 0
+        },
+        severity=LogSeverity.INFO
+    )
     
     return {
         "message": "MR added successfully",
@@ -300,6 +317,32 @@ async def update_mr(
             detail="MR not found"
         )
     
+    # Get MR details for logging
+    mr = await company_db.mrs.find_one({"_id": ObjectId(mr_id)})
+    
+    # Determine action type and severity based on what was updated
+    if "is_active" in updated_fields:
+        if updated_fields["is_active"]:
+            action_type = ActivityLogAction.USER_ACTIVATED
+            severity = LogSeverity.INFO
+        else:
+            action_type = ActivityLogAction.USER_DEACTIVATED
+            severity = LogSeverity.CRITICAL
+    else:
+        action_type = ActivityLogAction.USER_UPDATED
+        severity = LogSeverity.INFO
+    
+    # Log activity
+    await log_activity(
+        action_type=action_type,
+        actor=current_user,
+        target_type=TargetType.MR,
+        target_id=mr_id,
+        target_name=mr.get("name"),
+        details={"updated_fields": list(updated_fields.keys())},
+        severity=severity
+    )
+    
     return {
         "message": "MR updated successfully",
         "updated_fields": updated_fields
@@ -349,6 +392,20 @@ async def delete_mr(mr_id: str, current_user: Dict[str, Any]) -> Dict[str, str]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="MR not found"
         )
+    
+    # Get MR details for logging
+    mr = await company_db.mrs.find_one({"_id": ObjectId(mr_id)})
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_DEACTIVATED,
+        actor=current_user,
+        target_type=TargetType.MR,
+        target_id=mr_id,
+        target_name=mr.get("name"),
+        details={"reason": "Admin deactivation"},
+        severity=LogSeverity.CRITICAL
+    )
     
     return {"message": "MR deactivated successfully"}
 
@@ -544,6 +601,23 @@ async def bulk_upload_mrs(
         message = f"Bulk upload failed. All {failed} rows had errors."
     else:
         message = f"Bulk upload completed. {successful} MRs added successfully, {failed} rows failed."
+    
+    # Log bulk upload activity
+    if successful > 0:
+        await log_activity(
+            action_type=ActivityLogAction.BULK_UPLOAD_MRS,
+            actor=current_user,
+            target_type=TargetType.MR,
+            target_id=None,
+            target_name=None,
+            details={
+                "total_rows": total_rows,
+                "successful": successful,
+                "failed": failed,
+                "filename": file.filename
+            },
+            severity=LogSeverity.INFO
+        )
     
     return {
         "total_rows": total_rows,
