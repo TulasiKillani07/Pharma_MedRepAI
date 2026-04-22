@@ -192,6 +192,49 @@ async def notify_cme_created(cme_id: str, cme_title: str, event_date: str, event
         )
 
 
+async def notify_cme_updated(cme_id: str, cme_title: str, event_date: str, event_time: str, doctor_ids: List[str], updated_fields: List[str]):
+    """Notify all doctors when CME event is updated"""
+    if doctor_ids:
+        fields_text = ", ".join(updated_fields[:3])  # Show first 3 fields
+        if len(updated_fields) > 3:
+            fields_text += f" and {len(updated_fields) - 3} more"
+        
+        await create_bulk_notifications(
+            user_ids=doctor_ids,
+            notification_type=NotificationType.CME_UPDATED,
+            title="CME Event Updated",
+            message=f"{cme_title} has been updated ({fields_text})",
+            data={
+                "cme_id": cme_id,
+                "cme_title": cme_title,
+                "event_date": event_date,
+                "event_time": event_time,
+                "updated_fields": updated_fields
+            }
+        )
+
+
+async def notify_cme_cancelled(cme_id: str, cme_title: str, event_date: str, doctor_ids: List[str], reason: str = None):
+    """Notify all doctors when CME event is cancelled"""
+    if doctor_ids:
+        message = f"{cme_title} scheduled for {event_date} has been cancelled"
+        if reason:
+            message += f" - Reason: {reason}"
+        
+        await create_bulk_notifications(
+            user_ids=doctor_ids,
+            notification_type=NotificationType.CME_CANCELLED,
+            title="CME Event Cancelled",
+            message=message,
+            data={
+                "cme_id": cme_id,
+                "cme_title": cme_title,
+                "event_date": event_date,
+                "reason": reason
+            }
+        )
+
+
 async def notify_cme_reminder_1day(cme_id: str, cme_title: str, event_date: str, event_time: str, attendee_ids: List[str]):
     """Notify attendees 1 day before CME event"""
     if attendee_ids:

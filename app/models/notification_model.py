@@ -22,6 +22,8 @@ class NotificationType(str, Enum):
     
     # CME notifications
     CME_CREATED = "cme_created"
+    CME_UPDATED = "cme_updated"
+    CME_CANCELLED = "cme_cancelled"
     CME_REMINDER_1DAY = "cme_reminder_1day"
     CME_REMINDER_1HOUR = "cme_reminder_1hour"
     CME_RECORDING = "cme_recording"

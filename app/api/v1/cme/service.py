@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from bson import ObjectId
 from app.database import get_database
 from app.api.v1.cme.schemas import CMEEventCreate, CMEEventUpdate
-from app.api.v1.notifications.helpers import notify_cme_created, notify_cme_recording
+from app.api.v1.notifications.helpers import notify_cme_created, notify_cme_updated, notify_cme_cancelled, notify_cme_recording
 from app.models.cme_model import CMEEventInDB, CMEEventMode, CMEEventStatus
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
@@ -256,6 +256,38 @@ async def update_cme_event(event_id: str, event_data: CMEEventUpdate, current_us
     
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="CME event not found")
+    
+    # Send notification to all doctors if event was updated (excluding recording-only updates)
+    if updated_fields and "event_recording" not in updated_fields:
+        doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
+        doctors_list = await doctors_cursor.to_list(None)
+        doctor_ids = [str(doc["_id"]) for doc in doctors_list]
+        
+        if doctor_ids:
+            # Get final event date for notification
+            final_event = await db["cme_events"].find_one({"_id": ObjectId(event_id)})
+            event_date_str = final_event["event_date"].strftime("%Y-%m-%d") if final_event.get("event_date") else ""
+            event_time_str = final_event.get("event_time", "")
+            
+            # Check if event was cancelled (status changed to cancelled)
+            if "status" in updated_fields and update_data.get("status") == "cancelled":
+                await notify_cme_cancelled(
+                    cme_id=event_id,
+                    cme_title=event.get("title", ""),
+                    event_date=event_date_str,
+                    doctor_ids=doctor_ids,
+                    reason="Event cancelled by admin"
+                )
+            else:
+                # Regular update notification
+                await notify_cme_updated(
+                    cme_id=event_id,
+                    cme_title=event.get("title", ""),
+                    event_date=event_date_str,
+                    event_time=event_time_str,
+                    doctor_ids=doctor_ids,
+                    updated_fields=updated_fields
+                )
     
     # Log activity
     await log_activity(
