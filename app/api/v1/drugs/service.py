@@ -23,8 +23,76 @@ from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetTy
 
 # ============ HELPER FUNCTIONS ============
 
+def build_flat_fields(field_values: List[Dict]) -> Dict[str, Any]:
+    """
+    Build top-level flat fields and search_text from field_values.
+    Used for fast querying and full-text search.
+    
+    Returns dict of flat fields + search_text to be merged into drug document.
+    """
+    flat = {}
+    search_parts = []
+
+    for fv in field_values:
+        key = fv.get("key") if isinstance(fv, dict) else fv.key
+        value = fv.get("value") if isinstance(fv, dict) else fv.value
+
+        if value is None:
+            continue
+
+        flat[key] = value
+
+        # Build search_text from value
+        if isinstance(value, list):
+            search_parts.extend([str(v).lower() for v in value if v])
+        elif isinstance(value, str) and value.strip():
+            search_parts.append(value.lower())
+        elif value is not None:
+            search_parts.append(str(value).lower())
+
+    flat["search_text"] = " ".join(search_parts)
+    return flat
+
+
+def coerce_array_field(value: Any) -> List[str]:
+    """
+    Coerce a value to a list of strings for array-type fields.
+    - If already a list, clean each item
+    - If a string, split by comma and clean each item
+    - If None/empty, return empty list
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+def normalize_field_values(field_values: List[Any], template_fields: Dict[str, Any]) -> List[Dict]:
+    """
+    Normalize field values - coerce array fields to lists.
+    Works with both Pydantic objects (DrugFieldValueInput) and plain dicts.
+    """
+    normalized = []
+    for fv in field_values:
+        # Support both Pydantic model and dict
+        if hasattr(fv, "dict"):
+            fv_dict = fv.dict()
+        else:
+            fv_dict = dict(fv)
+        
+        field_def = template_fields.get(fv_dict["field_id"])
+        if field_def and field_def.get("type") == "array":
+            fv_dict["value"] = coerce_array_field(fv_dict.get("value"))
+        
+        normalized.append(fv_dict)
+    return normalized
+
+
 def get_default_fixed_fields() -> List[Dict[str, Any]]:
-    """Returns the 10 default fixed fields for drug template"""
+    """Returns the 11 default fixed fields for drug template"""
     return [
         {
             "field_id": str(uuid.uuid4()),
@@ -72,12 +140,23 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
         },
         {
             "field_id": str(uuid.uuid4()),
-            "key": "indications",
-            "type": "textarea",
+            "key": "symptoms",
+            "type": "array",
             "is_fixed": True,
-            "required": False,
+            "required": True,
             "visible": True,
             "order": 5,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "indications",
+            "type": "array",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 6,
             "options": None,
             "is_active": True
         },
@@ -88,7 +167,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 6,
+            "order": 7,
             "options": None,
             "is_active": True
         },
@@ -99,7 +178,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 7,
+            "order": 8,
             "options": None,
             "is_active": True
         },
@@ -110,7 +189,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 8,
+            "order": 9,
             "options": ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Ointment", "Drops", "Inhaler"],
             "is_active": True
         },
@@ -121,7 +200,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 9,
+            "order": 10,
             "options": ["Oral", "Intravenous", "Intramuscular", "Subcutaneous", "Topical", "Inhalation"],
             "is_active": True
         },
@@ -132,7 +211,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 10,
+            "order": 11,
             "options": None,
             "is_active": True
         }
@@ -165,18 +244,85 @@ async def create_template(template_data: TemplateCreate) -> Dict[str, Any]:
 
 
 async def get_template() -> Optional[Dict[str, Any]]:
-    """Get the active template"""
+    """Get the active template. Auto-creates one if none exists, and auto-migrates fields if needed."""
+    import uuid as uuid_module
     db = get_database()
     template = await db["drug_field_templates"].find_one({"is_active": True})
     
+    # Auto-create default template if none exists
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        default_template = DrugFieldTemplateInDB(
+            template_name="Default Drug Template",
+            fields=get_default_fixed_fields()
+        )
+        result = await db["drug_field_templates"].insert_one(default_template.model_dump())
+        template = await db["drug_field_templates"].find_one({"_id": result.inserted_id})
     
-    # Add is_active to fields if missing (for backward compatibility)
-    for field in template.get("fields", []):
+    fields = template.get("fields", [])
+    changes = False
+
+    # Build key -> index map
+    key_to_index = {f["key"]: i for i, f in enumerate(fields)}
+
+    # Add is_active to fields if missing (backward compatibility)
+    for field in fields:
         if "is_active" not in field:
             field["is_active"] = True
-    
+            changes = True
+
+    # Ensure indications exists as array, required=True, is_fixed=True
+    if "indications" in key_to_index:
+        idx = key_to_index["indications"]
+        if fields[idx].get("type") != "array" or not fields[idx].get("required") or not fields[idx].get("is_fixed"):
+            fields[idx]["type"] = "array"
+            fields[idx]["required"] = True
+            fields[idx]["is_fixed"] = True
+            changes = True
+    else:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "indications",
+            "type": "array",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 6,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure symptoms exists as array, required=True, is_fixed=True
+    if "symptoms" in key_to_index:
+        idx = key_to_index["symptoms"]
+        if fields[idx].get("type") != "array" or not fields[idx].get("required") or not fields[idx].get("is_fixed"):
+            fields[idx]["type"] = "array"
+            fields[idx]["required"] = True
+            fields[idx]["is_fixed"] = True
+            changes = True
+    else:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "symptoms",
+            "type": "array",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 5,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Persist changes if anything was updated
+    if changes:
+        await db["drug_field_templates"].update_one(
+            {"_id": template["_id"]},
+            {"$set": {"fields": fields, "updated_at": datetime.utcnow()}}
+        )
+        template["fields"] = fields
+        template["updated_at"] = datetime.utcnow()
+
     template["_id"] = str(template["_id"])
     return template
 
@@ -343,9 +489,16 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
         missing_keys = [template_fields[fid]["key"] for fid in missing_required]
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing_keys)}")
     
+    # Normalize field values (coerce array fields to lists)
+    normalized_field_values = normalize_field_values(drug_data.field_values, template_fields)
+    
+    # Build flat top-level fields + search_text for fast querying
+    flat_fields = build_flat_fields(normalized_field_values)
+    
     drug_doc = {
         "template_id": drug_data.template_id,
-        "field_values": [fv.dict() for fv in drug_data.field_values],
+        "field_values": normalized_field_values,
+        **flat_fields,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
         "is_active": True
@@ -398,17 +551,53 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
     return drug_doc
 
 
-async def get_all_drugs(skip: int = 0, limit: int = 100) -> Dict[str, Any]:
-    """Get all active drugs"""
+async def get_all_drugs(
+    skip: int = 0,
+    limit: int = 100,
+    search: Optional[str] = None,
+    drug_name: Optional[str] = None,
+    manufacturer: Optional[str] = None,
+    dosage_form: Optional[str] = None,
+    symptom: Optional[str] = None,
+    indication: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get all active drugs with optional search filters using flat fields"""
     db = get_database()
     
-    cursor = db["drugs"].find({"is_active": True}).skip(skip).limit(limit)
+    # Backfill any existing drugs that don't have flat fields yet
+    async for drug in db["drugs"].find({"is_active": True, "drug_name": {"$exists": False}}):
+        flat_fields = build_flat_fields(drug.get("field_values", []))
+        await db["drugs"].update_one(
+            {"_id": drug["_id"]},
+            {"$set": {**flat_fields, "updated_at": datetime.utcnow()}}
+        )
+    
+    query: Dict[str, Any] = {"is_active": True}
+    
+    # Full-text search across all fields
+    if search:
+        query["search_text"] = {"$regex": search.lower(), "$options": "i"}
+    
+    # Exact / partial field filters
+    if drug_name:
+        query["drug_name"] = {"$regex": drug_name.lower(), "$options": "i"}
+    if manufacturer:
+        query["manufacturer"] = {"$regex": manufacturer.lower(), "$options": "i"}
+    if dosage_form:
+        query["dosage_form"] = dosage_form
+    # Array field filters — check if value is in array
+    if symptom:
+        query["symptoms"] = {"$regex": symptom.lower(), "$options": "i"}
+    if indication:
+        query["indications"] = {"$regex": indication.lower(), "$options": "i"}
+    
+    cursor = db["drugs"].find(query).skip(skip).limit(limit)
     drugs = await cursor.to_list(length=limit)
     
     for drug in drugs:
         drug["_id"] = str(drug["_id"])
     
-    total = await db["drugs"].count_documents({"is_active": True})
+    total = await db["drugs"].count_documents(query)
     
     return {"drugs": drugs, "total": total}
 
@@ -457,12 +646,19 @@ async def update_drug(drug_id: str, drug_data: DrugUpdate) -> Dict[str, Any]:
         if fv.key != template_fields[fv.field_id]["key"]:
             raise HTTPException(status_code=400, detail=f"Key mismatch for field_id: {fv.field_id}")
     
+    # Normalize field values (coerce array fields to lists)
+    normalized_field_values = normalize_field_values(drug_data.field_values, template_fields)
+    
+    # Rebuild flat top-level fields + search_text
+    flat_fields = build_flat_fields(normalized_field_values)
+    
     # Update drug
     result = await db["drugs"].update_one(
         {"_id": ObjectId(drug_id)},
         {
             "$set": {
-                "field_values": [fv.dict() for fv in drug_data.field_values],
+                "field_values": normalized_field_values,
+                **flat_fields,
                 "updated_at": datetime.utcnow()
             }
         }
@@ -496,14 +692,15 @@ async def delete_drug(drug_id: str) -> Dict[str, str]:
 # ============ BULK UPLOAD SERVICES ============
 
 async def download_drug_template() -> StreamingResponse:
-    """Generate and download CSV template with 10 fixed fields"""
+    """Generate and download CSV template with 11 fixed fields"""
     
-    # Define the 10 fixed field columns
+    # Define the 11 fixed field columns
     columns = [
         "drug_name",
         "brand_name",
         "drug_class",
         "manufacturer",
+        "symptoms",
         "indications",
         "mechanism_of_action",
         "dosage_strength",
@@ -512,8 +709,21 @@ async def download_drug_template() -> StreamingResponse:
         "side_effects"
     ]
     
-    # Create empty DataFrame with these columns
-    df = pd.DataFrame(columns=columns)
+    # Create DataFrame with a sample row to show expected format
+    sample_row = {
+        "drug_name": "Paracetamol",
+        "brand_name": "Crocin",
+        "drug_class": "Analgesic",
+        "manufacturer": "GSK Pharmaceuticals",
+        "symptoms": "Fever, Headache, Body Pain",
+        "indications": "Mild to moderate pain, Fever reduction",
+        "mechanism_of_action": "Inhibits prostaglandin synthesis in the CNS",
+        "dosage_strength": "500mg",
+        "dosage_form": "Tablet",
+        "route": "Oral",
+        "side_effects": "Nausea, Skin rash (rare)"
+    }
+    df = pd.DataFrame([sample_row], columns=columns)
     
     # Convert to CSV
     output = StringIO()
@@ -562,12 +772,12 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     
     # Define fixed field keys
     fixed_fields = [
-        "drug_name", "brand_name", "drug_class", "manufacturer", "indications",
+        "drug_name", "brand_name", "drug_class", "manufacturer", "symptoms", "indications",
         "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects"
     ]
     
     # Validate required columns
-    required_columns = ["drug_name", "brand_name"]
+    required_columns = ["drug_name", "brand_name", "symptoms", "indications"]
     missing_columns = [col for col in required_columns if col not in df.columns]
     
     if missing_columns:
@@ -656,6 +866,8 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
         # Extract and clean required fields
         drug_name = str(row.get('drug_name', '')).strip() if pd.notna(row.get('drug_name')) else ''
         brand_name = str(row.get('brand_name', '')).strip() if pd.notna(row.get('brand_name')) else ''
+        symptoms = str(row.get('symptoms', '')).strip() if pd.notna(row.get('symptoms')) else ''
+        indications = str(row.get('indications', '')).strip() if pd.notna(row.get('indications')) else ''
         
         # Validate required fields
         if not drug_name:
@@ -663,6 +875,12 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
         
         if not brand_name:
             row_errors.append("brand_name is required")
+        
+        if not symptoms:
+            row_errors.append("symptoms is required")
+        
+        if not indications:
+            row_errors.append("indications is required")
         
         if row_errors:
             failed += 1
@@ -690,15 +908,11 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
             })
             continue
         
-        # Check duplicate in database
+        # Check duplicate in database (fast query using flat fields)
         existing_drug = await db["drugs"].find_one({
             "is_active": True,
-            "field_values": {
-                "$all": [
-                    {"$elemMatch": {"key": "drug_name", "value": drug_name_lower}},
-                    {"$elemMatch": {"key": "brand_name", "value": brand_name_lower}}
-                ]
-            }
+            "drug_name": drug_name_lower,
+            "brand_name": brand_name_lower
         })
         
         if existing_drug:
@@ -736,6 +950,11 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
             elif col == "brand_name":
                 value = brand_name_lower
             
+            # Handle array type fields - split comma-separated values
+            if field_def.get("type") == "array" and value:
+                # Split by comma and clean up each item
+                value = [item.strip() for item in value.split(",") if item.strip()]
+            
             field_values.append({
                 "field_id": field_def["field_id"],
                 "key": col,
@@ -744,9 +963,11 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
         
         # Create drug document
         try:
+            flat_fields = build_flat_fields(field_values)
             drug_doc = {
                 "template_id": template_id,
                 "field_values": field_values,
+                **flat_fields,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
                 "is_active": True

@@ -17,6 +17,7 @@ class DrugFieldType(str, Enum):
     SELECT = "select"
     BOOLEAN = "boolean"
     DATE = "date"
+    ARRAY = "array"  # For comma-separated values stored as array
 
 
 class DrugFieldDefinition(BaseModel):

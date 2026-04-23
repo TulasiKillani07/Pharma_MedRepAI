@@ -268,53 +268,43 @@ async def create_drug_endpoint(drug_data: DrugCreate, current_user: Dict = Depen
 async def get_drugs_endpoint(
     current_user: Dict = Depends(get_current_user),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000)
+    limit: int = Query(100, ge=1, le=1000),
+    search: str = Query(None, description="Full-text search across all fields"),
+    drug_name: str = Query(None, description="Filter by drug name (partial match)"),
+    manufacturer: str = Query(None, description="Filter by manufacturer (partial match)"),
+    dosage_form: str = Query(None, description="Filter by dosage form (exact)"),
+    symptom: str = Query(None, description="Filter by symptom (partial match)"),
+    indication: str = Query(None, description="Filter by indication (partial match)")
 ):
     """
-    Get all active drugs with pagination.
+    Get all active drugs with search and filters.
     
     **Access:** All authenticated users (Admin, Doctor, MR)
     
-    **Purpose:**
-    View drug catalog/inventory. Doctors and MRs can see available drugs for reference.
+    **Search Parameters:**
+    - `search`: Full-text search across all fields (drug_name, brand_name, symptoms, indications, etc.)
+    - `drug_name`: Filter by drug name (partial match)
+    - `manufacturer`: Filter by manufacturer (partial match)
+    - `dosage_form`: Filter by dosage form (exact: Tablet, Capsule, etc.)
+    - `symptom`: Filter drugs that treat this symptom
+    - `indication`: Filter drugs by indication
     
-    **Flow:**
-    1. User requests drug list
-    2. Backend fetches active drugs (is_active=true)
-    3. Returns paginated list with all field values
-    
-    **Usage:**
-    ```
-    GET /api/v1/drugs?skip=0&limit=10
-    Headers: Authorization: Bearer <token>
-    ```
-    
-    **Response:**
-    ```json
-    {
-        "drugs": [
-            {
-                "_id": "drug123",
-                "template_id": "template456",
-                "field_values": [
-                    {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
-                    {"field_id": "f2", "key": "brand_name", "value": "crocin"},
-                    {"field_id": "f3", "key": "manufacturer", "value": "GSK"}
-                ],
-                "created_at": "2024-04-07T10:00:00",
-                "updated_at": "2024-04-07T10:00:00",
-                "is_active": true
-            }
-        ],
-        "total": 150
-    }
-    ```
-    
-    **Pagination:**
-    - skip: Number of records to skip (default: 0)
-    - limit: Number of records to return (default: 100, max: 1000)
+    **Examples:**
+    - `GET /api/v1/drugs?search=fever` — all drugs related to fever
+    - `GET /api/v1/drugs?drug_name=para` — drugs with "para" in name
+    - `GET /api/v1/drugs?symptom=headache` — drugs for headache
+    - `GET /api/v1/drugs?dosage_form=Tablet&manufacturer=GSK`
     """
-    return await service.get_all_drugs(skip, limit)
+    return await service.get_all_drugs(
+        skip=skip,
+        limit=limit,
+        search=search,
+        drug_name=drug_name,
+        manufacturer=manufacturer,
+        dosage_form=dosage_form,
+        symptom=symptom,
+        indication=indication
+    )
 
 
 @router.get("/{drug_id}", response_model=DrugResponse)
