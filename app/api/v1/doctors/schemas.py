@@ -3,9 +3,10 @@ Doctor request/response schemas.
 Defines the structure of data for doctor operations.
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from datetime import datetime
+from app.core.validators import PhoneValidator, NameValidator, EmailValidator, LicenseValidator
 
 
 class DoctorCreateRequest(BaseModel):
@@ -16,11 +17,35 @@ class DoctorCreateRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Doctor's full name")
     email: EmailStr = Field(..., description="Doctor's email address")
     password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
-    phone: str = Field(..., description="Phone number")
+    phone: str = Field(..., description="Phone number in international format (e.g., +919876543210)")
     specialization: str = Field(..., description="Medical specialization (e.g., Cardiologist)")
     hospital: Optional[str] = Field(None, description="Hospital name")
     license_number: Optional[str] = Field(None, description="Medical license number")
     address: Optional[str] = Field(None, description="Address")
+    
+    # Validators
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return NameValidator.validate(v, min_length=2, max_length=100)
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return EmailValidator.normalize(v)
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        result = PhoneValidator.validate(v)
+        if result is None:
+            raise ValueError('Phone number is required')
+        return result
+    
+    @field_validator('license_number')
+    @classmethod
+    def validate_license(cls, v: Optional[str]) -> Optional[str]:
+        return LicenseValidator.validate(v)
     
     class Config:
         json_schema_extra = {
@@ -48,6 +73,22 @@ class DoctorUpdateRequest(BaseModel):
     license_number: Optional[str] = None
     address: Optional[str] = None
     is_active: Optional[bool] = None
+    
+    # Validators
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return NameValidator.validate(v, min_length=2, max_length=100)
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        return PhoneValidator.validate(v)
+    
+    @field_validator('license_number')
+    @classmethod
+    def validate_license(cls, v: Optional[str]) -> Optional[str]:
+        return LicenseValidator.validate(v)
     
     class Config:
         json_schema_extra = {

@@ -3,8 +3,9 @@ CME Event Request/Response Schemas
 """
 
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, date
+from app.core.validators import DateValidator, URLValidator, TextValidator
 
 
 # ============ CME EVENT SCHEMAS ============
@@ -32,6 +33,22 @@ class CMEEventCreate(BaseModel):
     
     speaker: str
     status: str = "upcoming"  # Default to upcoming, admin must change manually
+    
+    # Validators
+    @field_validator('event_date')
+    @classmethod
+    def validate_date(cls, v: date) -> date:
+        return DateValidator.validate_future_date(v, max_years=2)
+    
+    @field_validator('description')
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        return TextValidator.validate(v, max_length=2000, strip_html=True)
+    
+    @field_validator('meeting_link')
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return URLValidator.validate(v, max_length=500)
 
 
 class CMEEventUpdate(BaseModel):
@@ -58,6 +75,24 @@ class CMEEventUpdate(BaseModel):
     speaker: Optional[str] = None
     status: Optional[str] = None  # Can manually set to cancelled/rescheduled
     event_recording: Optional[str] = None
+    
+    # Validators
+    @field_validator('event_date')
+    @classmethod
+    def validate_date(cls, v: Optional[date]) -> Optional[date]:
+        if v is None:
+            return None
+        return DateValidator.validate_future_date(v, max_years=2)
+    
+    @field_validator('description')
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        return TextValidator.validate(v, max_length=2000, strip_html=True)
+    
+    @field_validator('meeting_link', 'event_recording')
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return URLValidator.validate(v, max_length=500)
 
 
 class CMEEventResponse(BaseModel):

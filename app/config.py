@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Default password for doctors/MRs created by admin
     DEFAULT_USER_PASSWORD: str = "Welcome@123"
     
+    # NER API Configuration
+    NER_API_URL: str = "https://ner-medrep.onrender.com/predict"  # NER API endpoint
+    NER_API_TIMEOUT: int = 30  # Timeout in seconds (Render can be slow on cold start)
+    
     class Config:
         """
         Pydantic configuration.

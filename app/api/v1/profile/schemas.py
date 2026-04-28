@@ -2,19 +2,23 @@
 Profile Request/Response Schemas
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
+from app.core.validators import (
+    PhoneValidator, NameValidator, URLValidator, 
+    TextValidator, ExperienceValidator, TerritoryValidator
+)
 
 
 class ProfileUpdateRequest(BaseModel):
     """Request schema for updating profile"""
     full_name: Optional[str] = Field(None, min_length=2, max_length=100, description="Full name")
-    phone: Optional[str] = Field(None, min_length=10, max_length=20, description="Phone number")
+    phone: Optional[str] = Field(None, description="Phone number in international format")
     bio: Optional[str] = Field(None, max_length=500, description="About me / Bio")
     avatar_url: Optional[str] = Field(None, max_length=500, description="Profile picture URL (set to null to remove)")
     location: Optional[str] = Field(None, max_length=100, description="City/State")
-    experience_years: Optional[int] = Field(None, ge=0, le=70, description="Years of experience")
+    experience_years: Optional[float] = Field(None, ge=0, le=70, description="Years of experience (decimals allowed, e.g., 1.5)")
     
     # Doctor-specific fields
     specialization: Optional[str] = Field(None, max_length=100, description="Medical specialization (Doctor only)")
@@ -27,6 +31,37 @@ class ProfileUpdateRequest(BaseModel):
     admin_bio: Optional[str] = Field(None, max_length=500, description="Admin/Manager bio")
     admin_avatar_url: Optional[str] = Field(None, max_length=500, description="Admin/Manager avatar URL")
     
+    # Validators
+    @field_validator('full_name')
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return NameValidator.validate(v, min_length=2, max_length=100)
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        return PhoneValidator.validate(v)
+    
+    @field_validator('bio', 'admin_bio')
+    @classmethod
+    def validate_bio(cls, v: Optional[str]) -> Optional[str]:
+        return TextValidator.validate(v, max_length=500, strip_html=True)
+    
+    @field_validator('avatar_url', 'admin_avatar_url')
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return URLValidator.validate(v, max_length=500)
+    
+    @field_validator('experience_years')
+    @classmethod
+    def validate_experience(cls, v: Optional[float]) -> Optional[float]:
+        return ExperienceValidator.validate(v, min_years=0, max_years=70)
+    
+    @field_validator('territory')
+    @classmethod
+    def validate_territory(cls, v: Optional[str]) -> Optional[str]:
+        return TerritoryValidator.validate(v)
+    
     class Config:
         json_schema_extra = {
             "example": {
@@ -35,7 +70,7 @@ class ProfileUpdateRequest(BaseModel):
                 "bio": "Cardiologist with 10 years of experience specializing in interventional cardiology",
                 "avatar_url": "https://example.com/avatars/sarah.jpg",
                 "location": "Mumbai, Maharashtra",
-                "experience_years": 10,
+                "experience_years": 10.5,
                 "specialization": "Cardiology",
                 "hospital": "Apollo Hospital"
             }
@@ -52,7 +87,7 @@ class ProfileResponse(BaseModel):
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
     location: Optional[str] = None
-    experience_years: Optional[int] = None
+    experience_years: Optional[float] = None  # Changed to float to support decimals
     
     # Doctor-specific
     specialization: Optional[str] = None
@@ -82,7 +117,7 @@ class ProfileResponse(BaseModel):
                 "bio": "Cardiologist with 10 years of experience",
                 "avatar_url": "https://example.com/avatars/sarah.jpg",
                 "location": "Mumbai, Maharashtra",
-                "experience_years": 10,
+                "experience_years": 10.5,
                 "specialization": "Cardiology",
                 "hospital": "Apollo Hospital",
                 "license_number": "MH12345",
@@ -102,7 +137,7 @@ class PublicProfileResponse(BaseModel):
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
     location: Optional[str] = None
-    experience_years: Optional[int] = None
+    experience_years: Optional[float] = None  # Changed to float to support decimals
     
     # Doctor-specific
     specialization: Optional[str] = None
@@ -124,7 +159,7 @@ class PublicProfileResponse(BaseModel):
                 "bio": "Cardiologist with 10 years of experience",
                 "avatar_url": "https://example.com/avatars/sarah.jpg",
                 "location": "Mumbai, Maharashtra",
-                "experience_years": 10,
+                "experience_years": 10.5,
                 "specialization": "Cardiology",
                 "hospital": "Apollo Hospital",
                 "territory": None,
@@ -150,6 +185,17 @@ class CompanyUpdateRequest(BaseModel):
     company_size: Optional[str] = Field(None, max_length=50, description="Company size e.g. '50-200'")
     company_gst_number: Optional[str] = Field(None, max_length=50, description="Company GST number")
     company_pan_number: Optional[str] = Field(None, max_length=50, description="Company PAN number")
+    
+    # Validators
+    @field_validator('company_logo_url', 'company_website')
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return URLValidator.validate(v, max_length=500)
+    
+    @field_validator('company_description')
+    @classmethod
+    def validate_description(cls, v: Optional[str]) -> Optional[str]:
+        return TextValidator.validate(v, max_length=1000, strip_html=True)
     
     class Config:
         json_schema_extra = {

@@ -3,9 +3,10 @@ MR (Medical Representative) request/response schemas.
 Defines the structure of data for MR operations.
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+from app.core.validators import PhoneValidator, NameValidator, EmailValidator, TerritoryValidator
 
 
 class MRCreateRequest(BaseModel):
@@ -16,9 +17,36 @@ class MRCreateRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="MR's full name")
     email: EmailStr = Field(..., description="MR's email address")
     password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
-    phone: str = Field(..., description="Phone number")
+    phone: str = Field(..., description="Phone number in international format (e.g., +919876543210)")
     territory: str = Field(..., description="Sales territory/region")
     assigned_doctors: Optional[List[str]] = Field(default=[], description="List of assigned doctor IDs")
+    
+    # Validators
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return NameValidator.validate(v, min_length=2, max_length=100)
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return EmailValidator.normalize(v)
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        result = PhoneValidator.validate(v)
+        if result is None:
+            raise ValueError('Phone number is required')
+        return result
+    
+    @field_validator('territory')
+    @classmethod
+    def validate_territory(cls, v: str) -> str:
+        result = TerritoryValidator.validate(v)
+        if result is None:
+            raise ValueError('Territory is required')
+        return result
     
     class Config:
         json_schema_extra = {
@@ -42,6 +70,22 @@ class MRUpdateRequest(BaseModel):
     territory: Optional[str] = None
     assigned_doctors: Optional[List[str]] = None
     is_active: Optional[bool] = None
+    
+    # Validators
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return NameValidator.validate(v, min_length=2, max_length=100)
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        return PhoneValidator.validate(v)
+    
+    @field_validator('territory')
+    @classmethod
+    def validate_territory(cls, v: Optional[str]) -> Optional[str]:
+        return TerritoryValidator.validate(v)
     
     class Config:
         json_schema_extra = {

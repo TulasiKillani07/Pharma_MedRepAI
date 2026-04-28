@@ -3,8 +3,9 @@ Authentication request/response schemas.
 These define the structure of data for login, register, and token responses.
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.core.roles import UserRole
+from app.core.validators import PhoneValidator, NameValidator, EmailValidator
 
 
 class LoginRequest(BaseModel):
@@ -15,6 +16,12 @@ class LoginRequest(BaseModel):
     email: EmailStr = Field(..., description="User's email address")
     password: str = Field(..., min_length=8, description="User's password")
     role: UserRole = Field(..., description="User role: ADMIN, DOCTOR, or MR")
+    
+    # Validators
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return EmailValidator.normalize(v)
     
     class Config:
         json_schema_extra = {
@@ -58,8 +65,27 @@ class RegisterAdminRequest(BaseModel):
     email: EmailStr = Field(..., description="Admin email address")
     password: str = Field(..., min_length=8, max_length=72, description="Password (8-72 characters)")
     full_name: str = Field(..., description="Full name")
-    phone: str = Field(..., description="Phone number")
+    phone: str = Field(..., description="Phone number in international format (e.g., +919876543210)")
     company_name: str = Field(..., description="Company name")
+    
+    # Validators
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return EmailValidator.normalize(v)
+    
+    @field_validator('full_name')
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        return NameValidator.validate(v, min_length=2, max_length=100)
+    
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        result = PhoneValidator.validate(v)
+        if result is None:
+            raise ValueError('Phone number is required')
+        return result
     
     class Config:
         json_schema_extra = {

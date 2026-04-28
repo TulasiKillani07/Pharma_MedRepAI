@@ -154,7 +154,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "key": "indications",
             "type": "array",
             "is_fixed": True,
-            "required": True,
+            "required": False,  # Optional - some drugs only treat symptoms, not diseases
             "visible": True,
             "order": 6,
             "options": None,
@@ -270,12 +270,12 @@ async def get_template() -> Optional[Dict[str, Any]]:
             field["is_active"] = True
             changes = True
 
-    # Ensure indications exists as array, required=True, is_fixed=True
+    # Ensure indications exists as array (optional - some drugs only treat symptoms)
     if "indications" in key_to_index:
         idx = key_to_index["indications"]
-        if fields[idx].get("type") != "array" or not fields[idx].get("required") or not fields[idx].get("is_fixed"):
+        if fields[idx].get("type") != "array" or not fields[idx].get("is_fixed"):
             fields[idx]["type"] = "array"
-            fields[idx]["required"] = True
+            fields[idx]["required"] = False  # Optional field
             fields[idx]["is_fixed"] = True
             changes = True
     else:
@@ -284,7 +284,7 @@ async def get_template() -> Optional[Dict[str, Any]]:
             "key": "indications",
             "type": "array",
             "is_fixed": True,
-            "required": True,
+            "required": False,  # Optional - some drugs only treat symptoms
             "visible": True,
             "order": 6,
             "options": None,
@@ -776,8 +776,8 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
         "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects"
     ]
     
-    # Validate required columns
-    required_columns = ["drug_name", "brand_name", "symptoms", "indications"]
+    # Validate required columns (only drug_name and symptoms are truly required)
+    required_columns = ["drug_name", "symptoms"]
     missing_columns = [col for col in required_columns if col not in df.columns]
     
     if missing_columns:
@@ -869,18 +869,12 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
         symptoms = str(row.get('symptoms', '')).strip() if pd.notna(row.get('symptoms')) else ''
         indications = str(row.get('indications', '')).strip() if pd.notna(row.get('indications')) else ''
         
-        # Validate required fields
+        # Validate required fields (only drug_name and symptoms are required)
         if not drug_name:
             row_errors.append("drug_name is required")
         
-        if not brand_name:
-            row_errors.append("brand_name is required")
-        
         if not symptoms:
             row_errors.append("symptoms is required")
-        
-        if not indications:
-            row_errors.append("indications is required")
         
         if row_errors:
             failed += 1
