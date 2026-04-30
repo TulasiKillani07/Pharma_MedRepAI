@@ -55,7 +55,7 @@ async def update_template_endpoint(template_id: str, template_data: TemplateUpda
 @router.get("/download-template", dependencies=[Depends(require_admin)])
 async def download_template_endpoint():
     """
-    Download CSV template with 10 fixed drug fields.
+    Download CSV template with 12 fixed drug fields.
     
     **Access:** Admin only
     
@@ -64,18 +64,20 @@ async def download_template_endpoint():
     
     **Template Columns:**
     1. drug_name (REQUIRED)
-    2. brand_name (REQUIRED)
-    3. drug_class (optional)
-    4. manufacturer (optional)
-    5. indications (optional)
-    6. mechanism_of_action (optional)
-    7. dosage_strength (optional)
-    8. dosage_form (optional)
-    9. route (optional)
-    10. side_effects (optional)
+    2. symptoms (REQUIRED)
+    3. brand_name (optional)
+    4. drug_class (optional)
+    5. manufacturer (optional)
+    6. indications (optional)
+    7. mechanism_of_action (optional)
+    8. dosage_strength (optional)
+    9. dosage_form (optional)
+    10. route (optional)
+    11. side_effects (optional)
+    12. reference_url (optional)
     
     **Instructions for Users:**
-    - Fill drug_name and brand_name (required fields)
+    - Fill drug_name and symptoms (required fields)
     - Other fields are optional, can be left empty
     - You can ADD your own columns for custom data (e.g., price, expiry_date)
     - Custom columns will be auto-created as dynamic fields
@@ -107,7 +109,7 @@ async def bulk_upload_drugs_endpoint(
     
     **Flow:**
     1. Download template via GET /api/v1/drugs/download-template
-    2. Fill required fields (drug_name, brand_name)
+    2. Fill required fields (drug_name, symptoms)
     3. Optionally add custom columns (e.g., price, expiry_date, batch_number)
     4. Upload file via this endpoint
     5. Backend validates and creates drugs
@@ -120,11 +122,11 @@ async def bulk_upload_drugs_endpoint(
     
     **Required Columns:**
     - drug_name: Drug name (will be converted to lowercase)
-    - brand_name: Brand name (will be converted to lowercase)
+    - symptoms: Comma-separated symptoms (e.g., "Fever, Headache")
     
     **Optional Fixed Columns:**
-    - drug_class, manufacturer, indications, mechanism_of_action
-    - dosage_strength, dosage_form, route, side_effects
+    - brand_name, drug_class, manufacturer, indications, mechanism_of_action
+    - dosage_strength, dosage_form, route, side_effects, reference_url
     
     **Custom Columns:**
     - Add any additional columns you need (e.g., price, expiry_date)
@@ -133,21 +135,21 @@ async def bulk_upload_drugs_endpoint(
     
     **CSV Example (Fixed fields only):**
     ```csv
-    drug_name,brand_name,drug_class,manufacturer,dosage_form
-    Paracetamol,Crocin,Analgesic,GSK,Tablet
-    Ibuprofen,Brufen,NSAID,Abbott,Tablet
+    drug_name,symptoms,brand_name,drug_class,manufacturer,dosage_form,reference_url
+    paracetamol,"Fever, Headache",crocin,Analgesic,GSK,Tablet,https://www.drugs.com/paracetamol.html
+    ibuprofen,"Pain, Fever",brufen,NSAID,Abbott,Tablet,https://www.drugs.com/ibuprofen.html
     ```
     
     **CSV Example (With custom fields):**
     ```csv
-    drug_name,brand_name,manufacturer,price,expiry_date,batch_number
-    Paracetamol,Crocin,GSK,50,2025-12-31,BATCH001
-    Ibuprofen,Brufen,Abbott,80,2026-06-30,BATCH002
+    drug_name,symptoms,brand_name,manufacturer,price,expiry_date,batch_number
+    paracetamol,"Fever, Headache",crocin,GSK,50,2025-12-31,BATCH001
+    ibuprofen,"Pain, Fever",brufen,Abbott,80,2026-06-30,BATCH002
     ```
     
     **Validation Rules:**
-    - drug_name and brand_name are required (cannot be empty)
-    - Both are converted to lowercase for storage and duplicate checking
+    - drug_name and symptoms are required (cannot be empty)
+    - drug_name is converted to lowercase for storage and duplicate checking
     - Duplicate check: drug_name + brand_name combination must be unique
     - Checks duplicates within CSV and against database
     - Invalid rows are skipped, valid rows are inserted
@@ -216,12 +218,13 @@ async def bulk_upload_drugs_endpoint(
     
     **Error Types:**
     - "drug_name is required"
-    - "brand_name is required"
+    - "symptoms is required"
     - "Duplicate drug found in CSV (same drug_name and brand_name)"
     - "Drug already exists in database (same drug_name and brand_name)"
     
     **Notes:**
-    - drug_name and brand_name are stored in lowercase
+    - drug_name is stored in lowercase
+    - brand_name is stored in lowercase (if provided)
     - Other fields keep original case
     - Custom fields can be managed later via field APIs
     - Template grows automatically based on CSV columns

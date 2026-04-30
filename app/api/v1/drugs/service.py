@@ -92,7 +92,7 @@ def normalize_field_values(field_values: List[Any], template_fields: Dict[str, A
 
 
 def get_default_fixed_fields() -> List[Dict[str, Any]]:
-    """Returns the 11 default fixed fields for drug template"""
+    """Returns the 12 default fixed fields for drug template"""
     return [
         {
             "field_id": str(uuid.uuid4()),
@@ -214,6 +214,17 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "order": 11,
             "options": None,
             "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "reference_url",
+            "type": "text",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 12,
+            "options": None,
+            "is_active": True
         }
     ]
 
@@ -309,6 +320,21 @@ async def get_template() -> Optional[Dict[str, Any]]:
             "required": True,
             "visible": True,
             "order": 5,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure reference_url exists (optional field for official drug info page)
+    if "reference_url" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "reference_url",
+            "type": "text",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 12,
             "options": None,
             "is_active": True
         })
@@ -692,9 +718,9 @@ async def delete_drug(drug_id: str) -> Dict[str, str]:
 # ============ BULK UPLOAD SERVICES ============
 
 async def download_drug_template() -> StreamingResponse:
-    """Generate and download CSV template with 11 fixed fields"""
+    """Generate and download CSV template with 12 fixed fields"""
     
-    # Define the 11 fixed field columns
+    # Define the 12 fixed field columns
     columns = [
         "drug_name",
         "brand_name",
@@ -706,7 +732,8 @@ async def download_drug_template() -> StreamingResponse:
         "dosage_strength",
         "dosage_form",
         "route",
-        "side_effects"
+        "side_effects",
+        "reference_url"
     ]
     
     # Create DataFrame with a sample row to show expected format
@@ -721,7 +748,8 @@ async def download_drug_template() -> StreamingResponse:
         "dosage_strength": "500mg",
         "dosage_form": "Tablet",
         "route": "Oral",
-        "side_effects": "Nausea, Skin rash (rare)"
+        "side_effects": "Nausea, Skin rash (rare)",
+        "reference_url": "https://www.drugs.com/paracetamol.html"
     }
     df = pd.DataFrame([sample_row], columns=columns)
     
@@ -773,7 +801,7 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     # Define fixed field keys
     fixed_fields = [
         "drug_name", "brand_name", "drug_class", "manufacturer", "symptoms", "indications",
-        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects"
+        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url"
     ]
     
     # Validate required columns (only drug_name and symptoms are truly required)
