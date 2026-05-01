@@ -8,6 +8,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.config import settings
 import hashlib
+import secrets
+import string
 
 
 # Password hashing context using bcrypt
@@ -157,3 +159,52 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     except JWTError:
         # Token is invalid, expired, or tampered with
         return None
+
+
+def generate_random_password(length: int = 12) -> str:
+    """
+    Generate a strong random password.
+    
+    Args:
+        length: Password length (default: 12)
+    
+    Returns:
+        str: Random password with uppercase, lowercase, digits, and special characters
+    
+    Example:
+        >>> password = generate_random_password()
+        >>> print(password)
+        'Kx9#mP2$qL5@'
+    
+    Password requirements:
+    - At least 1 uppercase letter
+    - At least 1 lowercase letter
+    - At least 1 digit
+    - At least 1 special character
+    - Minimum length: 12 characters
+    """
+    if length < 12:
+        length = 12  # Enforce minimum length
+    
+    # Define character sets
+    uppercase = string.ascii_uppercase
+    lowercase = string.ascii_lowercase
+    digits = string.digits
+    special = "!@#$%^&*"
+    
+    # Ensure at least one character from each set
+    password = [
+        secrets.choice(uppercase),
+        secrets.choice(lowercase),
+        secrets.choice(digits),
+        secrets.choice(special)
+    ]
+    
+    # Fill the rest with random characters from all sets
+    all_characters = uppercase + lowercase + digits + special
+    password += [secrets.choice(all_characters) for _ in range(length - 4)]
+    
+    # Shuffle to avoid predictable patterns
+    secrets.SystemRandom().shuffle(password)
+    
+    return ''.join(password)

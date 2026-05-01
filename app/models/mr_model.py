@@ -20,5 +20,7 @@ class MRInDB(MRBase):
     """Schema for MR stored in database"""
     password_hash: str
     is_active: bool = True
+    is_password_changed: bool = False  # Track if user changed their password
+    password_changed_at: Optional[datetime] = None  # When password was last changed
     created_at: datetime
     updated_at: datetime

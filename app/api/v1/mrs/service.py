@@ -5,14 +5,16 @@ MR service - Business logic for MR operations.
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, status, UploadFile
+from fastapi.responses import StreamingResponse
 from bson import ObjectId
 import pandas as pd
 import re
-from io import BytesIO
+from io import BytesIO, StringIO
 from app.database import get_database
-from app.core.security import hash_password
+from app.core.security import hash_password, generate_random_password
 from app.config import settings
 from app.api.v1.activity_logs.helpers import log_activity
+from app.api.v1.email.service import send_invitation_email, send_bulk_upload_summary_email
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
@@ -91,7 +93,10 @@ async def create_mr(
     
     # Use default password if not provided
     if not password:
-        password = settings.DEFAULT_USER_PASSWORD
+        password = generate_random_password()  # Generate strong random password
+    
+    # Store plain password for email (before hashing)
+    plain_password = password
     
     # Hash password
     password_hash = hash_password(password)
@@ -105,6 +110,8 @@ async def create_mr(
         "territory": territory,
         "assigned_doctors": assigned_doctors or [],
         "is_active": True,
+        "is_password_changed": False,  # User must change password on first login
+        "password_changed_at": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
@@ -126,6 +133,19 @@ async def create_mr(
         },
         severity=LogSeverity.INFO
     )
+    
+    # Send invitation email with credentials
+    try:
+        await send_invitation_email(
+            to_email=email,
+            name=name,
+            role="mr",
+            email=email,
+            password=plain_password
+        )
+    except Exception as e:
+        # Log email error but don't fail the creation
+        print(f"Failed to send invitation email to {email}: {str(e)}")
     
     return {
         "message": "MR added successfully",
@@ -424,6 +444,40 @@ def validate_phone(phone: str) -> bool:
     return len(phone_clean) == 10 and phone_clean.isdigit()
 
 
+async def download_mrs_template() -> StreamingResponse:
+    """Generate and download CSV template for bulk MR upload"""
+    
+    # Define template columns
+    columns = [
+        "name",
+        "email",
+        "phone",
+        "territory"
+    ]
+    
+    # Create sample row
+    sample_row = {
+        "name": "John Doe",
+        "email": "john.doe@example.com",
+        "phone": "+919876543210",
+        "territory": "North Region"
+    }
+    
+    df = pd.DataFrame([sample_row], columns=columns)
+    
+    # Convert to CSV
+    output = StringIO()
+    df.to_csv(output, index=False)
+    output.seek(0)
+    
+    # Return as downloadable file
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=mrs_template.csv"}
+    )
+
+
 async def bulk_upload_mrs(
     file: UploadFile,
     current_user: Dict[str, Any]
@@ -498,10 +552,7 @@ async def bulk_upload_mrs(
     successful = 0
     failed = 0
     errors = []
-    
-    # Get default password
-    default_password = settings.DEFAULT_USER_PASSWORD
-    password_hash = hash_password(default_password)
+    created_users = []  # Track created users for email summary
     
     # Process each row
     for index, row in df.iterrows():
@@ -569,6 +620,10 @@ async def bulk_upload_mrs(
         
         # All validations passed, create MR document
         try:
+            # Generate random password for this MR
+            random_password = generate_random_password()
+            password_hash = hash_password(random_password)
+            
             mr_doc = {
                 "name": name,
                 "email": email,
@@ -577,13 +632,35 @@ async def bulk_upload_mrs(
                 "territory": territory,
                 "assigned_doctors": [],  # Empty on bulk upload
                 "is_active": True,
+                "is_password_changed": False,  # User must change password on first login
+                "password_changed_at": None,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
             
             # Insert into database
-            await company_db.mrs.insert_one(mr_doc)
+            result = await company_db.mrs.insert_one(mr_doc)
             successful += 1
+            
+            # Send invitation email
+            email_sent = False
+            try:
+                email_sent = await send_invitation_email(
+                    to_email=email,
+                    name=name,
+                    role="mr",
+                    email=email,
+                    password=random_password
+                )
+            except Exception as email_error:
+                print(f"Failed to send email to {email}: {str(email_error)}")
+            
+            # Track created user for summary
+            created_users.append({
+                "name": name,
+                "email": email,
+                "email_sent": email_sent
+            })
         
         except Exception as e:
             failed += 1
@@ -618,6 +695,24 @@ async def bulk_upload_mrs(
             },
             severity=LogSeverity.INFO
         )
+    
+    # Send summary email to admin
+    if successful > 0 and created_users:
+        try:
+            successful_emails = sum(1 for user in created_users if user["email_sent"])
+            failed_emails = len(created_users) - successful_emails
+            
+            await send_bulk_upload_summary_email(
+                admin_email=current_user.get("email"),
+                admin_name=current_user.get("name", "Admin"),
+                role="mr",
+                total_created=successful,
+                successful_emails=successful_emails,
+                failed_emails=failed_emails,
+                created_users=created_users
+            )
+        except Exception as e:
+            print(f"Failed to send summary email to admin: {str(e)}")
     
     return {
         "total_rows": total_rows,

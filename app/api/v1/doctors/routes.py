@@ -21,7 +21,8 @@ from app.api.v1.doctors.service import (
     update_doctor,
     delete_doctor,
     get_available_doctors,
-    bulk_upload_doctors
+    bulk_upload_doctors,
+    download_doctors_template
 )
 from app.core.auth import get_current_user, require_admin
 
@@ -82,6 +83,43 @@ async def add_doctor(
         address=request.address,
         current_user=current_user
     )
+
+
+@router.get("/download-template", dependencies=[Depends(require_admin)])
+async def download_doctors_template_endpoint():
+    """
+    Download CSV template for bulk doctor upload.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Provides a CSV template file that admins can fill with doctor data and upload via bulk upload.
+    
+    **Template Columns:**
+    1. name (REQUIRED) - Doctor's full name
+    2. email (REQUIRED) - Doctor's email address
+    3. phone (REQUIRED) - Phone number with country code (e.g., +919876543210)
+    4. specialization (REQUIRED) - Medical specialization
+    5. hospital (optional) - Hospital name
+    6. license_number (optional) - Medical license number
+    7. address (optional) - Full address
+    
+    **Instructions:**
+    - Fill all required fields (name, email, phone, specialization)
+    - Email must be unique (not already in system)
+    - Phone must be unique and in E.164 format (+country code)
+    - Maximum 100 rows per upload
+    
+    **Usage:**
+    ```
+    GET /api/v1/doctors/download-template
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    Downloads file: doctors_template.csv
+    """
+    return await download_doctors_template()
 
 
 @router.post("/bulk-upload", response_model=BulkUploadResponse, status_code=status.HTTP_200_OK, summary="Bulk Upload Doctors")

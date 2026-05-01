@@ -20,7 +20,8 @@ from app.api.v1.mrs.service import (
     get_mr_by_id,
     update_mr,
     delete_mr,
-    bulk_upload_mrs
+    bulk_upload_mrs,
+    download_mrs_template
 )
 from app.core.auth import get_current_user, require_admin
 
@@ -78,6 +79,41 @@ async def add_mr(
         assigned_doctors=request.assigned_doctors,
         current_user=current_user
     )
+
+
+@router.get("/download-template", dependencies=[Depends(require_admin)])
+async def download_mrs_template_endpoint():
+    """
+    Download CSV template for bulk MR upload.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Provides a CSV template file that admins can fill with MR data and upload via bulk upload.
+    
+    **Template Columns:**
+    1. name (REQUIRED) - MR's full name
+    2. email (REQUIRED) - MR's email address
+    3. phone (REQUIRED) - Phone number with country code (e.g., +919876543210)
+    4. territory (REQUIRED) - Sales territory
+    
+    **Instructions:**
+    - Fill all required fields (name, email, phone, territory)
+    - Email must be unique (not already in system)
+    - Phone must be unique and in E.164 format (+country code)
+    - Maximum 100 rows per upload
+    - Doctors can be assigned later via update endpoint
+    
+    **Usage:**
+    ```
+    GET /api/v1/mrs/download-template
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    Downloads file: mrs_template.csv
+    """
+    return await download_mrs_template()
 
 
 @router.post("/bulk-upload", response_model=BulkUploadResponse, status_code=status.HTTP_200_OK, summary="Bulk Upload MRs")

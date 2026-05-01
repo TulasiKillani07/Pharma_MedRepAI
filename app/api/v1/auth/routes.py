@@ -7,7 +7,12 @@ from app.api.v1.auth.schemas import (
     LoginRequest,
     TokenResponse,
     RegisterAdminRequest,
-    MessageResponse
+    MessageResponse,
+    ChangePasswordFirstLoginRequest,
+    ChangePasswordResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordWithOTPRequest
 )
 from app.api.v1.auth.service import login_user, register_admin
 from app.core.auth import get_current_user
@@ -203,3 +208,229 @@ async def logout(request: Request, current_user: dict = Depends(get_current_user
     )
     
     return {"message": "Logged out successfully"}
+
+
+
+@router.post("/reset-password", response_model=ChangePasswordResponse, summary="Reset Password")
+async def reset_password_endpoint(
+    request: ChangePasswordFirstLoginRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Reset/change password for authenticated users.
+    
+    **Use Cases:**
+    1. First login: User can change temporary password to their own password
+    2. Anytime: User can change their password whenever they want
+    
+    **Flow:**
+    1. User logs in (with temporary or current password)
+    2. User goes to "Change Password" or "Reset Password" page
+    3. User enters current password + new password + confirm password
+    4. Backend validates and updates password
+    5. Backend returns new JWT token
+    6. User continues using the application
+    
+    **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Note:** User can use this endpoint multiple times to change password.
+    
+    **Usage:**
+    ```
+    POST /api/v1/auth/reset-password
+    Headers: {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+    {
+        "current_password": "Abc123!@#xyz",
+        "new_password": "MyNewSecurePass123!",
+        "confirm_password": "MyNewSecurePass123!"
+    }
+    ```
+    
+    **Response:**
+    ```
+    {
+        "message": "Password changed successfully",
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "token_type": "bearer",
+        "expires_in": 3600
+    }
+    ```
+    
+    **Password Requirements:**
+    - Minimum 8 characters
+    - Maximum 72 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+    
+    **Frontend Integration:**
+    ```javascript
+    // User can change password anytime from settings/profile page
+    const response = await api.post('/auth/reset-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword
+    }, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    // Update token
+    localStorage.setItem('token', response.access_token);
+    
+    // Show success message
+    toast.success('Password changed successfully!');
+    ```
+    
+    **Optional First Login Flow:**
+    If you want to encourage users to change password on first login:
+    1. Check `is_password_changed` field in user profile
+    2. Show a banner/modal suggesting password change
+    3. User can choose to change now or skip
+    4. User can always change later from settings
+    """
+    from app.api.v1.auth.service import change_password_first_login
+    
+    return await change_password_first_login(
+        current_password=request.current_password,
+        new_password=request.new_password,
+        current_user=current_user
+    )
+
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse, summary="Forgot Password")
+async def forgot_password_endpoint(request: ForgotPasswordRequest):
+    """
+    Request password reset by sending OTP to email.
+    
+    **Use Case:** User forgot their password and needs to reset it.
+    
+    **Flow:**
+    1. User clicks "Forgot Password" on login page
+    2. User enters email and selects role
+    3. Backend generates 6-digit OTP
+    4. OTP sent to user's email (expires in 15 minutes)
+    5. User receives email with OTP
+    6. User enters OTP + new password on reset page
+    
+    **Security:**
+    - Returns generic success message even if email doesn't exist (prevents email enumeration)
+    - OTP expires in 15 minutes
+    - Old unused OTPs are invalidated when new one is requested
+    - OTP can only be used once
+    
+    **Usage:**
+    ```
+    POST /api/v1/auth/forgot-password
+    {
+        "email": "doctor@example.com",
+        "role": "DOCTOR"
+    }
+    ```
+    
+    **Response:**
+    ```
+    {
+        "message": "If an account exists with this email, you will receive a password reset OTP",
+        "expires_in": 900
+    }
+    ```
+    
+    **Note:** Same response is returned whether email exists or not (security best practice).
+    """
+    from app.api.v1.auth.service import request_password_reset
+    
+    return await request_password_reset(
+        email=request.email,
+        role=request.role
+    )
+
+
+@router.post("/forgot-password/verify", response_model=MessageResponse, summary="Reset Password with OTP")
+async def reset_password_with_otp_endpoint(
+    request_data: ResetPasswordWithOTPRequest,
+    request: Request
+):
+    """
+    Reset password using OTP received via email.
+    
+    **Use Case:** User received OTP via email and wants to set new password.
+    
+    **Flow:**
+    1. User receives OTP via email (from /forgot-password endpoint)
+    2. User enters OTP + new password + confirm password
+    3. Backend verifies OTP (not expired, not used, matches email+role)
+    4. Backend updates password
+    5. Backend sends confirmation email
+    6. User can login with new password
+    
+    **Usage:**
+    ```
+    POST /api/v1/auth/forgot-password/verify
+    {
+        "email": "doctor@example.com",
+        "role": "DOCTOR",
+        "otp": "123456",
+        "new_password": "MyNewSecurePass123!",
+        "confirm_password": "MyNewSecurePass123!"
+    }
+    ```
+    
+    **Response (Success):**
+    ```
+    {
+        "message": "Password reset successfully. You can now login with your new password."
+    }
+    ```
+    
+    **Response (Invalid/Expired OTP):**
+    ```
+    {
+        "detail": "Invalid or expired OTP"
+    }
+    ```
+    
+    **Password Requirements:**
+    - Minimum 8 characters
+    - Maximum 72 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+    
+    **Frontend Integration:**
+    ```javascript
+    // Step 1: Request OTP
+    await api.post('/auth/forgot-password', {
+        email: 'doctor@example.com',
+        role: 'DOCTOR'
+    });
+    
+    // Show message: "OTP sent to your email"
+    
+    // Step 2: User enters OTP and new password
+    await api.post('/auth/forgot-password/verify', {
+        email: 'doctor@example.com',
+        role: 'DOCTOR',
+        otp: '123456',
+        new_password: 'MyNewSecurePass123!',
+        confirm_password: 'MyNewSecurePass123!'
+    });
+    
+    // Show message: "Password reset successfully"
+    // Redirect to login page
+    router.push('/login');
+    ```
+    """
+    from app.api.v1.auth.service import reset_password_with_otp
+    
+    return await reset_password_with_otp(
+        email=request_data.email,
+        role=request_data.role,
+        otp=request_data.otp,
+        new_password=request_data.new_password,
+        request=request
+    )

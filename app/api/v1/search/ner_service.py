@@ -1,14 +1,65 @@
 """
 NER (Named Entity Recognition) Service
 Integrates with external NER API to extract medical entities from user queries.
+Includes post-processing filters to clean up model errors.
 """
 
 import httpx
 from typing import Dict, List, Any, Optional
 from app.config import settings
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+# Blacklist of common non-medical words that model incorrectly labels
+NOISE_WORDS = {
+    # Question words
+    "what", "when", "where", "why", "how", "who", "which",
+    # Common verbs
+    "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "can", "could", "should", "would", "will",
+    # Pronouns
+    "i", "you", "he", "she", "it", "we", "they", "this", "that", "these", "those",
+    # Prepositions
+    "in", "on", "at", "to", "for", "with", "from", "about", "by",
+    # Conjunctions
+    "and", "or", "but", "so", "yet",
+    # Articles
+    "a", "an", "the",
+    # Common phrases
+    "there", "even", "just", "only", "also", "very", "much", "many",
+    # Question fragments
+    "causing", "related", "worried", "noticed", "sudden",
+    # Punctuation
+    ",", ".", "?", "!", ";", ":", "-"
+}
+
+# Known symptoms (whitelist for validation)
+KNOWN_SYMPTOMS = {
+    "fever", "headache", "cough", "pain", "nausea", "vomiting", "diarrhea",
+    "fatigue", "weakness", "dizziness", "chills", "sweating", "itching",
+    "rash", "swelling", "bleeding", "bruising", "numbness", "tingling",
+    "shortness of breath", "chest pain", "abdominal pain", "back pain",
+    "joint pain", "muscle pain", "sore throat", "runny nose", "sneezing",
+    "watery eyes", "blurred vision", "ear pain", "toothache", "heartburn",
+    "constipation", "bloating", "cramps", "frequent urination", "thirst",
+    "dry mouth", "loss of appetite", "weight loss", "weight gain",
+    "insomnia", "anxiety", "depression", "confusion", "memory loss"
+}
+
+# Known diseases/indications (whitelist for validation)
+KNOWN_INDICATIONS = {
+    "diabetes", "hypertension", "asthma", "copd", "arthritis", "migraine",
+    "epilepsy", "parkinson", "alzheimer", "cancer", "tuberculosis",
+    "pneumonia", "bronchitis", "sinusitis", "gastritis", "ulcer",
+    "gerd", "ibs", "crohn", "colitis", "hepatitis", "cirrhosis",
+    "kidney disease", "heart disease", "stroke", "angina", "arrhythmia",
+    "anemia", "leukemia", "lymphoma", "thyroid disorder", "hypothyroidism",
+    "hyperthyroidism", "osteoporosis", "gout", "psoriasis", "eczema",
+    "acne", "rosacea", "dermatitis", "allergy", "hay fever"
+}
 
 
 class NERService:
@@ -72,11 +123,100 @@ class NERService:
             logger.error(f"Unexpected error in NER service: {str(e)}")
             raise Exception("NER service error. Please try again.")
     
+    def _is_valid_entity(self, text: str, label: str) -> bool:
+        """
+        Validate if extracted entity is actually medical.
+        Filters out noise words and invalid entities.
+        
+        Args:
+            text: Entity text
+            label: Entity label (SYMPTOM, INDICATION, etc.)
+            
+        Returns:
+            bool: True if valid medical entity
+        """
+        text_lower = text.lower().strip()
+        
+        # Filter 1: Remove noise words
+        if text_lower in NOISE_WORDS:
+            return False
+        
+        # Filter 2: Remove single characters (except valid ones)
+        if len(text_lower) == 1 and text_lower not in ["a", "b", "c"]:  # vitamin names
+            return False
+        
+        # Filter 3: Remove pure punctuation
+        if re.match(r'^[^\w\s]+$', text_lower):
+            return False
+        
+        # Filter 4: Remove question fragments
+        question_patterns = [
+            r'\bcausing\b', r'\brelated\b', r'\bworried\b', r'\bnoticed\b',
+            r'\bcould this\b', r'\bwhat could\b', r'\bshould i\b'
+        ]
+        for pattern in question_patterns:
+            if re.search(pattern, text_lower):
+                return False
+        
+        # Filter 5: Validate against known medical terms
+        if label == "SYMPTOM":
+            # Check if it's a known symptom or contains symptom keywords
+            if text_lower in KNOWN_SYMPTOMS:
+                return True
+            # Allow compound symptoms (e.g., "severe headache")
+            for known in KNOWN_SYMPTOMS:
+                if known in text_lower or text_lower in known:
+                    return True
+            # Reject if it's clearly not a symptom
+            if len(text_lower.split()) > 5:  # Too long to be a symptom
+                return False
+        
+        elif label == "INDICATION":
+            # Check if it's a known disease
+            if text_lower in KNOWN_INDICATIONS:
+                return True
+            # Allow compound diseases (e.g., "type 2 diabetes")
+            for known in KNOWN_INDICATIONS:
+                if known in text_lower or text_lower in known:
+                    return True
+            # Reject if it's clearly not a disease
+            if len(text_lower.split()) > 6:  # Too long to be a disease name
+                return False
+        
+        # Filter 6: Minimum length check
+        if len(text_lower) < 3:  # Too short to be meaningful
+            return False
+        
+        # If we reach here, it's probably valid (or we're not sure, so keep it)
+        return True
+    
+    def _clean_entity_text(self, text: str) -> str:
+        """
+        Clean entity text by removing extra words and normalizing.
+        
+        Args:
+            text: Raw entity text
+            
+        Returns:
+            str: Cleaned entity text
+        """
+        # Remove leading/trailing articles
+        text = re.sub(r'^\s*(a|an|the)\s+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'\s+(a|an|the)\s*$', '', text, flags=re.IGNORECASE)
+        
+        # Remove question marks and exclamation points
+        text = text.replace('?', '').replace('!', '')
+        
+        # Remove extra whitespace
+        text = ' '.join(text.split())
+        
+        return text.strip()
+    
     def _group_entities(self, entities: List[Dict]) -> Dict[str, List[str]]:
         """
-        Group entities by their label type.
+        Group entities by their label type with filtering and validation.
         Uses canonical_term for database searching.
-        Filters out negated entities.
+        Filters out negated entities and noise.
         
         Args:
             entities: List of entity dictionaries from NER API
@@ -107,6 +247,14 @@ class NERService:
             term = entity.get("canonical_term") or entity.get("text")
             
             if not term:
+                continue
+            
+            # Clean the entity text
+            term = self._clean_entity_text(term)
+            
+            # Validate entity before adding
+            if not self._is_valid_entity(term, label):
+                logger.debug(f"Filtered out invalid entity: '{term}' (label: {label})")
                 continue
             
             # Normalize term to lowercase for consistent DB matching

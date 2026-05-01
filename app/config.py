@@ -34,6 +34,17 @@ class Settings(BaseSettings):
     NER_API_URL: str = "https://ner-medrep.onrender.com/predict"  # NER API endpoint
     NER_API_TIMEOUT: int = 30  # Timeout in seconds (Render can be slow on cold start)
     
+    # Email Configuration (Gmail SMTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None  # Gmail address (optional until configured)
+    SMTP_PASSWORD: Optional[str] = None  # Gmail App Password (optional until configured)
+    SMTP_FROM_EMAIL: Optional[str] = None  # Email address shown as sender (optional)
+    SMTP_FROM_NAME: str = "MedRep Platform"
+    
+    # Frontend Configuration
+    FRONTEND_URL: str = "http://localhost:3000"  # Frontend URL for login links
+    
     class Config:
         """
         Pydantic configuration.

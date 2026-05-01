@@ -41,6 +41,7 @@ class TokenResponse(BaseModel):
     token_type: str = Field(default="bearer", description="Token type (always 'bearer')")
     expires_in: int = Field(..., description="Token expiration time in seconds")
     user: dict = Field(..., description="User information")
+    must_change_password: bool = Field(default=False, description="Whether user must change password before accessing app")
     
     class Config:
         json_schema_extra = {
@@ -109,5 +110,145 @@ class MessageResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "message": "Operation successful"
+            }
+        }
+
+
+
+class ChangePasswordFirstLoginRequest(BaseModel):
+    """
+    Schema for resetting/changing password.
+    User can change password anytime - on first login or later.
+    """
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8-72 characters)")
+    confirm_password: str = Field(..., description="Confirm new password")
+    
+    @field_validator('new_password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        from app.core.validators import PasswordValidator
+        return PasswordValidator.validate(v)
+    
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v: str, info) -> str:
+        if 'new_password' in info.data and v != info.data['new_password']:
+            raise ValueError('Passwords do not match')
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "current_password": "Abc123!@#xyz",
+                "new_password": "MyNewSecurePass123!",
+                "confirm_password": "MyNewSecurePass123!"
+            }
+        }
+
+
+class ChangePasswordResponse(BaseModel):
+    """
+    Schema for password change response.
+    Returns new token after successful password change.
+    """
+    message: str = Field(..., description="Success message")
+    access_token: str = Field(..., description="New JWT access token")
+    token_type: str = Field(default="bearer", description="Token type")
+    expires_in: int = Field(..., description="Token expiration time in seconds")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Password changed successfully",
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer",
+                "expires_in": 3600
+            }
+        }
+
+
+
+class ForgotPasswordRequest(BaseModel):
+    """
+    Schema for forgot password request.
+    User provides email and role to receive OTP.
+    """
+    email: EmailStr = Field(..., description="User's email address")
+    role: UserRole = Field(..., description="User role: ADMIN, DOCTOR, or MR")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return EmailValidator.normalize(v)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "doctor@example.com",
+                "role": "DOCTOR"
+            }
+        }
+
+
+class ForgotPasswordResponse(BaseModel):
+    """
+    Schema for forgot password response.
+    """
+    message: str = Field(..., description="Success message")
+    expires_in: int = Field(..., description="OTP expiration time in seconds")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "If an account exists with this email, you will receive a password reset OTP",
+                "expires_in": 900
+            }
+        }
+
+
+class ResetPasswordWithOTPRequest(BaseModel):
+    """
+    Schema for resetting password with OTP.
+    """
+    email: EmailStr = Field(..., description="User's email address")
+    role: UserRole = Field(..., description="User role: ADMIN, DOCTOR, or MR")
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+    new_password: str = Field(..., min_length=8, max_length=72, description="New password (8-72 characters)")
+    confirm_password: str = Field(..., description="Confirm new password")
+    
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return EmailValidator.normalize(v)
+    
+    @field_validator('otp')
+    @classmethod
+    def validate_otp(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError('OTP must contain only digits')
+        return v
+    
+    @field_validator('new_password')
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        from app.core.validators import PasswordValidator
+        return PasswordValidator.validate(v)
+    
+    @field_validator('confirm_password')
+    @classmethod
+    def passwords_match(cls, v: str, info) -> str:
+        if 'new_password' in info.data and v != info.data['new_password']:
+            raise ValueError('Passwords do not match')
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "doctor@example.com",
+                "role": "DOCTOR",
+                "otp": "123456",
+                "new_password": "MyNewSecurePass123!",
+                "confirm_password": "MyNewSecurePass123!"
             }
         }

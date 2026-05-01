@@ -349,4 +349,28 @@ async def initialize_collections():
     except Exception as e:
         print(f"⚠️ Company collection creation note: {e}")
     
+    # Create password_reset_tokens collection if it doesn't exist
+    try:
+        if "password_reset_tokens" not in existing_collections:
+            await database.create_collection("password_reset_tokens")
+            print("✅ Created password_reset_tokens collection")
+        
+        # Index 1: Compound index on (email, role, is_used) - Fast OTP lookup
+        await database["password_reset_tokens"].create_index(
+            [("email", 1), ("role", 1), ("is_used", 1)],
+            name="reset_token_lookup_idx"
+        )
+        print("✅ Created compound index on password_reset_tokens.(email, role, is_used)")
+        
+        # Index 2: TTL index on expires_at - Auto-delete expired tokens after 24 hours
+        await database["password_reset_tokens"].create_index(
+            "expires_at",
+            name="reset_token_expires_idx",
+            expireAfterSeconds=86400  # 24 hours
+        )
+        print("✅ Created TTL index on password_reset_tokens.expires_at (auto-delete after 24 hours)")
+        
+    except Exception as e:
+        print(f"⚠️ Password reset tokens index creation note: {e}")
+    
     print("✅ Collections and indexes initialized")
