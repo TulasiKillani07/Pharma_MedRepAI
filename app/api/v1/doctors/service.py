@@ -96,6 +96,8 @@ async def create_doctor(
         "is_active": True,
         "is_password_changed": False,  # User must change password on first login
         "password_changed_at": None,
+        "first_login_completed": False,  # Track first login
+        "first_login_at": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
@@ -629,6 +631,8 @@ async def bulk_upload_doctors(
                 "is_active": True,
                 "is_password_changed": False,  # User must change password on first login
                 "password_changed_at": None,
+                "first_login_completed": False,  # Track first login
+                "first_login_at": None,
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }

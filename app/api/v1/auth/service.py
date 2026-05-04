@@ -73,10 +73,27 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
             detail="User account is inactive",
         )
     
-    # Check if user needs to change password (only for doctors and MRs, not admin)
+    # Check if this is first login (BEFORE updating the field)
+    is_first_login = not user.get("first_login_completed", False)
+    
+    # Decide whether to show password change prompt
+    # Show prompt only on FIRST login (not on subsequent logins)
     must_change_password = False
     if role in [UserRole.DOCTOR, UserRole.MR]:
-        must_change_password = not user.get("is_password_changed", False)
+        if is_first_login:
+            must_change_password = True
+    
+    # Update first_login_completed flag (AFTER checking)
+    if is_first_login and role in [UserRole.DOCTOR, UserRole.MR]:
+        await collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "first_login_completed": True,
+                    "first_login_at": datetime.utcnow()
+                }
+            }
+        )
     
     # Create JWT token
     token_data = {

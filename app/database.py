@@ -373,4 +373,42 @@ async def initialize_collections():
     except Exception as e:
         print(f"⚠️ Password reset tokens index creation note: {e}")
     
+    # Create cme_registrations collection if it doesn't exist
+    try:
+        if "cme_registrations" not in existing_collections:
+            await database.create_collection("cme_registrations")
+            print("✅ Created cme_registrations collection")
+        
+        # Index 1: Compound unique index on (cme_id, doctor_id) - Prevent duplicate registrations
+        await database["cme_registrations"].create_index(
+            [("cme_id", 1), ("doctor_id", 1)],
+            unique=True,
+            name="registration_unique_idx"
+        )
+        print("✅ Created compound unique index on cme_registrations.(cme_id, doctor_id)")
+        
+        # Index 2: Index on cme_id - Fast retrieval of all registrations for an event
+        await database["cme_registrations"].create_index(
+            "cme_id",
+            name="registration_cme_idx"
+        )
+        print("✅ Created index on cme_registrations.cme_id")
+        
+        # Index 3: Index on doctor_id - Fast retrieval of doctor's registrations
+        await database["cme_registrations"].create_index(
+            "doctor_id",
+            name="registration_doctor_idx"
+        )
+        print("✅ Created index on cme_registrations.doctor_id")
+        
+        # Index 4: Compound index on (cme_id, registration_status) - Fast filtering
+        await database["cme_registrations"].create_index(
+            [("cme_id", 1), ("registration_status", 1)],
+            name="registration_cme_status_idx"
+        )
+        print("✅ Created compound index on cme_registrations.(cme_id, registration_status)")
+        
+    except Exception as e:
+        print(f"⚠️ CME registrations index creation note: {e}")
+    
     print("✅ Collections and indexes initialized")

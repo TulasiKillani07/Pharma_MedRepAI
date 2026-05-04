@@ -4,11 +4,14 @@ CME Event Management Endpoints
 
 from fastapi import APIRouter, Depends, Query, status
 from typing import Optional, Dict, Any
-from app.core.auth import require_admin, get_current_user
+from app.core.auth import require_admin, get_current_user, require_doctor
 from app.api.v1.cme.schemas import (
-    CMEEventCreate, CMEEventUpdate, CMEEventResponse, CMEEventListResponse
+    CMEEventCreate, CMEEventUpdate, CMEEventResponse, CMEEventListResponse,
+    CMERegistrationCreate, CMERegistrationResponse,
+    CMERegistrationListResponse, CMEStatisticsResponse
 )
 from app.api.v1.cme import service
+from app.api.v1.cme import registration_service
 
 
 router = APIRouter()
@@ -390,6 +393,56 @@ async def get_cme_events_endpoint(
     return await service.get_all_cme_events(status, event_type, skip, limit)
 
 
+@router.get("/my-registrations", response_model=CMERegistrationListResponse)
+async def get_my_registrations_endpoint(
+    current_user: Dict = Depends(require_doctor),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """
+    Get all registrations for the logged-in doctor.
+    
+    **Access:** Doctors only
+    
+    **Purpose:**
+    Doctor views all their CME event registrations (past and upcoming).
+    
+    **Usage:**
+    ```
+    GET /api/v1/cme/my-registrations?skip=0&limit=10
+    Headers: Authorization: Bearer <doctor_token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "registrations": [
+            {
+                "_id": "reg123",
+                "cme_id": "event123abc",
+                "cme_title": "Hypertension Management Webinar",
+                "cme_date": "2024-05-15T00:00:00",
+                "cme_time": "10:00 AM - 12:00 PM",
+                "cme_event_type": "Webinar",
+                "cme_event_mode": "online",
+                "cme_status": "upcoming",
+                "doctor_id": "doc123",
+                "doctor_name": "Dr. John Smith",
+                "registration_status": "registered",
+                "registered_at": "2024-04-27T10:00:00"
+            }
+        ],
+        "total": 1
+    }
+    ```
+    
+    **Filters:**
+    - skip: Pagination offset
+    - limit: Results per page
+    """
+    return await registration_service.get_my_registrations(skip, limit, current_user)
+
+
 @router.get("/{event_id}", response_model=CMEEventResponse)
 async def get_cme_event_endpoint(
     event_id: str,
@@ -475,3 +528,196 @@ async def get_cme_event_endpoint(
         raise HTTPException(status_code=403, detail="Only doctors and admin can view CME events")
     
     return await service.get_cme_event_by_id(event_id)
+
+
+# ============ REGISTRATION ENDPOINTS ============
+
+@router.post("/{event_id}/register", response_model=CMERegistrationResponse, status_code=status.HTTP_201_CREATED)
+async def register_for_cme_endpoint(
+    event_id: str,
+    current_user: Dict = Depends(require_doctor)
+):
+    """
+    Register for a CME event.
+    
+    **Access:** Doctors only
+    
+    **Purpose:**
+    Doctor registers for an upcoming CME event to attend and earn credits.
+    
+    **Validations:**
+    - Event must exist and be "upcoming"
+    - Doctor cannot register twice for same event
+    - Event must have available capacity (if max_attendees is set)
+    - Cannot register for cancelled events
+    
+    **Usage:**
+    ```
+    POST /api/v1/cme/event123abc/register
+    Headers: Authorization: Bearer <doctor_token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "_id": "reg123",
+        "cme_id": "event123abc",
+        "cme_title": "Hypertension Management Webinar",
+        "cme_date": "2024-05-15T00:00:00",
+        "cme_time": "10:00 AM - 12:00 PM",
+        "cme_event_type": "Webinar",
+        "cme_event_mode": "online",
+        "cme_status": "upcoming",
+        "doctor_id": "doc123",
+        "doctor_name": "Dr. John Smith",
+        "registration_status": "registered",
+        "registered_at": "2024-04-27T10:00:00",
+        "cancelled_at": null,
+        "cancel_reason": null
+    }
+    ```
+    
+    **Notifications:**
+    - Doctor receives confirmation notification
+    """
+    return await registration_service.register_for_cme(event_id, current_user)
+
+
+@router.get("/{event_id}/registration-status", response_model=Optional[CMERegistrationResponse])
+async def get_registration_status_endpoint(
+    event_id: str,
+    current_user: Dict = Depends(require_doctor)
+):
+    """
+    Check if doctor is registered for a specific event.
+    
+    **Access:** Doctors only
+    
+    **Purpose:**
+    Check registration status for a specific CME event.
+    
+    **Usage:**
+    ```
+    GET /api/v1/cme/event123abc/registration-status
+    Headers: Authorization: Bearer <doctor_token>
+    ```
+    
+    **Response (if registered):**
+    ```json
+    {
+        "_id": "reg123",
+        "cme_id": "event123abc",
+        "cme_title": "Hypertension Management Webinar",
+        "cme_date": "2024-05-15T00:00:00",
+        "cme_time": "10:00 AM - 12:00 PM",
+        "cme_event_type": "Webinar",
+        "cme_event_mode": "online",
+        "cme_status": "upcoming",
+        "doctor_id": "doc123",
+        "doctor_name": "Dr. John Smith",
+        "registration_status": "registered",
+        "registered_at": "2024-04-27T10:00:00",
+        "cancelled_at": null,
+        "cancel_reason": null
+    }
+    ```
+    
+    **Response (if not registered):**
+    ```json
+    null
+    ```
+    """
+    return await registration_service.get_registration_status(event_id, current_user)
+
+
+@router.get("/{event_id}/registrations", response_model=CMERegistrationListResponse)
+async def get_event_registrations_endpoint(
+    event_id: str,
+    current_user: Dict = Depends(require_admin),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """
+    Get all registrations for a specific CME event.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Admin views all doctors registered for a specific CME event.
+    
+    **Usage:**
+    ```
+    GET /api/v1/cme/event123abc/registrations?skip=0&limit=10
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "registrations": [
+            {
+                "_id": "reg123",
+                "cme_id": "event123abc",
+                "cme_title": "Hypertension Management Webinar",
+                "cme_date": "2024-05-15T00:00:00",
+                "cme_time": "10:00 AM - 12:00 PM",
+                "cme_event_type": "Webinar",
+                "cme_event_mode": "online",
+                "cme_status": "upcoming",
+                "doctor_id": "doc123",
+                "doctor_name": "Dr. John Smith",
+                "registration_status": "registered",
+                "registered_at": "2024-04-27T10:00:00"
+            }
+        ],
+        "total": 1
+    }
+    ```
+    
+    **Filters:**
+    - skip: Pagination offset
+    - limit: Results per page
+    """
+    return await registration_service.get_event_registrations(event_id, skip, limit)
+
+
+@router.get("/{event_id}/statistics", response_model=CMEStatisticsResponse)
+async def get_event_statistics_endpoint(
+    event_id: str,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Get registration statistics for a CME event.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Admin views registration statistics for a specific CME event.
+    
+    **Usage:**
+    ```
+    GET /api/v1/cme/event123abc/statistics
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "total_registrations": 45,
+        "active_registrations": 40,
+        "cancelled_registrations": 5,
+        "capacity": 50,
+        "available_spots": 10,
+        "registration_rate": "80.0%"
+    }
+    ```
+    
+    **Fields:**
+    - total_registrations: Total registrations (including cancelled)
+    - active_registrations: Currently registered doctors
+    - cancelled_registrations: Cancelled registrations
+    - capacity: Maximum attendees (null if unlimited)
+    - available_spots: Remaining capacity (null if unlimited)
+    - registration_rate: Percentage filled (null if unlimited)
+    """
+    return await registration_service.get_event_statistics(event_id)

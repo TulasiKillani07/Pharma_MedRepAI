@@ -285,6 +285,37 @@ async def notify_cme_recording(cme_id: str, cme_title: str, recording_url: str, 
         )
 
 
+async def notify_cme_registration_confirmed(doctor_id: str, cme_id: str, cme_title: str, event_date: str, event_time: str):
+    """Notify doctor when registration is confirmed"""
+    await create_notification(
+        user_id=doctor_id,
+        notification_type=NotificationType.CME_REGISTRATION_CONFIRMED,
+        title="Registration Confirmed",
+        message=f"You're registered for {cme_title} on {event_date}",
+        data={
+            "cme_id": cme_id,
+            "cme_title": cme_title,
+            "event_date": event_date,
+            "event_time": event_time
+        }
+    )
+
+
+async def notify_cme_registration_cancelled_user(doctor_id: str, cme_id: str, cme_title: str, event_date: str):
+    """Notify doctor when they cancel their registration"""
+    await create_notification(
+        user_id=doctor_id,
+        notification_type=NotificationType.CME_REGISTRATION_CANCELLED,
+        title="Registration Cancelled",
+        message=f"Your registration for {cme_title} on {event_date} has been cancelled",
+        data={
+            "cme_id": cme_id,
+            "cme_title": cme_title,
+            "event_date": event_date
+        }
+    )
+
+
 # ============================================================================
 # DRUG NOTIFICATIONS
 # ============================================================================

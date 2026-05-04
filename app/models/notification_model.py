@@ -27,6 +27,8 @@ class NotificationType(str, Enum):
     CME_REMINDER_1DAY = "cme_reminder_1day"
     CME_REMINDER_1HOUR = "cme_reminder_1hour"
     CME_RECORDING = "cme_recording"
+    CME_REGISTRATION_CONFIRMED = "cme_registration_confirmed"
+    CME_REGISTRATION_CANCELLED = "cme_registration_cancelled"
     
     # Drug notifications
     DRUG_ADDED = "drug_added"

@@ -113,6 +113,10 @@ class NERService:
         
         except httpx.HTTPStatusError as e:
             logger.error(f"NER API HTTP error: {e.response.status_code} - {e.response.text}")
+            # Check if it's a spaCy sentence boundary error
+            if "Sentence boundaries unset" in str(e.response.text):
+                logger.error("NER API has spaCy configuration issue - sentence boundaries not set")
+                raise Exception("NER service configuration error. Please contact administrator.")
             raise Exception(f"NER service error: {e.response.status_code}")
         
         except httpx.RequestError as e:

@@ -620,3 +620,207 @@ async def send_password_reset_confirmation_email(
     """
     
     return await send_email(to_email, subject, html_content, text_content)
+
+
+
+async def send_cme_registration_confirmation_email(
+    to_email: str,
+    doctor_name: str,
+    event_title: str,
+    event_date: str,
+    event_time: str,
+    event_type: str,
+    event_mode: str,
+    speaker: str,
+    meeting_link: str = None,
+    platform: str = None,
+    venue_name: str = None,
+    address: str = None,
+    registration_passcode: str = None
+) -> bool:
+    """
+    Send CME registration confirmation email.
+    
+    Args:
+        to_email: Doctor's email address
+        doctor_name: Doctor's name
+        event_title: CME event title
+        event_date: Event date (formatted string)
+        event_time: Event time (e.g., "10:00 AM - 12:00 PM")
+        event_type: Event type (Webinar, Conference, etc.)
+        event_mode: "online" or "offline"
+        speaker: Speaker name
+        meeting_link: Meeting URL (for online events)
+        platform: Platform name (for online events)
+        venue_name: Venue name (for offline events)
+        address: Venue address (for offline events)
+        registration_passcode: Passcode for offline event registration
+        
+    Returns:
+        bool: True if sent successfully
+    """
+    subject = f"Registration Confirmed: {event_title}"
+    
+    # Generate event mode specific content
+    if event_mode == "online":
+        event_details = f"""
+        <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #0369a1; margin-top: 0;">📍 Online Event Details</h3>
+            <p style="margin: 8px 0;"><strong>Platform:</strong> {platform or 'Online'}</p>
+            <p style="margin: 8px 0;"><strong>Meeting Link:</strong><br>
+            <a href="{meeting_link}" style="color: #0369a1; word-break: break-all; font-size: 14px;">{meeting_link}</a></p>
+            <div style="background: #bae6fd; padding: 15px; border-radius: 6px; margin-top: 15px;">
+                <p style="color: #075985; font-size: 14px; margin: 0;">
+                    💡 <strong>Note:</strong> The "Join Meeting" button will appear 2 minutes before the event starts in your dashboard.
+                </p>
+            </div>
+        </div>
+        """
+    else:  # offline
+        passcode_html = ""
+        if registration_passcode:
+            passcode_html = f"""
+            <div style="background: #fef3c7; padding: 15px; border-radius: 6px; margin-top: 15px; text-align: center;">
+                <p style="margin: 0 0 10px 0; color: #92400e;"><strong>📋 Registration Passcode:</strong></p>
+                <div style="background: #fbbf24; padding: 10px 20px; border-radius: 6px; display: inline-block;">
+                    <span style="font-size: 24px; font-weight: bold; color: #78350f; letter-spacing: 2px;">{registration_passcode}</span>
+                </div>
+                <p style="margin: 10px 0 0 0; font-size: 13px; color: #92400e;">Please show this passcode at the registration desk</p>
+            </div>
+            """
+        
+        event_details = f"""
+        <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #92400e; margin-top: 0;">📍 Venue Details</h3>
+            <p style="margin: 8px 0;"><strong>Venue:</strong> {venue_name}</p>
+            <p style="margin: 8px 0;"><strong>Address:</strong><br>{address}</p>
+            {passcode_html}
+            <div style="background: #fde68a; padding: 15px; border-radius: 6px; margin-top: 15px;">
+                <p style="color: #92400e; font-size: 14px; margin: 0;">
+                    💡 <strong>Note:</strong> Please arrive 15 minutes early for registration.
+                </p>
+            </div>
+        </div>
+        """
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                margin: 0;
+                padding: 0;
+            }}
+            .container {{
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f9f9f9;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                color: white;
+                padding: 30px 20px;
+                text-align: center;
+                border-radius: 10px 10px 0 0;
+            }}
+            .success-icon {{
+                font-size: 48px;
+                margin-bottom: 10px;
+            }}
+            .content {{
+                background-color: white;
+                padding: 30px;
+                border-radius: 0 0 10px 10px;
+            }}
+            .event-info {{
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 20px 0;
+                border-left: 4px solid #3b82f6;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            .event-info h2 {{
+                color: #1e40af;
+                margin-top: 0;
+                font-size: 22px;
+            }}
+            .event-info p {{
+                margin: 10px 0;
+                font-size: 15px;
+            }}
+            .footer {{
+                text-align: center;
+                margin-top: 20px;
+                color: #666;
+                font-size: 12px;
+                padding: 20px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="success-icon">🎉</div>
+                <h1 style="margin: 0; font-size: 28px;">Registration Confirmed!</h1>
+            </div>
+            <div class="content">
+                <p>Dear Dr. {doctor_name},</p>
+                <p>You have successfully registered for the following CME event:</p>
+                
+                <div class="event-info">
+                    <h2>{event_title}</h2>
+                    <p><strong>📅 Date:</strong> {event_date}</p>
+                    <p><strong>🕐 Time:</strong> {event_time}</p>
+                    <p><strong>📚 Type:</strong> {event_type}</p>
+                    <p><strong>🎤 Speaker:</strong> {speaker}</p>
+                    <p><strong>🌐 Mode:</strong> <span style="text-transform: uppercase; background: #dbeafe; padding: 3px 8px; border-radius: 4px; font-size: 13px;">{event_mode}</span></p>
+                </div>
+                
+                {event_details}
+                
+                <p style="margin-top: 30px; font-size: 15px;">We look forward to seeing you at the event!</p>
+                
+                <p style="margin-top: 20px;">Best regards,<br>
+                <strong>{settings.SMTP_FROM_NAME} Team</strong></p>
+            </div>
+            <div class="footer">
+                <p>This is an automated confirmation email. Please do not reply.</p>
+                <p>&copy; 2024 {settings.SMTP_FROM_NAME}. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    text_content = f"""
+    Registration Confirmed: {event_title}
+    
+    Dear Dr. {doctor_name},
+    
+    You have successfully registered for the following CME event:
+    
+    Event: {event_title}
+    Date: {event_date}
+    Time: {event_time}
+    Type: {event_type}
+    Speaker: {speaker}
+    Mode: {event_mode.upper()}
+    
+    {"Meeting Link: " + meeting_link if meeting_link else ""}
+    {"Venue: " + venue_name if venue_name else ""}
+    {"Address: " + address if address else ""}
+    {"Registration Passcode: " + registration_passcode if registration_passcode else ""}
+    
+    We look forward to seeing you at the event!
+    
+    Best regards,
+    {settings.SMTP_FROM_NAME} Team
+    """
+    
+    return await send_email(to_email, subject, html_content, text_content)

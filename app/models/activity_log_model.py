@@ -27,6 +27,8 @@ class ActivityLogAction(str, Enum):
     CME_CREATED = "cme_created"
     CME_UPDATED = "cme_updated"
     CME_DELETED = "cme_deleted"
+    CME_REGISTERED = "cme_registered"
+    CME_REGISTRATION_CANCELLED = "cme_registration_cancelled"
     
     # Drug Management
     DRUG_CREATED = "drug_created"

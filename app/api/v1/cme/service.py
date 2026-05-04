@@ -235,10 +235,9 @@ async def update_cme_event(event_id: str, event_data: CMEEventUpdate, current_us
         update_data["event_recording"] = event_data.event_recording
         updated_fields.append("event_recording")
         
-        # Send notification to all doctors about recording availability
-        doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
-        doctors_list = await doctors_cursor.to_list(None)
-        doctor_ids = [str(doc["_id"]) for doc in doctors_list]
+        # Send notification to registered doctors about recording availability
+        from app.api.v1.cme.registration_service import get_registered_doctor_ids
+        doctor_ids = await get_registered_doctor_ids(event_id)
         
         if doctor_ids:
             await notify_cme_recording(
@@ -259,9 +258,9 @@ async def update_cme_event(event_id: str, event_data: CMEEventUpdate, current_us
     
     # Send notification to all doctors if event was updated (excluding recording-only updates)
     if updated_fields and "event_recording" not in updated_fields:
-        doctors_cursor = db["doctors"].find({"is_active": True}, {"_id": 1})
-        doctors_list = await doctors_cursor.to_list(None)
-        doctor_ids = [str(doc["_id"]) for doc in doctors_list]
+        # Get registered doctor IDs instead of all doctors
+        from app.api.v1.cme.registration_service import get_registered_doctor_ids
+        doctor_ids = await get_registered_doctor_ids(event_id)
         
         if doctor_ids:
             # Get final event date for notification

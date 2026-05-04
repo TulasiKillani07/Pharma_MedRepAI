@@ -134,3 +134,52 @@ class CMEEventListResponse(BaseModel):
     """Schema for listing CME events"""
     events: List[CMEEventResponse]
     total: int
+
+
+# ============ CME REGISTRATION SCHEMAS ============
+
+class CMERegistrationCreate(BaseModel):
+    """Schema for registering for a CME event (no body needed)"""
+    pass  # doctor_id from token, event_id from URL
+
+
+class CMERegistrationResponse(BaseModel):
+    """Schema for registration response"""
+    id: str = Field(alias="_id")
+    cme_id: str
+    cme_title: str
+    cme_date: datetime
+    cme_time: str
+    cme_event_type: str
+    cme_event_mode: Optional[str]
+    cme_status: str
+    cme_meeting_link: Optional[str] = None  # For online events
+    cme_platform: Optional[str] = None  # For online events
+    cme_venue_name: Optional[str] = None  # For offline events
+    cme_address: Optional[str] = None  # For offline events
+    cme_speaker: Optional[str] = None
+    doctor_id: str
+    doctor_name: str
+    registration_status: str
+    registration_passcode: Optional[str] = None  # For offline events
+    registered_at: datetime
+    
+    class Config:
+        populate_by_name = True
+
+
+class CMERegistrationListResponse(BaseModel):
+    """Schema for listing registrations"""
+    registrations: List[CMERegistrationResponse]
+    total: int
+
+
+class CMEStatisticsResponse(BaseModel):
+    """Schema for CME event registration statistics"""
+    total_registrations: int = Field(..., description="Total number of registrations (including cancelled)")
+    active_registrations: int = Field(..., description="Number of active registrations")
+    cancelled_registrations: int = Field(..., description="Number of cancelled registrations")
+    capacity: Optional[int] = Field(None, description="Maximum attendees allowed")
+    available_spots: Optional[int] = Field(None, description="Remaining spots available")
+    registration_rate: Optional[str] = Field(None, description="Percentage of capacity filled")
+
