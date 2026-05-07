@@ -41,6 +41,7 @@ async def summarize_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10 MB.")
     
     try:
+        # Extract text from PDF
         text = extract_text_from_pdf(pdf_bytes)
         if not text:
             raise HTTPException(
@@ -48,6 +49,7 @@ async def summarize_pdf(file: UploadFile = File(...)):
                 detail="Could not extract text from PDF. The file may be scanned/image-based. Try uploading as an image instead."
             )
         
+        # Summarize using AI
         summary = summarize_text(text)
         return {
             "filename": file.filename,
@@ -57,7 +59,14 @@ async def summarize_pdf(file: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log the full error for debugging
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in summarize_pdf: {error_details}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing PDF: {str(e)}"
+        )
 
 
 @router.post("/summarize-images")

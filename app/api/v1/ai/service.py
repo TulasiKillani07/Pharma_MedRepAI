@@ -139,7 +139,7 @@ Respond in JSON format:
     
     chat_completion = client.chat.completions.create(
         messages=[{"role": "user", "content": content}],
-        model="llama-3.2-90b-vision-preview",
+        model="meta-llama/llama-4-scout-17b-16e-instruct",  # Vision model that works
         temperature=0.3,
         max_tokens=1500,
     )
