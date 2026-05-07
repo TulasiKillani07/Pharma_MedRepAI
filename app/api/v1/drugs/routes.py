@@ -2,8 +2,8 @@
 Drug and Drug Field Template Management Endpoints
 """
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
+from fastapi.responses import StreamingResponse, RedirectResponse
 from typing import Dict, Any
 from app.core.auth import require_admin, get_current_user
 from app.api.v1.drugs.schemas import (
@@ -280,9 +280,13 @@ async def get_drugs_endpoint(
     indication: str = Query(None, description="Filter by indication (partial match)")
 ):
     """
-    Get all active drugs with search and filters.
+    Get all drugs with search and filters.
     
     **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Behavior by Role:**
+    - **Doctors/MRs:** See only active drugs (is_active: true)
+    - **Admins:** See all drugs with is_active field (can filter in frontend)
     
     **Search Parameters:**
     - `search`: Full-text search across all fields (drug_name, brand_name, symptoms, indications, etc.)
@@ -293,12 +297,20 @@ async def get_drugs_endpoint(
     - `indication`: Filter drugs by indication
     
     **Examples:**
-    - `GET /api/v1/drugs?search=fever` — all drugs related to fever
+    - `GET /api/v1/drugs?search=fever` — drugs related to fever
     - `GET /api/v1/drugs?drug_name=para` — drugs with "para" in name
     - `GET /api/v1/drugs?symptom=headache` — drugs for headache
-    - `GET /api/v1/drugs?dosage_form=Tablet&manufacturer=GSK`
+    - `GET /api/v1/drugs?dosage_form=Tablet&manufacturer=GSK` — tablets by GSK
+    
+    **Response:**
+    - Doctors/MRs: Only active drugs
+    - Admins: All drugs with is_active field for frontend filtering
     """
-    return await service.get_all_drugs(
+    # Get user role
+    user_role = current_user.get("role", "")
+    
+    # Get all drugs
+    result = await service.get_all_drugs(
         skip=skip,
         limit=limit,
         search=search,
@@ -308,6 +320,13 @@ async def get_drugs_endpoint(
         symptom=symptom,
         indication=indication
     )
+    
+    # Filter by role: Doctors and MRs see only active drugs
+    if user_role not in ["ADMIN", "SUPER_ADMIN"]:
+        result["drugs"] = [drug for drug in result["drugs"] if drug.get("is_active", True)]
+        result["total"] = len(result["drugs"])
+    
+    return result
 
 
 @router.get("/{drug_id}", response_model=DrugResponse)
@@ -320,13 +339,12 @@ async def get_drug_endpoint(
     
     **Access:** All authenticated users (Admin, Doctor, MR)
     
+    **Behavior by Role:**
+    - **Doctors/MRs:** Can only view active drugs (404 if inactive)
+    - **Admins:** Can view any drug (active or inactive)
+    
     **Purpose:**
     View detailed information about a specific drug.
-    
-    **Flow:**
-    1. User requests specific drug by ID
-    2. Backend fetches drug details
-    3. Returns complete drug information with all fields
     
     **Usage:**
     ```
@@ -344,28 +362,102 @@ async def get_drug_endpoint(
             {"field_id": "f2", "key": "brand_name", "value": "crocin"},
             {"field_id": "f3", "key": "drug_class", "value": "Analgesic"},
             {"field_id": "f4", "key": "manufacturer", "value": "GSK"},
-            {"field_id": "f5", "key": "dosage_form", "value": "Tablet"},
-            {"field_id": "f6", "key": "price", "value": "50"}
+            {"field_id": "f5", "key": "dosage_form", "value": "Tablet"}
         ],
         "created_at": "2024-04-07T10:00:00",
         "updated_at": "2024-04-07T10:00:00",
-        "is_active": true
+        "is_active": true,
+        "has_brochure": true
     }
     ```
     
     **Use Cases:**
     - Doctor: Check drug information before prescribing
     - MR: Reference drug details during doctor visits
-    - Admin: View and manage drug information
+    - Admin: View and manage drug information (including inactive drugs)
     """
-    return await service.get_drug_by_id(drug_id)
+    # Get user role
+    user_role = current_user.get("role", "")
+    
+    # Get drug
+    drug = await service.get_drug_by_id(drug_id)
+    
+    # Check access: Doctors and MRs can only see active drugs
+    if user_role not in ["ADMIN", "SUPER_ADMIN"]:
+        if not drug.get("is_active", True):
+            raise HTTPException(status_code=404, detail="Drug not found")
+    
+    return drug
 
 
 @router.put("/{drug_id}", response_model=DrugResponse, dependencies=[Depends(require_admin)])
 async def update_drug_endpoint(drug_id: str, drug_data: DrugUpdate):
     """
-    Update a drug.
-    Admin only.
+    Update a drug - can update field values and is_active status.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Update drug information including field values and active status.
+    
+    **Request Body:**
+    ```json
+    {
+        "field_values": [
+            {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
+            {"field_id": "f2", "key": "brand_name", "value": "crocin"}
+        ],
+        "is_active": true
+    }
+    ```
+    
+    **Fields:**
+    - `field_values`: Array of field values to update (merges with existing)
+    - `is_active`: Optional boolean to activate/deactivate drug
+    
+    **Examples:**
+    
+    1. **Update drug information:**
+    ```json
+    {
+        "field_values": [
+            {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
+            {"field_id": "f2", "key": "brand_name", "value": "crocin updated"}
+        ]
+    }
+    ```
+    
+    2. **Deactivate drug:**
+    ```json
+    {
+        "field_values": [],
+        "is_active": false
+    }
+    ```
+    
+    3. **Reactivate drug:**
+    ```json
+    {
+        "field_values": [],
+        "is_active": true
+    }
+    ```
+    
+    4. **Update info and deactivate:**
+    ```json
+    {
+        "field_values": [
+            {"field_id": "f1", "key": "drug_name", "value": "updated name"}
+        ],
+        "is_active": false
+    }
+    ```
+    
+    **Note:** 
+    - Field values are merged (not replaced) - only provided fields are updated
+    - Can update inactive drugs (to reactivate them)
+    - Setting `is_active: false` soft-deletes the drug
+    - Setting `is_active: true` restores a deleted drug
     """
     return await service.update_drug(drug_id, drug_data)
 
@@ -420,3 +512,139 @@ async def delete_drug_endpoint(drug_id: str):
     - Drug no longer promoted by company
     """
     return await service.delete_drug(drug_id)
+
+
+# ============ DRUG BROCHURE ENDPOINTS ============
+
+@router.post("/{drug_id}/brochure")
+async def upload_drug_brochure_endpoint(
+    drug_id: str,
+    file: UploadFile = File(..., description="PDF brochure file (max 10MB)"),
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Upload PDF brochure for a drug.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Upload drug information brochure (PDF) to Cloudinary and link it to the drug.
+    
+    **Flow:**
+    1. Admin uploads PDF file
+    2. Backend validates file (PDF only, max 10MB)
+    3. Uploads to Cloudinary (organized by drug_id)
+    4. Saves brochure URL in drug document
+    5. Returns brochure URL
+    
+    **File Requirements:**
+    - Format: PDF only
+    - Max size: 10MB
+    - Overwrites existing brochure if present
+    
+    **Usage:**
+    ```
+    POST /api/v1/drugs/drug123/brochure
+    Headers: 
+      Authorization: Bearer <admin_token>
+      Content-Type: multipart/form-data
+    Body: 
+      file: paracetamol_brochure.pdf
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "drug_id": "drug123",
+        "drug_name": "Paracetamol",
+        "brochure_url": "https://res.cloudinary.com/dlfevdb7o/raw/upload/v1234/drugs/drug123/brochure.pdf",
+        "brochure_size_kb": 245.6,
+        "message": "Brochure uploaded successfully"
+    }
+    ```
+    
+    **Use Cases:**
+    - Upload product information leaflet
+    - Add prescribing information
+    - Provide detailed drug specifications
+    - Share marketing materials with MRs
+    
+    **Notes:**
+    - Uploading a new brochure replaces the old one
+    - Brochure URL is accessible to all authenticated users
+    - MRs can share brochure link with doctors
+    """
+    return await service.upload_drug_brochure(drug_id, file, current_user)
+
+
+@router.get("/{drug_id}/brochure/download")
+async def download_drug_brochure_endpoint(
+    drug_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Download drug brochure PDF file with proper headers.
+    
+    **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Purpose:**
+    Stream the drug brochure PDF with proper Content-Disposition headers to force download.
+    
+    **Flow:**
+    1. User requests brochure download
+    2. Backend fetches brochure from Cloudinary
+    3. Streams PDF with proper download headers
+    4. Browser downloads the PDF file with correct filename
+    
+    **Usage:**
+    ```
+    GET /api/v1/drugs/drug123/brochure/download
+    Headers: Authorization: Bearer <token>
+    ```
+    
+    **Response:**
+    Streams PDF file with Content-Disposition: attachment header
+    
+    **Use Cases:**
+    - Doctor downloads brochure to review drug information
+    - MR downloads brochure to share with doctors
+    - Admin downloads brochure to verify uploaded content
+    """
+    return await service.download_drug_brochure(drug_id)
+
+
+@router.delete("/{drug_id}/brochure", dependencies=[Depends(require_admin)])
+async def delete_drug_brochure_endpoint(drug_id: str):
+    """
+    Delete drug brochure.
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Remove brochure PDF from Cloudinary and drug document.
+    
+    **Flow:**
+    1. Admin requests brochure deletion
+    2. Backend deletes file from Cloudinary
+    3. Removes brochure URL from drug document
+    4. Returns success message
+    
+    **Usage:**
+    ```
+    DELETE /api/v1/drugs/drug123/brochure
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "message": "Brochure deleted successfully"
+    }
+    ```
+    
+    **Use Cases:**
+    - Remove outdated brochure
+    - Delete incorrect file
+    - Clear brochure before uploading new version
+    """
+    return await service.delete_drug_brochure(drug_id)

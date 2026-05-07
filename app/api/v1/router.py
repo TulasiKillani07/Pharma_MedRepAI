@@ -19,6 +19,7 @@ from app.api.v1.profile.routes import router as profile_router
 from app.api.v1.notifications.routes import router as notifications_router
 from app.api.v1.activity_logs.routes import router as activity_logs_router
 from app.api.v1.search.routes import router as search_router
+from app.api.v1.ai.routes import router as ai_router
 
 
 # Create main API router
@@ -67,3 +68,6 @@ api_router.include_router(activity_logs_router, prefix="/admin/activity-logs", t
 
 # Intelligent search routes
 api_router.include_router(search_router, prefix="/search", tags=["Intelligent Search"])
+
+# AI Report Analyzer routes
+api_router.include_router(ai_router, prefix="/ai", tags=["AI Report Analyzer"])

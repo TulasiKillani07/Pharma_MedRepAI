@@ -79,13 +79,14 @@ class DrugFieldValueInput(BaseModel):
 
 class DrugCreate(BaseModel):
     """Schema for creating a new drug"""
-    template_id: str
+    template_id: Optional[str] = None  # Optional - will use default template if not provided
     field_values: List[DrugFieldValueInput]
 
 
 class DrugUpdate(BaseModel):
     """Schema for updating a drug"""
     field_values: List[DrugFieldValueInput]
+    is_active: Optional[bool] = None  # Allow updating active status
 
 
 class DrugFieldValueResponse(BaseModel):
@@ -98,14 +99,15 @@ class DrugFieldValueResponse(BaseModel):
 class DrugResponse(BaseModel):
     """Schema for drug response"""
     id: str = Field(alias="_id")
-    template_id: str
-    field_values: List[DrugFieldValueResponse]
-    created_at: datetime
-    updated_at: datetime
-    is_active: bool
+    template_id: Optional[str] = None  # Optional for backward compatibility
+    field_values: Optional[List[DrugFieldValueResponse]] = None  # Optional for backward compatibility
+    created_at: Optional[datetime] = None  # Optional for backward compatibility
+    updated_at: Optional[datetime] = None
+    is_active: Optional[bool] = True
 
     class Config:
         populate_by_name = True
+        extra = "allow"  # Allow flat fields like drug_name, symptoms, etc.
 
 
 class DrugListResponse(BaseModel):

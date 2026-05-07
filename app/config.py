@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     # Frontend Configuration
     FRONTEND_URL: str = "http://localhost:3000"  # Frontend URL for login links
     
+    # Cloudinary Configuration (File Storage)
+    CLOUDINARY_CLOUD_NAME: str
+    CLOUDINARY_API_KEY: str
+    CLOUDINARY_API_SECRET: str
+    
+    # AI Configuration (Groq API)
+    GROQ_API_KEY: str  # Groq API key for AI report analysis
+    
     class Config:
         """
         Pydantic configuration.

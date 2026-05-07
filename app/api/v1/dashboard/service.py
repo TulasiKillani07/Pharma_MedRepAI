@@ -369,24 +369,26 @@ async def get_doctor_dashboard(doctor_id: str) -> Dict[str, Any]:
     
     recent_drugs_result = []
     for drug in recent_drugs_list:
-        # Extract drug_name, brand_name, and other fields from field_values
-        drug_name = ""
-        brand_name = ""
-        drug_class = None
-        manufacturer = None
-        dosage_form = None
+        # Try to get from flat fields first (new structure), then from field_values (old structure)
+        drug_name = drug.get("drug_name", "")
+        brand_name = drug.get("brand_name", "")
+        drug_class = drug.get("drug_class")
+        manufacturer = drug.get("manufacturer")
+        dosage_form = drug.get("dosage_form")
         
-        for field in drug.get("field_values", []):
-            if field["key"] == "drug_name":
-                drug_name = field["value"]
-            elif field["key"] == "brand_name":
-                brand_name = field["value"]
-            elif field["key"] == "drug_class":
-                drug_class = field["value"]
-            elif field["key"] == "manufacturer":
-                manufacturer = field["value"]
-            elif field["key"] == "dosage_form":
-                dosage_form = field["value"]
+        # If flat fields are empty, try to extract from field_values (backward compatibility)
+        if not drug_name and "field_values" in drug:
+            for field in drug.get("field_values", []):
+                if field["key"] == "drug_name":
+                    drug_name = field["value"]
+                elif field["key"] == "brand_name":
+                    brand_name = field["value"]
+                elif field["key"] == "drug_class":
+                    drug_class = field["value"]
+                elif field["key"] == "manufacturer":
+                    manufacturer = field["value"]
+                elif field["key"] == "dosage_form":
+                    dosage_form = field["value"]
         
         recent_drugs_result.append({
             "drug_id": str(drug["_id"]),

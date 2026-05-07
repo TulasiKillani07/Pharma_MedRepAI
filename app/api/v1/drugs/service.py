@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from bson import ObjectId
 import pandas as pd
 from io import BytesIO, StringIO
+import httpx
 from app.database import get_database
 from app.api.v1.drugs.schemas import (
     TemplateCreate, TemplateUpdate, FieldDefinitionCreate, FieldDefinitionUpdate,
@@ -92,7 +93,7 @@ def normalize_field_values(field_values: List[Any], template_fields: Dict[str, A
 
 
 def get_default_fixed_fields() -> List[Dict[str, Any]]:
-    """Returns the 12 default fixed fields for drug template"""
+    """Returns the 15 default fixed fields for drug template (12 drug fields + 3 brochure fields)"""
     return [
         {
             "field_id": str(uuid.uuid4()),
@@ -223,6 +224,40 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "required": False,
             "visible": True,
             "order": 12,
+            "options": None,
+            "is_active": True
+        },
+        # Brochure fields (optional, auto-filled by upload endpoint)
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "brochure_url",
+            "type": "text",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 13,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "brochure_public_id",
+            "type": "text",
+            "is_fixed": True,
+            "required": False,
+            "visible": False,  # Hidden - internal use only
+            "order": 14,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "brochure_uploaded_at",
+            "type": "text",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 15,
             "options": None,
             "is_active": True
         }
@@ -486,15 +521,20 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
     """Create a new drug"""
     db = get_database()
     
-    # Validate template exists
-    if not ObjectId.is_valid(drug_data.template_id):
-        raise HTTPException(status_code=400, detail="Invalid template ID")
-    
-    template = await db["drug_field_templates"].find_one(
-        {"_id": ObjectId(drug_data.template_id), "is_active": True}
-    )
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    # Auto-fetch template if not provided
+    if not drug_data.template_id:
+        template = await get_template()  # Gets or creates default template
+        template_id = template["_id"]
+    else:
+        # Validate provided template_id
+        if not ObjectId.is_valid(drug_data.template_id):
+            raise HTTPException(status_code=400, detail="Invalid template ID")
+        template_id = drug_data.template_id
+        template = await db["drug_field_templates"].find_one(
+            {"_id": ObjectId(template_id), "is_active": True}
+        )
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
     
     # Validate field_ids and keys match template
     template_fields = {f["field_id"]: f for f in template["fields"]}
@@ -522,7 +562,7 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
     flat_fields = build_flat_fields(normalized_field_values)
     
     drug_doc = {
-        "template_id": drug_data.template_id,
+        "template_id": template_id,
         "field_values": normalized_field_values,
         **flat_fields,
         "created_at": datetime.utcnow(),
@@ -587,18 +627,42 @@ async def get_all_drugs(
     symptom: Optional[str] = None,
     indication: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Get all active drugs with optional search filters using flat fields"""
+    """
+    Get all drugs with optional search filters using flat fields.
+    Returns all drugs with is_active field - frontend handles filtering.
+    
+    Args:
+        skip: Number of records to skip (pagination)
+        limit: Maximum number of records to return
+        search: Full-text search across all fields
+        drug_name: Filter by drug name (partial match)
+        manufacturer: Filter by manufacturer (partial match)
+        dosage_form: Filter by dosage form (exact match)
+        symptom: Filter by symptom (partial match)
+        indication: Filter by indication (partial match)
+    
+    Returns:
+        Dict with drugs list (including is_active field) and total count
+    """
     db = get_database()
     
+    # Backfill is_active field for drugs that don't have it (backward compatibility)
+    await db["drugs"].update_many(
+        {"is_active": {"$exists": False}},
+        {"$set": {"is_active": True, "updated_at": datetime.utcnow()}}
+    )
+    
     # Backfill any existing drugs that don't have flat fields yet
-    async for drug in db["drugs"].find({"is_active": True, "drug_name": {"$exists": False}}):
+    async for drug in db["drugs"].find({"drug_name": {"$exists": False}}):
         flat_fields = build_flat_fields(drug.get("field_values", []))
         await db["drugs"].update_one(
             {"_id": drug["_id"]},
             {"$set": {**flat_fields, "updated_at": datetime.utcnow()}}
         )
     
-    query: Dict[str, Any] = {"is_active": True}
+    query: Dict[str, Any] = {}
+    
+    # No is_active filter - return all drugs, frontend will filter
     
     # Full-text search across all fields
     if search:
@@ -622,6 +686,35 @@ async def get_all_drugs(
     
     for drug in drugs:
         drug["_id"] = str(drug["_id"])
+        
+        # Ensure is_active field is present
+        if "is_active" not in drug:
+            drug["is_active"] = True
+        
+        # Check if drug has brochure
+        has_brochure = False
+        if "brochure_url" in drug and drug["brochure_url"]:
+            has_brochure = True
+        elif "field_values" in drug:
+            for fv in drug["field_values"]:
+                if fv.get("key") == "brochure_url" and fv.get("value"):
+                    has_brochure = True
+                    break
+        
+        # Add has_brochure flag
+        drug["has_brochure"] = has_brochure
+        
+        # Remove brochure fields from response (security/privacy)
+        drug.pop("brochure_url", None)
+        drug.pop("brochure_public_id", None)
+        drug.pop("brochure_uploaded_at", None)
+        
+        # Remove brochure fields from field_values
+        if "field_values" in drug:
+            drug["field_values"] = [
+                fv for fv in drug["field_values"]
+                if fv.get("key") not in ["brochure_url", "brochure_public_id", "brochure_uploaded_at"]
+            ]
     
     total = await db["drugs"].count_documents(query)
     
@@ -629,42 +722,79 @@ async def get_all_drugs(
 
 
 async def get_drug_by_id(drug_id: str) -> Dict[str, Any]:
-    """Get drug by ID"""
+    """Get drug by ID - returns drug with is_active field, excludes brochure URLs for security"""
     db = get_database()
     
     if not ObjectId.is_valid(drug_id):
         raise HTTPException(status_code=400, detail="Invalid drug ID")
     
-    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id), "is_active": True})
+    # Don't filter by is_active - return drug regardless of status
+    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id)})
     
     if not drug:
         raise HTTPException(status_code=404, detail="Drug not found")
     
     drug["_id"] = str(drug["_id"])
+    
+    # Ensure is_active field is present
+    if "is_active" not in drug:
+        drug["is_active"] = True
+    
+    # Check if drug has brochure
+    has_brochure = False
+    if "brochure_url" in drug and drug["brochure_url"]:
+        has_brochure = True
+    elif "field_values" in drug:
+        for fv in drug["field_values"]:
+            if fv.get("key") == "brochure_url" and fv.get("value"):
+                has_brochure = True
+                break
+    
+    # Add has_brochure flag
+    drug["has_brochure"] = has_brochure
+    
+    # Remove brochure fields from response (security/privacy)
+    drug.pop("brochure_url", None)
+    drug.pop("brochure_public_id", None)
+    drug.pop("brochure_uploaded_at", None)
+    
+    # Remove brochure fields from field_values
+    if "field_values" in drug:
+        drug["field_values"] = [
+            fv for fv in drug["field_values"]
+            if fv.get("key") not in ["brochure_url", "brochure_public_id", "brochure_uploaded_at"]
+        ]
+    
     return drug
 
 
 async def update_drug(drug_id: str, drug_data: DrugUpdate) -> Dict[str, Any]:
-    """Update a drug"""
+    """Update a drug - merges field_values instead of replacing them. Can update is_active status."""
     db = get_database()
     
     if not ObjectId.is_valid(drug_id):
         raise HTTPException(status_code=400, detail="Invalid drug ID")
     
-    # Get existing drug
-    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id), "is_active": True})
+    # Get existing drug (don't filter by is_active - allow updating inactive drugs)
+    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id)})
     if not drug:
         raise HTTPException(status_code=404, detail="Drug not found")
     
-    # Validate against template
-    template = await db["drug_field_templates"].find_one(
-        {"_id": ObjectId(drug["template_id"]), "is_active": True}
-    )
+    # Get template (use drug's template_id or get default template)
+    if drug.get("template_id"):
+        template = await db["drug_field_templates"].find_one(
+            {"_id": ObjectId(drug["template_id"]), "is_active": True}
+        )
+    else:
+        # For old drugs without template_id, get default template
+        template = await get_template()
+    
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     
     template_fields = {f["field_id"]: f for f in template["fields"]}
     
+    # Validate incoming field_values
     for fv in drug_data.field_values:
         if fv.field_id not in template_fields:
             raise HTTPException(status_code=400, detail=f"Invalid field_id: {fv.field_id}")
@@ -672,22 +802,57 @@ async def update_drug(drug_id: str, drug_data: DrugUpdate) -> Dict[str, Any]:
         if fv.key != template_fields[fv.field_id]["key"]:
             raise HTTPException(status_code=400, detail=f"Key mismatch for field_id: {fv.field_id}")
     
-    # Normalize field values (coerce array fields to lists)
-    normalized_field_values = normalize_field_values(drug_data.field_values, template_fields)
+    # Get existing field_values from the drug
+    existing_field_values = drug.get("field_values", [])
     
-    # Rebuild flat top-level fields + search_text
+    # Create a map of existing field_values by field_id for easy lookup
+    existing_field_map = {fv["field_id"]: fv for fv in existing_field_values}
+    
+    # Merge: Update existing fields with new values, keep unchanged fields
+    incoming_field_ids = {fv.field_id for fv in drug_data.field_values}
+    
+    # Start with existing field_values
+    merged_field_values = []
+    
+    # Add all existing fields, updating those that are in the incoming data
+    for existing_fv in existing_field_values:
+        field_id = existing_fv["field_id"]
+        if field_id in incoming_field_ids:
+            # This field is being updated - will be added from incoming data
+            continue
+        else:
+            # This field is not being updated - keep existing value
+            merged_field_values.append(existing_fv)
+    
+    # Add all incoming field_values (these are the updates)
+    for incoming_fv in drug_data.field_values:
+        merged_field_values.append({
+            "field_id": incoming_fv.field_id,
+            "key": incoming_fv.key,
+            "value": incoming_fv.value
+        })
+    
+    # Normalize field values (coerce array fields to lists)
+    normalized_field_values = normalize_field_values(merged_field_values, template_fields)
+    
+    # Rebuild flat top-level fields + search_text from ALL field_values
     flat_fields = build_flat_fields(normalized_field_values)
+    
+    # Prepare update data
+    update_data = {
+        "field_values": normalized_field_values,
+        **flat_fields,
+        "updated_at": datetime.utcnow()
+    }
+    
+    # Update is_active if provided
+    if drug_data.is_active is not None:
+        update_data["is_active"] = drug_data.is_active
     
     # Update drug
     result = await db["drugs"].update_one(
         {"_id": ObjectId(drug_id)},
-        {
-            "$set": {
-                "field_values": normalized_field_values,
-                **flat_fields,
-                "updated_at": datetime.utcnow()
-            }
-        }
+        {"$set": update_data}
     )
     
     if result.matched_count == 0:
@@ -712,6 +877,308 @@ async def delete_drug(drug_id: str) -> Dict[str, str]:
         raise HTTPException(status_code=404, detail="Drug not found")
     
     return {"message": "Drug deleted successfully"}
+
+
+# ============ DRUG BROCHURE SERVICES ============
+
+async def upload_drug_brochure(drug_id: str, file: UploadFile, current_user: Dict) -> Dict[str, Any]:
+    """Upload brochure PDF for a drug - updates brochure fields in field_values"""
+    from app.services.cloudinary_service import upload_drug_brochure as cloudinary_upload, delete_drug_brochure
+    
+    db = get_database()
+    
+    # Validate drug exists
+    if not ObjectId.is_valid(drug_id):
+        raise HTTPException(status_code=400, detail="Invalid drug ID")
+    
+    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id), "is_active": True})
+    if not drug:
+        raise HTTPException(status_code=404, detail="Drug not found")
+    
+    # Get template to find brochure field IDs
+    template = None
+    if drug.get("template_id"):
+        template = await db["drug_field_templates"].find_one(
+            {"_id": ObjectId(drug["template_id"]), "is_active": True}
+        )
+    else:
+        template = await get_template()
+    
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Find brochure field IDs from template
+    brochure_url_field = None
+    brochure_public_id_field = None
+    brochure_uploaded_at_field = None
+    
+    for field in template["fields"]:
+        if field["key"] == "brochure_url":
+            brochure_url_field = field
+        elif field["key"] == "brochure_public_id":
+            brochure_public_id_field = field
+        elif field["key"] == "brochure_uploaded_at":
+            brochure_uploaded_at_field = field
+    
+    # Delete old brochure from Cloudinary if exists
+    old_public_id = None
+    if "field_values" in drug:
+        for fv in drug["field_values"]:
+            if fv.get("key") == "brochure_public_id" and fv.get("value"):
+                old_public_id = fv["value"]
+                break
+    
+    # Also check flat field for backward compatibility
+    if not old_public_id and drug.get("brochure_public_id"):
+        old_public_id = drug["brochure_public_id"]
+    
+    if old_public_id:
+        try:
+            await delete_drug_brochure(old_public_id)
+        except Exception as e:
+            # Log but don't fail if old brochure deletion fails
+            print(f"Warning: Failed to delete old brochure: {e}")
+    
+    # Upload new brochure to Cloudinary
+    upload_result = await cloudinary_upload(file, drug_id)
+    
+    # Get existing field_values
+    existing_field_values = drug.get("field_values", [])
+    
+    # Create map of existing field_values by key
+    field_values_map = {fv["key"]: fv for fv in existing_field_values}
+    
+    # Update or add brochure fields
+    brochure_timestamp = datetime.utcnow().isoformat()
+    
+    if brochure_url_field:
+        field_values_map["brochure_url"] = {
+            "field_id": brochure_url_field["field_id"],
+            "key": "brochure_url",
+            "value": upload_result["secure_url"]
+        }
+    
+    if brochure_public_id_field:
+        field_values_map["brochure_public_id"] = {
+            "field_id": brochure_public_id_field["field_id"],
+            "key": "brochure_public_id",
+            "value": upload_result["public_id"]
+        }
+    
+    if brochure_uploaded_at_field:
+        field_values_map["brochure_uploaded_at"] = {
+            "field_id": brochure_uploaded_at_field["field_id"],
+            "key": "brochure_uploaded_at",
+            "value": brochure_timestamp
+        }
+    
+    # Convert map back to list
+    updated_field_values = list(field_values_map.values())
+    
+    # Rebuild flat fields from updated field_values
+    template_fields = {f["field_id"]: f for f in template["fields"]}
+    normalized_field_values = normalize_field_values(updated_field_values, template_fields)
+    flat_fields = build_flat_fields(normalized_field_values)
+    
+    # Update drug document
+    await db["drugs"].update_one(
+        {"_id": ObjectId(drug_id)},
+        {
+            "$set": {
+                "field_values": normalized_field_values,
+                **flat_fields,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Get drug name for response
+    drug_name = drug.get("drug_name", "")
+    if not drug_name and "field_values" in drug:
+        for field in drug.get("field_values", []):
+            if field.get("key") == "drug_name":
+                drug_name = field.get("value", "")
+                break
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.DRUG_UPDATED,
+        actor=current_user,
+        target_type=TargetType.DRUG,
+        target_id=drug_id,
+        target_name=drug_name,
+        details={"action": "brochure_uploaded"},
+        severity=LogSeverity.INFO
+    )
+    
+    return {
+        "drug_id": drug_id,
+        "drug_name": drug_name,
+        "brochure_url": upload_result["secure_url"],
+        "brochure_size_kb": round(upload_result["bytes"] / 1024, 2),
+        "message": "Brochure uploaded successfully"
+    }
+
+
+async def delete_drug_brochure(drug_id: str) -> Dict[str, str]:
+    """Delete brochure for a drug - removes brochure fields from field_values"""
+    from app.services.cloudinary_service import delete_drug_brochure as cloudinary_delete
+    
+    db = get_database()
+    
+    # Validate drug exists
+    if not ObjectId.is_valid(drug_id):
+        raise HTTPException(status_code=400, detail="Invalid drug ID")
+    
+    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id), "is_active": True})
+    if not drug:
+        raise HTTPException(status_code=404, detail="Drug not found")
+    
+    # Find brochure_public_id from field_values or flat field
+    public_id = None
+    if "field_values" in drug:
+        for fv in drug["field_values"]:
+            if fv.get("key") == "brochure_public_id" and fv.get("value"):
+                public_id = fv["value"]
+                break
+    
+    # Check flat field for backward compatibility
+    if not public_id and drug.get("brochure_public_id"):
+        public_id = drug["brochure_public_id"]
+    
+    if not public_id:
+        raise HTTPException(status_code=404, detail="No brochure found for this drug")
+    
+    # Delete from Cloudinary
+    await cloudinary_delete(public_id)
+    
+    # Get template
+    template = None
+    if drug.get("template_id"):
+        template = await db["drug_field_templates"].find_one(
+            {"_id": ObjectId(drug["template_id"]), "is_active": True}
+        )
+    else:
+        template = await get_template()
+    
+    if template:
+        # Remove brochure fields from field_values
+        existing_field_values = drug.get("field_values", [])
+        updated_field_values = [
+            fv for fv in existing_field_values 
+            if fv.get("key") not in ["brochure_url", "brochure_public_id", "brochure_uploaded_at"]
+        ]
+        
+        # Rebuild flat fields
+        template_fields = {f["field_id"]: f for f in template["fields"]}
+        normalized_field_values = normalize_field_values(updated_field_values, template_fields)
+        flat_fields = build_flat_fields(normalized_field_values)
+        
+        # Update drug document
+        await db["drugs"].update_one(
+            {"_id": ObjectId(drug_id)},
+            {
+                "$set": {
+                    "field_values": normalized_field_values,
+                    **flat_fields,
+                    "updated_at": datetime.utcnow()
+                },
+                "$unset": {
+                    "brochure_url": "",
+                    "brochure_public_id": "",
+                    "brochure_uploaded_at": ""
+                }
+            }
+        )
+    else:
+        # Fallback: just remove flat fields
+        await db["drugs"].update_one(
+            {"_id": ObjectId(drug_id)},
+            {
+                "$unset": {
+                    "brochure_url": "",
+                    "brochure_public_id": "",
+                    "brochure_uploaded_at": ""
+                },
+                "$set": {
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+    
+    return {"message": "Brochure deleted successfully"}
+
+
+async def download_drug_brochure(drug_id: str):
+    """
+    Stream brochure PDF with proper download headers.
+    Fetches the file from Cloudinary and streams it with Content-Disposition: attachment.
+    """
+    import httpx
+    from fastapi.responses import StreamingResponse
+    
+    db = get_database()
+    
+    # Validate drug exists
+    if not ObjectId.is_valid(drug_id):
+        raise HTTPException(status_code=400, detail="Invalid drug ID")
+    
+    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id), "is_active": True})
+    if not drug:
+        raise HTTPException(status_code=404, detail="Drug not found")
+    
+    # Find brochure_url and drug_name
+    brochure_url = None
+    drug_name = "brochure"
+    
+    if "field_values" in drug:
+        for fv in drug["field_values"]:
+            if fv.get("key") == "brochure_url" and fv.get("value"):
+                brochure_url = fv["value"]
+            elif fv.get("key") == "drug_name" and fv.get("value"):
+                drug_name = fv["value"]
+    
+    # Check flat fields for backward compatibility
+    if not brochure_url and drug.get("brochure_url"):
+        brochure_url = drug["brochure_url"]
+    
+    if not drug_name and drug.get("drug_name"):
+        drug_name = drug["drug_name"]
+    
+    if not brochure_url:
+        raise HTTPException(status_code=404, detail="No brochure found for this drug")
+    
+    # Sanitize drug_name for filename (remove special characters)
+    safe_drug_name = "".join(c for c in drug_name if c.isalnum() or c in (' ', '-', '_')).strip()
+    safe_drug_name = safe_drug_name.replace(' ', '_')
+    filename = f"{safe_drug_name}_brochure.pdf"
+    
+    # Fetch the file from Cloudinary and stream it
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(brochure_url, timeout=30.0)
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500, 
+                    detail="Failed to fetch brochure from cloud storage"
+                )
+            
+            # Return streaming response with proper headers
+            return StreamingResponse(
+                iter([response.content]),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Content-Type": "application/pdf",
+                    "Cache-Control": "no-cache"
+                }
+            )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to download brochure: {str(e)}"
+        )
 
 
 
@@ -814,11 +1281,11 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
             detail=f"Missing required columns: {', '.join(missing_columns)}"
         )
     
-    # Check max rows limit (100)
-    if len(df) > 100:
+    # Check max rows limit (300)
+    if len(df) > 300:
         raise HTTPException(
             status_code=400,
-            detail=f"File contains {len(df)} rows. Maximum allowed is 100 rows per upload."
+            detail=f"File contains {len(df)} rows. Maximum allowed is 300 rows per upload."
         )
     
     # Get or create template
