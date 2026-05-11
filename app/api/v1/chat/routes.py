@@ -4,7 +4,7 @@ Chat API Endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_doctor
 from app.api.v1.chat.schemas import (
     MessageCreate,
     MessageResponse,
@@ -22,7 +22,7 @@ router = APIRouter()
 @router.post("/conversations/{user_id}", response_model=ConversationStartResponse)
 async def start_conversation_endpoint(
     user_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Start or get existing conversation with another user.
@@ -78,7 +78,7 @@ async def start_conversation_endpoint(
 
 @router.get("/conversations", response_model=ConversationListResponse)
 async def get_conversations_endpoint(
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get all conversations (inbox).
@@ -150,7 +150,7 @@ async def get_messages_endpoint(
     conversation_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Messages per page (max 100)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get messages in a conversation.
@@ -233,7 +233,7 @@ async def get_messages_endpoint(
 async def send_message_endpoint(
     conversation_id: str,
     message_data: MessageCreate,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Send a message in a conversation.
@@ -305,7 +305,7 @@ async def send_message_endpoint(
 @router.post("/conversations/{conversation_id}/read")
 async def mark_as_read_endpoint(
     conversation_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Mark all messages in conversation as read.
@@ -367,7 +367,7 @@ async def mark_as_read_endpoint(
 @router.delete("/messages/{message_id}")
 async def delete_message_endpoint(
     message_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Delete a message (only sender can delete).
@@ -422,7 +422,7 @@ async def delete_message_endpoint(
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation_endpoint(
     conversation_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Delete a conversation.

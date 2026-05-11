@@ -4,7 +4,7 @@ Feed/Posts API Endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Optional
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_doctor_or_admin, require_doctor
 from app.api.v1.feed.schemas import (
     PostCreate, PostResponse, PostFeedResponse, 
     LikeResponse, LikeListResponse, LikeStatusResponse, 
@@ -27,15 +27,15 @@ comments_router = APIRouter()
 @posts_router.post("", response_model=PostResponse, status_code=201)
 async def create_post_endpoint(
     post_data: PostCreate,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Create a new post.
     
-    **Access:** Doctor, MR only
+    **Access:** Doctor only (MRs and Admins blocked)
     
     **Purpose:**
-    Allows doctors and MRs to create text posts to share with the community.
+    Allows doctors to create text posts to share with the community.
     
     **Flow:**
     1. User submits post content
@@ -46,7 +46,7 @@ async def create_post_endpoint(
     **Rules:**
     - Content is required (1-5000 characters)
     - Once posted, cannot be edited (only deleted)
-    - Author info auto-populated: name, role, specialization/territory
+    - Author info auto-populated: name, role, specialization
     - Initial likes_count and comments_count set to 0
     
     **Request Body:**
@@ -77,14 +77,6 @@ async def create_post_endpoint(
     - Ask questions to the community
     - Share success stories
     """
-    # Check role
-    role = current_user.get("role")
-    if role not in ["DOCTOR", "MR"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only doctors and MRs can create posts"
-        )
-    
     return await service.create_post(post_data.content, current_user)
 
 
@@ -92,13 +84,13 @@ async def create_post_endpoint(
 async def get_feed_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Posts per page (max 50)"),
-    author_role: Optional[str] = Query(None, description="Filter by author role: DOCTOR or MR"),
-    current_user: Dict = Depends(get_current_user)
+    author_role: Optional[str] = Query(None, description="Filter by author role: DOCTOR"),
+    current_user: Dict = Depends(require_doctor_or_admin)
 ):
     """
     Get paginated feed of all posts.
     
-    **Access:** Doctor, MR, Admin
+    **Access:** Doctor, Admin (read-only for admin)
     
     **Purpose:**
     Retrieve a paginated list of all active posts from the community.
@@ -111,7 +103,7 @@ async def get_feed_endpoint(
     **Query Parameters:**
     - `page`: Page number (default: 1)
     - `limit`: Posts per page (default: 20, max: 50)
-    - `author_role`: Filter by DOCTOR or MR (optional)
+    - `author_role`: Filter by DOCTOR (optional)
     
     **Response:**
     ```json
@@ -145,7 +137,7 @@ async def get_feed_endpoint(
     
     **Use Cases:**
     - Browse community posts
-    - Discover insights from doctors and MRs
+    - Discover insights from doctors
     - Stay updated with industry discussions
     """
     return await service.get_feed(page, limit, author_role)
@@ -155,12 +147,12 @@ async def get_feed_endpoint(
 async def get_my_posts_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Posts per page (max 50)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get current user's posts.
     
-    **Access:** Doctor, MR
+    **Access:** Doctor only
     
     **Purpose:**
     Retrieve all posts created by the current user (including deleted ones).
@@ -186,14 +178,6 @@ async def get_my_posts_endpoint(
     - Manage your posts
     - Track engagement on your posts
     """
-    # Check role
-    role = current_user.get("role")
-    if role not in ["DOCTOR", "MR"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only doctors and MRs can access this endpoint"
-        )
-    
     return await service.get_my_posts(current_user, page, limit)
 
 
@@ -202,12 +186,12 @@ async def get_user_posts_endpoint(
     user_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Posts per page (max 50)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor_or_admin)
 ):
     """
     Get posts by a specific user.
     
-    **Access:** Doctor, MR, Admin
+    **Access:** Doctor, Admin
     
     **Purpose:**
     Retrieve all active posts created by a specific user.
@@ -233,7 +217,7 @@ async def get_user_posts_endpoint(
     
     **Use Cases:**
     - View another user's posts
-    - Browse posts from specific doctor or MR
+    - Browse posts from specific doctor
     - Check user's posting activity
     """
     return await service.get_user_posts(user_id, page, limit)
@@ -242,12 +226,12 @@ async def get_user_posts_endpoint(
 @posts_router.get("/{post_id}", response_model=PostResponse)
 async def get_post_endpoint(
     post_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor_or_admin)
 ):
     """
     Get a single post by ID.
     
-    **Access:** Doctor, MR, Admin
+    **Access:** Doctor, Admin
     
     **Purpose:**
     Retrieve details of a specific post.
@@ -290,12 +274,12 @@ async def get_post_endpoint(
 @posts_router.delete("/{post_id}")
 async def delete_post_endpoint(
     post_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Delete own post (soft delete).
     
-    **Access:** Doctor, MR (only own posts)
+    **Access:** Doctor only (own posts)
     
     **Purpose:**
     Allow users to delete their own posts.
@@ -332,21 +316,13 @@ async def delete_post_endpoint(
     - Delete posts with errors
     - Manage your content
     """
-    # Check role
-    role = current_user.get("role")
-    if role not in ["DOCTOR", "MR"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Only doctors and MRs can delete posts"
-        )
-    
     return await service.delete_post(post_id, current_user)
 
 
 @posts_router.delete("/{post_id}/admin")
 async def admin_delete_post_endpoint(
     post_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(get_current_user)  # Keep admin as get_current_user
 ):
     """
     Admin delete any post (moderation).
@@ -403,7 +379,7 @@ async def admin_delete_post_endpoint(
 async def share_post_endpoint(
     post_id: str,
     share_data: SharePostRequest,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Share a post via direct message to connected users.
@@ -484,13 +460,13 @@ async def share_post_endpoint(
     **Frontend Display:**
     In recipient's messages:
     ```
-    📤 Shared a post
+    Shared a post
     "Thought you'd find this interesting!"
     
     [Post Preview]
     Dr. Sarah Sharma
     "New drug insights..."
-    ❤️ 10  💬 5  📤 3
+    Likes: 10  Comments: 5  Shares: 3
     [View Full Post]
     ```
     """
@@ -516,7 +492,7 @@ async def share_post_endpoint(
 @likes_router.post("/{post_id}/like", response_model=LikeResponse)
 async def toggle_like_endpoint(
     post_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Toggle like on a post (like if not liked, unlike if already liked).
@@ -586,7 +562,7 @@ async def get_post_likes_endpoint(
     post_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Likes per page (max 50)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor_or_admin)
 ):
     """
     Get list of users who liked a post.
@@ -650,7 +626,7 @@ async def get_post_likes_endpoint(
 @likes_router.get("/{post_id}/like/status", response_model=LikeStatusResponse)
 async def check_like_status_endpoint(
     post_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Check if current user has liked a post.
@@ -704,7 +680,7 @@ async def check_like_status_endpoint(
 async def get_my_liked_posts_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Posts per page (max 50)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get posts that current user has liked.
@@ -774,7 +750,7 @@ async def get_my_liked_posts_endpoint(
 async def add_comment_endpoint(
     post_id: str,
     comment_data: CommentCreate,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Add a comment to a post.
@@ -848,7 +824,7 @@ async def get_post_comments_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Comments per page (max 50)"),
     sort: str = Query("asc", regex="^(asc|desc)$", description="Sort order: asc (oldest first) or desc (newest first)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor_or_admin)
 ):
     """
     Get comments for a post.
@@ -915,7 +891,7 @@ async def get_post_comments_endpoint(
 async def get_my_comments_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Comments per page (max 50)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get comments made by current user.
@@ -981,7 +957,7 @@ async def get_my_comments_endpoint(
 async def delete_comment_endpoint(
     post_id: str,
     comment_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Delete own comment (soft delete).
@@ -1039,7 +1015,7 @@ async def delete_comment_endpoint(
 async def admin_delete_comment_endpoint(
     post_id: str,
     comment_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(get_current_user)  # Keep admin as get_current_user
 ):
     """
     Admin delete any comment (moderation).

@@ -47,6 +47,17 @@ class VisitCreateRequest(BaseModel):
             raise ValueError('Purpose is required')
         return result
     
+    @field_validator('location')
+    @classmethod
+    def validate_location(cls, v: str) -> str:
+        """Validate location is not empty"""
+        if not v or not v.strip():
+            raise ValueError('Location is required and cannot be empty')
+        result = TextValidator.validate(v, min_length=1, max_length=200, strip_html=True)
+        if result is None:
+            raise ValueError('Location is required')
+        return result
+    
     @field_validator('notes')
     @classmethod
     def validate_notes(cls, v: Optional[str]) -> Optional[str]:

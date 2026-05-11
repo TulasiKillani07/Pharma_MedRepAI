@@ -45,6 +45,14 @@ class VisitInDB(BaseModel):
     scheduled_time: str = Field(..., description="Visit time")
     purpose: str = Field(..., min_length=1, max_length=500, description="Visit purpose")
     location: str = Field(..., min_length=1, max_length=200, description="Visit location")
+    
+    @field_validator('location')
+    @classmethod
+    def validate_location(cls, v: str) -> str:
+        """Ensure location is not empty"""
+        if not v or not v.strip():
+            raise ValueError('Location cannot be empty')
+        return v.strip()
     notes: Optional[str] = Field(None, max_length=1000, description="Additional notes")
     status: VisitStatus = Field(default=VisitStatus.SCHEDULED, description="Visit status")
     outcome: Optional[str] = Field(None, max_length=1000, description="Visit outcome")

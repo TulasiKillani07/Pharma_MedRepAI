@@ -21,20 +21,28 @@ async def discover_users(
     limit: int = 20
 ) -> Dict[str, Any]:
     """
-    Discover users to connect with.
+    Discover doctors to connect with.
+    ONLY DOCTORS can use network features.
     
     Args:
         current_user: Current authenticated user
-        role: Filter by role (DOCTOR or MR)
+        role: Ignored (only doctors shown)
         search: Search by name
         specialization: Filter doctors by specialization
-        territory: Filter MRs by territory
+        territory: Ignored (no MRs in network)
         page: Page number
         limit: Users per page
     
     Returns:
-        dict: Paginated list of users
+        dict: Paginated list of doctors
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Validate and limit page size
@@ -63,7 +71,7 @@ async def discover_users(
         else:
             excluded_ids.add(conn["requester_id"])
     
-    # Build query for both collections
+    # Build query for doctors only
     base_query = {
         "_id": {"$nin": [ObjectId(uid) if len(uid) == 24 else uid for uid in excluded_ids]},
         "is_active": True
@@ -75,43 +83,23 @@ async def discover_users(
     
     all_users = []
     
-    # Query doctors if role is None or DOCTOR
-    if role is None or role == "DOCTOR":
-        doctor_query = base_query.copy()
-        if specialization:
-            doctor_query["specialization"] = {"$regex": specialization, "$options": "i"}
-        
-        doctors_cursor = db["doctors"].find(doctor_query)
-        doctors_list = await doctors_cursor.to_list(None)
-        
-        for doctor in doctors_list:
-            all_users.append({
-                "user_id": str(doctor["_id"]),
-                "name": doctor.get("name", ""),
-                "role": "DOCTOR",
-                "specialization": doctor.get("specialization"),
-                "hospital": doctor.get("hospital"),
-                "territory": None
-            })
+    # ONLY show doctors in network (MRs completely removed)
+    doctor_query = base_query.copy()
+    if specialization:
+        doctor_query["specialization"] = {"$regex": specialization, "$options": "i"}
     
-    # Query MRs if role is None or MR
-    if role is None or role == "MR":
-        mr_query = base_query.copy()
-        if territory:
-            mr_query["territory"] = {"$regex": territory, "$options": "i"}
-        
-        mrs_cursor = db["mrs"].find(mr_query)
-        mrs_list = await mrs_cursor.to_list(None)
-        
-        for mr in mrs_list:
-            all_users.append({
-                "user_id": str(mr["_id"]),
-                "name": mr.get("name", ""),
-                "role": "MR",
-                "specialization": None,
-                "hospital": None,
-                "territory": mr.get("territory")
-            })
+    doctors_cursor = db["doctors"].find(doctor_query)
+    doctors_list = await doctors_cursor.to_list(None)
+    
+    for doctor in doctors_list:
+        all_users.append({
+            "user_id": str(doctor["_id"]),
+            "name": doctor.get("name", ""),
+            "role": "DOCTOR",
+            "specialization": doctor.get("specialization"),
+            "hospital": doctor.get("hospital"),
+            "territory": None
+        })
     
     # Calculate pagination
     total = len(all_users)
@@ -136,6 +124,7 @@ async def send_connection_request(
 ) -> Dict[str, Any]:
     """
     Send connection request to another user.
+    ONLY DOCTORS and ADMINS can send connection requests.
     
     Args:
         receiver_id: User ID to send request to
@@ -147,6 +136,13 @@ async def send_connection_request(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     requester_id = current_user["_id"]
@@ -159,17 +155,11 @@ async def send_connection_request(
     if requester_id == receiver_id:
         raise HTTPException(status_code=400, detail="Cannot send connection request to yourself")
     
-    # Get receiver details
+    # Get receiver details (ONLY doctors allowed)
     receiver = await db["doctors"].find_one({"_id": ObjectId(receiver_id)})
-    if not receiver:
-        receiver = await db["mrs"].find_one({"_id": ObjectId(receiver_id)})
     
     if not receiver:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Check if receiver is admin
-    if receiver.get("role") == "ADMIN":
-        raise HTTPException(status_code=400, detail="Cannot send connection request to admin")
+        raise HTTPException(status_code=404, detail="User not found or not available for connections")
     
     # Check if connection already exists (any status)
     existing = await db["connections"].find_one({
@@ -187,10 +177,11 @@ async def send_connection_request(
         elif existing["status"] == "blocked":
             raise HTTPException(status_code=400, detail="Cannot send request to this user")
     
-    # Get requester details (current user)
+    # Get requester details (current user - must be doctor or admin)
     requester = await db["doctors"].find_one({"_id": ObjectId(requester_id)})
     if not requester:
-        requester = await db["mrs"].find_one({"_id": ObjectId(requester_id)})
+        # Check if admin
+        requester = await db["admins"].find_one({"_id": ObjectId(requester_id)})
     
     if not requester:
         raise HTTPException(status_code=404, detail="Requester not found")
@@ -236,6 +227,7 @@ async def get_received_requests(
 ) -> Dict[str, Any]:
     """
     Get connection requests received by current user.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         current_user: Current authenticated user
@@ -245,6 +237,13 @@ async def get_received_requests(
     Returns:
         dict: Paginated list of received requests
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Validate and limit page size
@@ -258,7 +257,7 @@ async def get_received_requests(
     # Get total count
     total = await db["connections"].count_documents({
         "receiver_id": user_id,
-        "status": ConnectionStatus.PENDING  # ✅ No .value needed
+        "status": ConnectionStatus.PENDING  # No .value needed
     })
     
     # Calculate pagination
@@ -268,7 +267,7 @@ async def get_received_requests(
     # Get requests
     requests_cursor = db["connections"].find({
         "receiver_id": user_id,
-        "status": ConnectionStatus.PENDING  # ✅ No .value needed
+        "status": ConnectionStatus.PENDING  # No .value needed
     }).sort("created_at", -1).skip(skip).limit(limit)
     
     requests_list = await requests_cursor.to_list(limit)
@@ -303,6 +302,7 @@ async def get_sent_requests(
 ) -> Dict[str, Any]:
     """
     Get connection requests sent by current user.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         current_user: Current authenticated user
@@ -312,6 +312,13 @@ async def get_sent_requests(
     Returns:
         dict: Paginated list of sent requests
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Validate and limit page size
@@ -325,7 +332,7 @@ async def get_sent_requests(
     # Get total count
     total = await db["connections"].count_documents({
         "requester_id": user_id,
-        "status": ConnectionStatus.PENDING  # ✅ No .value needed
+        "status": ConnectionStatus.PENDING  # No .value needed
     })
     
     # Calculate pagination
@@ -335,7 +342,7 @@ async def get_sent_requests(
     # Get requests
     requests_cursor = db["connections"].find({
         "requester_id": user_id,
-        "status": ConnectionStatus.PENDING  # ✅ No .value needed
+        "status": ConnectionStatus.PENDING  # No .value needed
     }).sort("created_at", -1).skip(skip).limit(limit)
     
     requests_list = await requests_cursor.to_list(limit)
@@ -369,6 +376,7 @@ async def accept_request(
 ) -> Dict[str, str]:
     """
     Accept a connection request.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         connection_id: Connection ID
@@ -380,6 +388,13 @@ async def accept_request(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Get connection
@@ -396,7 +411,7 @@ async def accept_request(
         raise HTTPException(status_code=403, detail="You can only accept requests sent to you")
     
     # Check if status is pending
-    if connection["status"] != ConnectionStatus.PENDING:  # ✅ No .value needed
+    if connection["status"] != ConnectionStatus.PENDING:  # No .value needed
         raise HTTPException(status_code=400, detail="Connection request is not pending")
     
     # Update status to accepted (RULE 2: UPDATE with Enum)
@@ -404,7 +419,7 @@ async def accept_request(
         {"_id": ObjectId(connection_id)},
         {
             "$set": {
-                "status": ConnectionStatus.ACCEPTED,  # ✅ No .value needed
+                "status": ConnectionStatus.ACCEPTED,  # No .value needed
                 "accepted_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
@@ -432,6 +447,7 @@ async def reject_request(
 ) -> Dict[str, str]:
     """
     Reject a connection request.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         connection_id: Connection ID
@@ -443,6 +459,13 @@ async def reject_request(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Get connection
@@ -459,7 +482,7 @@ async def reject_request(
         raise HTTPException(status_code=403, detail="You can only reject requests sent to you")
     
     # Check if status is pending
-    if connection["status"] != ConnectionStatus.PENDING:  # ✅ No .value needed
+    if connection["status"] != ConnectionStatus.PENDING:  # No .value needed
         raise HTTPException(status_code=400, detail="Connection request is not pending")
     
     # Update status to rejected (RULE 2: UPDATE with Enum)
@@ -467,7 +490,7 @@ async def reject_request(
         {"_id": ObjectId(connection_id)},
         {
             "$set": {
-                "status": ConnectionStatus.REJECTED,  # ✅ No .value needed
+                "status": ConnectionStatus.REJECTED,  # No .value needed
                 "rejected_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
@@ -483,6 +506,7 @@ async def cancel_request(
 ) -> Dict[str, str]:
     """
     Cancel a sent connection request.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         connection_id: Connection ID
@@ -494,6 +518,13 @@ async def cancel_request(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Get connection
@@ -510,7 +541,7 @@ async def cancel_request(
         raise HTTPException(status_code=403, detail="You can only cancel requests you sent")
     
     # Check if status is pending
-    if connection["status"] != ConnectionStatus.PENDING:  # ✅ No .value needed
+    if connection["status"] != ConnectionStatus.PENDING:  # No .value needed
         raise HTTPException(status_code=400, detail="Connection request is not pending")
     
     # Delete the request
@@ -527,6 +558,7 @@ async def get_my_connections(
 ) -> Dict[str, Any]:
     """
     Get current user's connections filtered by status.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         current_user: Current authenticated user
@@ -537,6 +569,13 @@ async def get_my_connections(
     Returns:
         dict: Paginated list of connections
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Validate and limit page size
@@ -618,6 +657,7 @@ async def remove_connection(
 ) -> Dict[str, str]:
     """
     Remove a connection.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         connection_id: Connection ID
@@ -629,6 +669,13 @@ async def remove_connection(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     # Get connection
@@ -646,7 +693,7 @@ async def remove_connection(
         raise HTTPException(status_code=403, detail="You can only remove your own connections")
     
     # Check if status is accepted
-    if connection["status"] != ConnectionStatus.ACCEPTED:  # ✅ No .value needed
+    if connection["status"] != ConnectionStatus.ACCEPTED:  # No .value needed
         raise HTTPException(status_code=400, detail="Connection is not established")
     
     # Delete the connection
@@ -661,6 +708,7 @@ async def block_user(
 ) -> Dict[str, str]:
     """
     Block a user.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         user_id_to_block: User ID to block
@@ -672,6 +720,13 @@ async def block_user(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     requester_id = current_user["_id"]
@@ -684,10 +739,8 @@ async def block_user(
     if requester_id == user_id_to_block:
         raise HTTPException(status_code=400, detail="Cannot block yourself")
     
-    # Check if user exists
+    # Check if user exists (ONLY doctors can be blocked in network)
     user = await db["doctors"].find_one({"_id": ObjectId(user_id_to_block)})
-    if not user:
-        user = await db["mrs"].find_one({"_id": ObjectId(user_id_to_block)})
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -706,16 +759,16 @@ async def block_user(
             {"_id": existing["_id"]},
             {
                 "$set": {
-                    "status": ConnectionStatus.BLOCKED,  # ✅ No .value needed
+                    "status": ConnectionStatus.BLOCKED,  # No .value needed
                     "updated_at": datetime.utcnow()
                 }
             }
         )
     else:
-        # Get requester details (current user)
+        # Get requester details (current user - must be doctor or admin)
         requester = await db["doctors"].find_one({"_id": ObjectId(requester_id)})
         if not requester:
-            requester = await db["mrs"].find_one({"_id": ObjectId(requester_id)})
+            requester = await db["admins"].find_one({"_id": ObjectId(requester_id)})
         
         if not requester:
             raise HTTPException(status_code=404, detail="Requester not found")
@@ -745,6 +798,7 @@ async def unblock_user(
 ) -> Dict[str, str]:
     """
     Unblock a user.
+    ONLY DOCTORS and ADMINS can access network features.
     
     Args:
         user_id_to_unblock: User ID to unblock
@@ -756,6 +810,13 @@ async def unblock_user(
     Raises:
         HTTPException: If validation fails
     """
+    # Block MRs from using network features
+    if current_user.get("role") == "MR":
+        raise HTTPException(
+            status_code=403,
+            detail="Network features are only available for doctors"
+        )
+    
     db = get_database()
     
     requester_id = current_user["_id"]
@@ -767,7 +828,7 @@ async def unblock_user(
     # Find blocked connection
     connection = await db["connections"].find_one({
         "$or": [
-            {"requester_id": requester_id, "receiver_id": user_id_to_unblock, "status": ConnectionStatus.BLOCKED},  # ✅ No .value needed
+            {"requester_id": requester_id, "receiver_id": user_id_to_unblock, "status": ConnectionStatus.BLOCKED},  # No .value needed
             {"requester_id": user_id_to_unblock, "receiver_id": requester_id, "status": ConnectionStatus.BLOCKED}
         ]
     })
@@ -793,3 +854,4 @@ async def unblock_user(
         # They were never connected, just blocked - delete the connection
         await db["connections"].delete_one({"_id": connection["_id"]})
         return {"message": "User unblocked successfully"}
+

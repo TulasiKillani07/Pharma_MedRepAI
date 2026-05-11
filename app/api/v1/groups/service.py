@@ -12,7 +12,10 @@ from app.models.group_model import GroupInDB
 
 
 async def get_user_details(user_id: str) -> Dict[str, Any]:
-    """Get user details from doctors or mrs collection."""
+    """
+    Get user details from doctors collection.
+    NETWORK IS DOCTOR-ONLY - MRs are not allowed.
+    """
     db = get_database()
     
     user = await db["doctors"].find_one({"_id": ObjectId(user_id)})
@@ -21,14 +24,6 @@ async def get_user_details(user_id: str) -> Dict[str, Any]:
             "user_id": str(user["_id"]),
             "name": user.get("name", ""),
             "role": "DOCTOR"
-        }
-    
-    user = await db["mrs"].find_one({"_id": ObjectId(user_id)})
-    if user:
-        return {
-            "user_id": str(user["_id"]),
-            "name": user.get("name", ""),
-            "role": "MR"
         }
     
     raise HTTPException(status_code=404, detail=f"User {user_id} not found")

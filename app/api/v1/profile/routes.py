@@ -348,19 +348,19 @@ async def update_company_profile_endpoint(
     **Permissions:**
     
     **ADMIN can update:**
-    - ✅ Company name
-    - ✅ Company logo & description
-    - ✅ GST & PAN numbers
-    - ✅ Full address (address, city, state, country, pincode)
-    - ✅ Website, industry, founded year, size
+    - Company name
+    - Company logo & description
+    - GST & PAN numbers
+    - Full address (address, city, state, country, pincode)
+    - Website, industry, founded year, size
     
     **MANAGER can update:**
-    - ✅ Company logo & description
-    - ✅ City, state, country
-    - ✅ Website, industry, founded year, size
-    - ❌ Company name (Admin only)
-    - ❌ GST & PAN numbers (Admin only)
-    - ❌ Full address & pincode (Admin only)
+    - Company logo & description
+    - City, state, country
+    - Website, industry, founded year, size
+    - [RESTRICTED] Company name (Admin only)
+    - [RESTRICTED] GST & PAN numbers (Admin only)
+    - [RESTRICTED] Full address & pincode (Admin only)
     
     **Purpose:**
     Update company information with role-based access control.

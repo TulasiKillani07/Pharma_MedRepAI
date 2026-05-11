@@ -36,7 +36,8 @@ async def check_connection(user1_id: str, user2_id: str) -> bool:
 
 async def get_user_details(user_id: str) -> Dict[str, Any]:
     """
-    Get user details from doctors or mrs collection.
+    Get user details from doctors collection.
+    NETWORK IS DOCTOR-ONLY - MRs are not allowed.
     
     Args:
         user_id: User ID
@@ -49,22 +50,13 @@ async def get_user_details(user_id: str) -> Dict[str, Any]:
     """
     db = get_database()
     
-    # Check doctors collection first
+    # Check doctors collection only
     user = await db["doctors"].find_one({"_id": ObjectId(user_id)})
     if user:
         return {
             "user_id": str(user["_id"]),
             "name": user.get("name", ""),
             "role": "DOCTOR"
-        }
-    
-    # Check mrs collection
-    user = await db["mrs"].find_one({"_id": ObjectId(user_id)})
-    if user:
-        return {
-            "user_id": str(user["_id"]),
-            "name": user.get("name", ""),
-            "role": "MR"
         }
     
     # User not found

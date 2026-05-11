@@ -4,7 +4,7 @@ Connections API Endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Optional
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_doctor_or_admin
 from app.api.v1.connections.schemas import (
     DiscoverResponse,
     ConnectionRequestResponse,
@@ -25,19 +25,19 @@ async def discover_users_endpoint(
     territory: Optional[str] = Query(None, description="Filter MRs by territory"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Users per page (max 50)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor_or_admin)
 ):
     """
     Discover users to connect with.
     
-    **Access:** Doctor, MR
+    **Access:** Doctor, Admin (MRs blocked)
     
     **Purpose:**
-    Find doctors and MRs to connect with. Excludes already connected users, pending requests, and blocked users.
+    Find doctors to connect with. Only doctors visible in network.
     
     **Flow:**
     1. User opens "Discover" section
-    2. System retrieves all users except:
+    2. System retrieves all doctors except:
        - Current user
        - Already connected users
        - Users with pending requests (sent or received)
@@ -45,9 +45,10 @@ async def discover_users_endpoint(
     3. Returns paginated list with filters
     
     **Query Parameters:**
-    - `role`: Filter by DOCTOR or MR (optional - shows both if not specified)
+    - `role`: Filter by DOCTOR (MR option removed)
     - `search`: Search by name (optional)
     - `specialization`: Filter doctors by specialization (optional)
+
     - `territory`: Filter MRs by territory (optional)
     - `page`: Page number (default: 1)
     - `limit`: Users per page (default: 20, max: 50)

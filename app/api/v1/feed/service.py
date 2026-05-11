@@ -20,29 +20,22 @@ from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetTy
 async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
     """
     Create a new post.
+    ONLY DOCTORS can create posts.
     
     Args:
         content: Post content
-        current_user: Current authenticated user
+        current_user: Current authenticated user (must be DOCTOR)
     
     Returns:
         dict: Created post data
     """
     db = get_database()
     
-    # Extract author information
+    # Extract author information (DOCTOR only)
     author_id = current_user["_id"]
     author_name = current_user.get("name", "")
-    author_role = current_user.get("role", "")
-    
-    # Get additional info based on role
-    author_specialization = None
-    author_territory = None
-    
-    if author_role == "DOCTOR":
-        author_specialization = current_user.get("specialization")
-    elif author_role == "MR":
-        author_territory = current_user.get("territory")
+    author_role = "DOCTOR"  # Only doctors can post
+    author_specialization = current_user.get("specialization")
     
     # RULE 1: INSERT with model
     post = PostInDB(
@@ -55,8 +48,7 @@ async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
     post_doc.update({
         "author_name": author_name,
         "author_role": author_role,
-        "author_specialization": author_specialization,
-        "author_territory": author_territory
+        "author_specialization": author_specialization
     })
     
     # Insert into database
@@ -71,7 +63,6 @@ async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
         "author_name": post_doc["author_name"],
         "author_role": post_doc["author_role"],
         "author_specialization": post_doc["author_specialization"],
-        "author_territory": post_doc["author_territory"],
         "content": post_doc["content"],
         "likes_count": post_doc["likes_count"],
         "comments_count": post_doc["comments_count"],
@@ -129,7 +120,6 @@ async def get_feed(
             "author_name": post["author_name"],
             "author_role": post["author_role"],
             "author_specialization": post.get("author_specialization"),
-            "author_territory": post.get("author_territory"),
             "content": post["content"],
             "likes_count": post["likes_count"],
             "comments_count": post["comments_count"],
@@ -178,7 +168,6 @@ async def get_post_by_id(post_id: str) -> Dict[str, Any]:
         "author_name": post["author_name"],
         "author_role": post["author_role"],
         "author_specialization": post.get("author_specialization"),
-        "author_territory": post.get("author_territory"),
         "content": post["content"],
         "likes_count": post["likes_count"],
         "comments_count": post["comments_count"],
@@ -237,7 +226,6 @@ async def get_user_posts(
             "author_name": post["author_name"],
             "author_role": post["author_role"],
             "author_specialization": post.get("author_specialization"),
-            "author_territory": post.get("author_territory"),
             "content": post["content"],
             "likes_count": post["likes_count"],
             "comments_count": post["comments_count"],
@@ -306,7 +294,6 @@ async def get_my_posts(
             "author_name": post["author_name"],
             "author_role": post["author_role"],
             "author_specialization": post.get("author_specialization"),
-            "author_territory": post.get("author_territory"),
             "content": post["content"],
             "likes_count": post["likes_count"],
             "comments_count": post["comments_count"],
@@ -717,7 +704,6 @@ async def get_my_liked_posts(
             "author_name": post["author_name"],
             "author_role": post["author_role"],
             "author_specialization": post.get("author_specialization"),
-            "author_territory": post.get("author_territory"),
             "content": post["content"],
             "likes_count": post["likes_count"],
             "comments_count": post["comments_count"],
@@ -1181,10 +1167,8 @@ async def share_post(
             conversation = await db["conversations"].find_one({"participants": participants})
             
             if not conversation:
-                # Get recipient details
+                # Get recipient details (doctors only)
                 recipient = await db["doctors"].find_one({"_id": ObjectId(user_id)})
-                if not recipient:
-                    recipient = await db["mrs"].find_one({"_id": ObjectId(user_id)})
                 
                 if not recipient:
                     failed_shares.append({
@@ -1192,8 +1176,6 @@ async def share_post(
                         "reason": "User not found"
                     })
                     continue
-                
-                recipient_role = "DOCTOR" if await db["doctors"].find_one({"_id": ObjectId(user_id)}) else "MR"
                 
                 # Create conversation
                 conversation_doc = {
@@ -1207,7 +1189,7 @@ async def share_post(
                         {
                             "user_id": user_id,
                             "name": recipient.get("name", ""),
-                            "role": recipient_role
+                            "role": "DOCTOR"
                         }
                     ],
                     "last_message": None,
@@ -1262,7 +1244,7 @@ async def share_post(
             )
             
             # Update conversation
-            preview = f"📤 Shared a post"
+            preview = f"Shared a post"
             if message_content:
                 preview = f"{message_content[:50]}..."
             

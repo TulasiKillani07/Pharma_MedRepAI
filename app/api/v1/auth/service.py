@@ -42,23 +42,23 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
     collection_name = get_collection_name(role)
     collection = db[collection_name]
     
-    print(f"🔍 Login attempt - Email: {email}, Role: {role}, Collection: {collection_name}, Database: {settings.DATABASE_NAME}")
+    print(f"[AUTH] Login attempt - Email: {email}, Role: {role}, Collection: {collection_name}, Database: {settings.DATABASE_NAME}")
     
     # Find user by email
     user = await collection.find_one({"email": email})
     
     if not user:
-        print(f"❌ User not found in {settings.DATABASE_NAME}.{collection_name} collection")
+        print(f"[AUTH] User not found in {settings.DATABASE_NAME}.{collection_name} collection")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
     
-    print(f"✅ User found: {user.get('name') or user.get('full_name')}")
+    print(f"[AUTH] User found: {user.get('name') or user.get('full_name')}")
     
     # Verify password
     password_valid = verify_password(password, user["password_hash"])
-    print(f"🔑 Password verification: {password_valid}")
+    print(f"[AUTH] Password verification: {password_valid}")
     
     if not password_valid:
         raise HTTPException(
@@ -363,7 +363,7 @@ async def request_password_reset(email: str, role: UserRole) -> dict:
     
     # If user doesn't exist, return generic success message (don't reveal if email exists)
     if not user:
-        print(f"⚠️ Password reset requested for non-existent email: {email} (role: {role.value})")
+        print(f"[WARNING] Password reset requested for non-existent email: {email} (role: {role.value})")
         return {
             "message": "If an account exists with this email, you will receive a password reset OTP",
             "expires_in": 900  # 15 minutes
@@ -415,9 +415,9 @@ async def request_password_reset(email: str, role: UserRole) -> dict:
             name=name_field,
             otp=otp
         )
-        print(f"✅ Password reset OTP sent to {email}")
+        print(f"[SUCCESS] Password reset OTP sent to {email}")
     except Exception as e:
-        print(f"❌ Failed to send password reset OTP to {email}: {str(e)}")
+        print(f"[ERROR] Failed to send password reset OTP to {email}: {str(e)}")
     
     # Return generic success message
     return {
@@ -526,9 +526,9 @@ async def reset_password_with_otp(
             timestamp=timestamp,
             ip_address=ip_address
         )
-        print(f"✅ Password reset confirmation sent to {email}")
+        print(f"[SUCCESS] Password reset confirmation sent to {email}")
     except Exception as e:
-        print(f"❌ Failed to send confirmation email to {email}: {str(e)}")
+        print(f"[ERROR] Failed to send confirmation email to {email}: {str(e)}")
     
     # Log activity
     actor_dict = {

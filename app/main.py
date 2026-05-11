@@ -38,9 +38,9 @@ async def startup_event():
     This function runs when the application starts.
     It connects to MongoDB.
     """
-    print(f"🚀 Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     await connect_to_mongo()
-    print("✅ Application started successfully!")
+    print("Application started successfully!")
 
 
 # Event: Application Shutdown
@@ -50,39 +50,9 @@ async def shutdown_event():
     This function runs when the application shuts down.
     It closes the MongoDB connection.
     """
-    print("🛑 Shutting down application...")
+    print("Shutting down application...")
     await close_mongo_connection()
-    print("✅ Application shut down successfully!")
-
-
-# Root endpoint - Health check
-@app.get("/", tags=["Health"])
-async def root():
-    """
-    Root endpoint to check if the API is running.
-    Access: http://localhost:8000/
-    """
-    return {
-        "message": f"Welcome to {settings.APP_NAME}",
-        "version": settings.APP_VERSION,
-        "status": "running",
-        "docs": "/docs"
-    }
-
-
-# Health check endpoint
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """
-    Health check endpoint for monitoring.
-    Returns the status of the application.
-    """
-    return {
-        "status": "healthy",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "database": settings.DATABASE_NAME
-    }
+    print("Application shut down successfully!")
 
 
 # Include API routes

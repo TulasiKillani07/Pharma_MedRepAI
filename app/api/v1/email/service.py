@@ -180,7 +180,7 @@ async def send_invitation_email(
                 </div>
                 
                 <div class="warning">
-                    <strong>⚠️ Security Notice:</strong>
+                    <strong>Security Notice:</strong>
                     <p style="margin: 5px 0 0 0;">For your security, please change your password immediately after your first login.</p>
                 </div>
                 
@@ -251,7 +251,7 @@ async def send_bulk_upload_summary_email(
     # Build user list HTML
     user_list_html = ""
     for user in created_users:
-        status = "✅ Email sent" if user.get("email_sent") else "❌ Email failed"
+        status = "[SUCCESS] Email sent" if user.get("email_sent") else "[ERROR] Email failed"
         user_list_html += f"<tr><td>{user['name']}</td><td>{user['email']}</td><td>{status}</td></tr>"
     
     html_content = f"""
@@ -319,7 +319,7 @@ async def send_bulk_upload_summary_email(
     <body>
         <div class="container">
             <div class="header">
-                <h1>✅ Bulk Upload Completed</h1>
+                <h1>Bulk Upload Completed</h1>
             </div>
             <div class="content">
                 <p>Dear {admin_name},</p>
@@ -448,7 +448,7 @@ async def send_password_reset_otp_email(
     <body>
         <div class="container">
             <div class="header">
-                <h1>🔐 Password Reset Request</h1>
+                <h1>Password Reset Request</h1>
             </div>
             <div class="content">
                 <p>Dear {name},</p>
@@ -464,7 +464,7 @@ async def send_password_reset_otp_email(
                 <p>Enter this code on the password reset page to continue.</p>
                 
                 <div class="warning">
-                    <strong>⚠️ Security Notice:</strong>
+                    <strong>Security Notice:</strong>
                     <p style="margin: 5px 0 0 0;">If you didn't request this password reset, please ignore this email or contact your administrator immediately. Your account is still secure.</p>
                 </div>
                 
@@ -572,7 +572,7 @@ async def send_password_reset_confirmation_email(
     <body>
         <div class="container">
             <div class="header">
-                <h1>✅ Password Changed Successfully</h1>
+                <h1>Password Changed Successfully</h1>
             </div>
             <div class="content">
                 <p>Dear {name},</p>
@@ -587,7 +587,7 @@ async def send_password_reset_confirmation_email(
                 <p>You can now login with your new password.</p>
                 
                 <div class="warning">
-                    <strong>⚠️ Didn't make this change?</strong>
+                    <strong>Didn't make this change?</strong>
                     <p style="margin: 5px 0 0 0;">If you didn't change your password, please contact your administrator immediately. Your account may be compromised.</p>
                 </div>
                 
@@ -665,13 +665,13 @@ async def send_cme_registration_confirmation_email(
     if event_mode == "online":
         event_details = f"""
         <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #0369a1; margin-top: 0;">📍 Online Event Details</h3>
+            <h3 style="color: #0369a1; margin-top: 0;">Online Event Details</h3>
             <p style="margin: 8px 0;"><strong>Platform:</strong> {platform or 'Online'}</p>
             <p style="margin: 8px 0;"><strong>Meeting Link:</strong><br>
             <a href="{meeting_link}" style="color: #0369a1; word-break: break-all; font-size: 14px;">{meeting_link}</a></p>
             <div style="background: #bae6fd; padding: 15px; border-radius: 6px; margin-top: 15px;">
                 <p style="color: #075985; font-size: 14px; margin: 0;">
-                    💡 <strong>Note:</strong> The "Join Meeting" button will appear 2 minutes before the event starts in your dashboard.
+                    <strong>Note:</strong> The "Join Meeting" button will appear 2 minutes before the event starts in your dashboard.
                 </p>
             </div>
         </div>
@@ -681,7 +681,7 @@ async def send_cme_registration_confirmation_email(
         if registration_passcode:
             passcode_html = f"""
             <div style="background: #fef3c7; padding: 15px; border-radius: 6px; margin-top: 15px; text-align: center;">
-                <p style="margin: 0 0 10px 0; color: #92400e;"><strong>📋 Registration Passcode:</strong></p>
+                <p style="margin: 0 0 10px 0; color: #92400e;"><strong>Registration Passcode:</strong></p>
                 <div style="background: #fbbf24; padding: 10px 20px; border-radius: 6px; display: inline-block;">
                     <span style="font-size: 24px; font-weight: bold; color: #78350f; letter-spacing: 2px;">{registration_passcode}</span>
                 </div>
@@ -691,13 +691,13 @@ async def send_cme_registration_confirmation_email(
         
         event_details = f"""
         <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #92400e; margin-top: 0;">📍 Venue Details</h3>
+            <h3 style="color: #92400e; margin-top: 0;">Venue Details</h3>
             <p style="margin: 8px 0;"><strong>Venue:</strong> {venue_name}</p>
             <p style="margin: 8px 0;"><strong>Address:</strong><br>{address}</p>
             {passcode_html}
             <div style="background: #fde68a; padding: 15px; border-radius: 6px; margin-top: 15px;">
                 <p style="color: #92400e; font-size: 14px; margin: 0;">
-                    💡 <strong>Note:</strong> Please arrive 15 minutes early for registration.
+                    <strong>Note:</strong> Please arrive 15 minutes early for registration.
                 </p>
             </div>
         </div>
@@ -766,7 +766,7 @@ async def send_cme_registration_confirmation_email(
     <body>
         <div class="container">
             <div class="header">
-                <div class="success-icon">🎉</div>
+                <div class="success-icon">[SUCCESS]</div>
                 <h1 style="margin: 0; font-size: 28px;">Registration Confirmed!</h1>
             </div>
             <div class="content">
@@ -775,11 +775,11 @@ async def send_cme_registration_confirmation_email(
                 
                 <div class="event-info">
                     <h2>{event_title}</h2>
-                    <p><strong>📅 Date:</strong> {event_date}</p>
-                    <p><strong>🕐 Time:</strong> {event_time}</p>
-                    <p><strong>📚 Type:</strong> {event_type}</p>
-                    <p><strong>🎤 Speaker:</strong> {speaker}</p>
-                    <p><strong>🌐 Mode:</strong> <span style="text-transform: uppercase; background: #dbeafe; padding: 3px 8px; border-radius: 4px; font-size: 13px;">{event_mode}</span></p>
+                    <p><strong>Date:</strong> {event_date}</p>
+                    <p><strong>Time:</strong> {event_time}</p>
+                    <p><strong>Type:</strong> {event_type}</p>
+                    <p><strong>Speaker:</strong> {speaker}</p>
+                    <p><strong>Mode:</strong> <span style="text-transform: uppercase; background: #dbeafe; padding: 3px 8px; border-radius: 4px; font-size: 13px;">{event_mode}</span></p>
                 </div>
                 
                 {event_details}

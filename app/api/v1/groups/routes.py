@@ -4,7 +4,7 @@ Groups API Endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_doctor
 from app.api.v1.groups.schemas import (
     GroupCreate, GroupUpdate, GroupResponse, GroupDetailResponse,
     GroupListResponse, AddMembersRequest, AddMembersResponse,
@@ -19,7 +19,7 @@ router = APIRouter()
 @router.post("", response_model=GroupResponse, status_code=201)
 async def create_group_endpoint(
     group_data: GroupCreate,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Create a new group.
@@ -87,7 +87,7 @@ async def create_group_endpoint(
 
 @router.get("", response_model=GroupListResponse)
 async def get_my_groups_endpoint(
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get all groups where user is a member.
@@ -141,7 +141,7 @@ async def get_my_groups_endpoint(
 @router.get("/{group_id}", response_model=GroupDetailResponse)
 async def get_group_details_endpoint(
     group_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get detailed group information.
@@ -201,7 +201,7 @@ async def get_group_details_endpoint(
 async def update_group_endpoint(
     group_id: str,
     group_data: GroupUpdate,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Update group information (admin only).
@@ -264,7 +264,7 @@ async def update_group_endpoint(
 async def add_members_endpoint(
     group_id: str,
     members_data: AddMembersRequest,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Add members to group (admin only).
@@ -330,7 +330,7 @@ async def add_members_endpoint(
 async def remove_member_endpoint(
     group_id: str,
     member_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Remove a member from group (admin only).
@@ -381,7 +381,7 @@ async def remove_member_endpoint(
 @router.post("/{group_id}/leave")
 async def leave_group_endpoint(
     group_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Leave a group.
@@ -432,7 +432,7 @@ async def leave_group_endpoint(
 async def make_admin_endpoint(
     group_id: str,
     member_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Make a member an admin (admin only).
@@ -484,7 +484,7 @@ async def make_admin_endpoint(
 async def remove_admin_endpoint(
     group_id: str,
     admin_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Remove admin role from a member (admin only).
@@ -536,7 +536,7 @@ async def remove_admin_endpoint(
 async def send_group_message_endpoint(
     group_id: str,
     message_data: GroupMessageCreate,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Send a message to group.
@@ -610,7 +610,7 @@ async def get_group_messages_endpoint(
     group_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=100, description="Messages per page (max 100)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Get messages in a group.
@@ -685,7 +685,7 @@ async def get_group_messages_endpoint(
 @router.post("/{group_id}/read")
 async def mark_group_as_read_endpoint(
     group_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Mark all group messages as read.
@@ -742,7 +742,7 @@ async def mark_group_as_read_endpoint(
 @router.delete("/{group_id}/clear-chat")
 async def clear_left_group_endpoint(
     group_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_doctor)
 ):
     """
     Clear/delete a left group from your view.
