@@ -53,6 +53,7 @@ class CommunicationInDB(BaseModel):
     priority: CommunicationPriority
     targeting: CommunicationTargeting
     attachments: List[AttachmentInfo] = []
+    link: Optional[str] = Field(None, description="Optional external link (URL)")
     expires_at: Optional[datetime] = None
     created_by: str  # Admin ID
     created_by_name: str

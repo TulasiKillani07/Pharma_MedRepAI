@@ -2,8 +2,8 @@
 MR routes - API endpoints for MR management.
 """
 
-from fastapi import APIRouter, Depends, status, UploadFile, File
-from typing import Dict, Any
+from fastapi import APIRouter, Depends, status, UploadFile, File, Query
+from typing import Dict, Any, Optional
 from app.api.v1.mrs.schemas import (
     MRCreateRequest,
     MRUpdateRequest,
@@ -12,7 +12,8 @@ from app.api.v1.mrs.schemas import (
     MessageResponse,
     MRCreateResponse,
     MRUpdateResponse,
-    BulkUploadResponse
+    BulkUploadResponse,
+    MRFilterResponse
 )
 from app.api.v1.mrs.service import (
     create_mr,
@@ -21,7 +22,8 @@ from app.api.v1.mrs.service import (
     update_mr,
     delete_mr,
     bulk_upload_mrs,
-    download_mrs_template
+    download_mrs_template,
+    filter_mrs
 )
 from app.core.auth import get_current_user, require_admin
 
@@ -121,6 +123,115 @@ async def download_mrs_template_endpoint():
     Downloads file: mrs_template.csv
     """
     return await download_mrs_template()
+
+
+@router.get("/filter", response_model=MRFilterResponse, summary="Filter MRs by Location")
+async def filter_mrs_endpoint(
+    zone: Optional[str] = Query(None, description="Filter by zone (e.g., South)"),
+    state: Optional[str] = Query(None, description="Filter by state (e.g., Telangana, Andhra Pradesh)"),
+    territory: Optional[str] = Query(None, description="Filter by territory (e.g., Hyderabad, Visakhapatnam)"),
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Filter MRs by zone, state, and/or territory (Admin only).
+    
+    **Access:** Admin only
+    
+    **Purpose:**
+    Used for communications targeting - helps admin see which MRs match specific criteria.
+    Frontend can use this to show MR names when creating communications.
+    
+    **Query Parameters:**
+    - zone: Filter by zone (optional) - e.g., "South"
+    - state: Filter by state (optional) - e.g., "Telangana", "Andhra Pradesh"
+    - territory: Filter by territory (optional) - e.g., "Hyderabad", "Visakhapatnam"
+    
+    **Filtering Logic:**
+    - All filters are optional
+    - Multiple filters use AND logic (must match all specified filters)
+    - No filters = returns all active MRs
+    - Results sorted alphabetically by name
+    
+    **Use Cases:**
+    
+    1. **Get all MRs in a territory:**
+    ```
+    GET /api/v1/mrs/filter?territory=Hyderabad
+    ```
+    Returns all MRs in Hyderabad territory
+    
+    2. **Get all MRs in a state:**
+    ```
+    GET /api/v1/mrs/filter?state=Telangana
+    ```
+    Returns all MRs in Telangana state
+    
+    3. **Get all MRs in a specific state and territory:**
+    ```
+    GET /api/v1/mrs/filter?state=Telangana&territory=Hyderabad
+    ```
+    Returns all MRs in Hyderabad, Telangana
+    
+    4. **Get all active MRs:**
+    ```
+    GET /api/v1/mrs/filter
+    ```
+    Returns all active MRs (no filters)
+    
+    **Response:**
+    ```json
+    {
+      "total": 5,
+      "mrs": [
+        {
+          "id": "507f1f77bcf86cd799439011",
+          "name": "Rajesh Kumar",
+          "email": "rajesh@xyzpharma.com",
+          "phone": "+919876543210",
+          "zone": "South",
+          "state": "Telangana",
+          "territory": "Hyderabad",
+          "is_active": true
+        },
+        {
+          "id": "507f1f77bcf86cd799439012",
+          "name": "Priya Sharma",
+          "email": "priya@xyzpharma.com",
+          "phone": "+919876543211",
+          "zone": "South",
+          "state": "Telangana",
+          "territory": "Hyderabad",
+          "is_active": true
+        }
+      ]
+    }
+    ```
+    
+    **Frontend Integration:**
+    
+    1. **Cascading Dropdowns:**
+    - User selects state → call `/api/v1/mrs/filter?state=Telangana`
+    - User selects territory → call `/api/v1/mrs/filter?state=Telangana&territory=Hyderabad`
+    - Show MR names with checkboxes for selection
+    
+    2. **MR Selection UI:**
+    - Display MR names from response
+    - Show checkboxes for multi-select
+    - "Select All" / "Deselect All" buttons
+    - Show count: "5 MRs selected"
+    
+    3. **Targeting Preview:**
+    - Show who will receive: "Targeting: 5 MRs in Hyderabad"
+    - List selected MR names
+    
+    **Note:** Only returns active MRs (is_active = true)
+    """
+    return await filter_mrs(
+        zone=zone,
+        state=state,
+        territory=territory,
+        current_user=current_user
+    )
 
 
 @router.post("/bulk-upload", response_model=BulkUploadResponse, status_code=status.HTTP_200_OK, summary="Bulk Upload MRs")

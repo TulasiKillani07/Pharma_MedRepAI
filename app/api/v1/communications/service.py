@@ -7,16 +7,294 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from bson import ObjectId
 from app.database import get_database
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 from app.models.communication_model import CommunicationInDB, CommunicationTargeting
 from app.models.communication_read_model import CommunicationReadInDB
+import cloudinary
+import cloudinary.uploader
+from app.config import settings
+import os
+import json
+
+# Configure Cloudinary
+cloudinary.config(
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET
+)
+
+
+async def create_communication_with_files(
+    title: str,
+    content: str,
+    comm_type: str,
+    priority: str,
+    targeting_json: str,
+    link: Optional[str],
+    expires_at_str: Optional[str],
+    files: List[UploadFile],
+    current_user: Dict
+) -> Dict[str, Any]:
+    """
+    Create communication with file uploads (Admin only).
+    Uploads files to Cloudinary and creates communication in one step.
+    
+    Args:
+        title: Communication title
+        content: Communication content
+        comm_type: Communication type
+        priority: Priority level
+        targeting_json: Targeting criteria as JSON string
+        link: Optional external link (URL)
+        expires_at_str: Expiry date as ISO string (optional)
+        files: List of uploaded files
+        current_user: Current authenticated admin user
+    
+    Returns:
+        dict: Created communication info with attachments
+    
+    Raises:
+        HTTPException: If validation fails or upload fails
+    """
+    # Validate type
+    valid_types = ["announcement", "alert", "target", "training"]
+    if comm_type not in valid_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid type. Must be one of: {', '.join(valid_types)}"
+        )
+    
+    # Validate priority
+    valid_priorities = ["low", "medium", "high", "urgent"]
+    if priority not in valid_priorities:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid priority. Must be one of: {', '.join(valid_priorities)}"
+        )
+    
+    # Parse targeting JSON
+    try:
+        targeting = json.loads(targeting_json)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid targeting JSON: {str(e)}"
+        )
+    
+    # Validate targeting structure
+    if not isinstance(targeting, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Targeting must be a JSON object"
+        )
+    
+    required_keys = ["zones", "states", "territories", "specific_mrs"]
+    for key in required_keys:
+        if key not in targeting:
+            targeting[key] = []
+    
+    # Parse expires_at
+    expires_at = None
+    if expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid expires_at format. Use ISO format (YYYY-MM-DDTHH:MM:SS): {str(e)}"
+            )
+    
+    # Validate file count
+    if len(files) > 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 5 files allowed per communication"
+        )
+    
+    # Upload files to Cloudinary
+    attachments = []
+    for file in files:
+        if file.filename:  # Skip empty file inputs
+            try:
+                # Upload file to Cloudinary
+                file_result = await _upload_file_to_cloudinary(file)
+                
+                # Add to attachments list
+                attachments.append({
+                    "file_name": file_result["file_name"],
+                    "file_url": file_result["file_url"],
+                    "file_type": file_result["file_type"],
+                    "file_size": file_result["file_size"]
+                })
+            except HTTPException as e:
+                # If any file upload fails, raise error
+                raise HTTPException(
+                    status_code=e.status_code,
+                    detail=f"Failed to upload {file.filename}: {e.detail}"
+                )
+    
+    # Create communication using existing function
+    result = await create_communication(
+        title=title,
+        content=content,
+        comm_type=comm_type,
+        priority=priority,
+        targeting=targeting,
+        attachments=attachments,
+        link=link,
+        expires_at=expires_at,
+        current_user=current_user
+    )
+    
+    # Add attachments to response
+    result["attachments"] = attachments
+    
+    return result
+
+
+async def _upload_file_to_cloudinary(
+    file: UploadFile
+) -> Dict[str, Any]:
+    """
+    Internal function to upload file to Cloudinary.
+    Validates file type, size, and uploads to cloud storage.
+    
+    Args:
+        file: Uploaded file
+    
+    Returns:
+        dict: File info with URL
+    
+    Raises:
+        HTTPException: If file validation fails or upload fails
+    """
+    # Allowed file types
+    ALLOWED_EXTENSIONS = {
+        # Documents
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt',
+        # Images
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
+        # Archives
+        'zip', 'rar'
+    }
+    
+    ALLOWED_MIME_TYPES = {
+        # Documents
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain',
+        # Images
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+        # Archives
+        'application/zip',
+        'application/x-rar-compressed'
+    }
+    
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    
+    # Validate file
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file provided"
+        )
+    
+    # Get file extension
+    file_ext = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+    
+    # Validate extension
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type '.{file_ext}' not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+    
+    # Validate MIME type
+    if file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File MIME type '{file.content_type}' not allowed"
+        )
+    
+    # Read file content
+    try:
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Validate file size
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds maximum allowed size (10MB)"
+            )
+        
+        if file_size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File is empty"
+            )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read file: {str(e)}"
+        )
+    
+    # Upload to Cloudinary
+    try:
+        # Determine resource type based on file type
+        if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']:
+            resource_type = 'image'
+        elif file_ext in ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'zip', 'rar']:
+            resource_type = 'raw'
+        else:
+            resource_type = 'auto'
+        
+        # Upload file
+        upload_result = cloudinary.uploader.upload(
+            file_content,
+            folder="communications/attachments",
+            resource_type=resource_type,
+            public_id=f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{file.filename}",
+            overwrite=False
+        )
+        
+        file_url = upload_result.get('secure_url') or upload_result.get('url')
+        
+        print(f"[SUCCESS] File uploaded to Cloudinary: {file.filename} ({file_size} bytes)")
+        
+        return {
+            "message": "File uploaded successfully",
+            "file_name": file.filename,
+            "file_url": file_url,
+            "file_type": file_ext,
+            "file_size": file_size
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Cloudinary upload failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file to cloud storage: {str(e)}"
+        )
 
 
 async def get_targeted_mrs(targeting: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Get list of MRs based on targeting criteria.
-    Automatically detects targeting type from populated arrays.
-    Uses OR logic: MR matches if they match ANY condition.
+    
+    Targeting Priority:
+    1. If specific_mrs is provided → ONLY target those MRs (ignore zones/states/territories)
+    2. Otherwise → Use zones/states/territories with OR logic
     
     Args:
         targeting: Targeting criteria dict with zones, states, territories, specific_mrs
@@ -26,7 +304,23 @@ async def get_targeted_mrs(targeting: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     db = get_database()
     
-    # Build query conditions (OR logic)
+    # Check specific MRs first (highest priority)
+    specific_mrs = targeting.get("specific_mrs", [])
+    if specific_mrs and len(specific_mrs) > 0:
+        # ONLY target specific MRs, ignore all other criteria
+        try:
+            mr_ids = [ObjectId(mr_id) for mr_id in specific_mrs]
+            query = {
+                "_id": {"$in": mr_ids},
+                "is_active": True
+            }
+            mrs = await db.mrs.find(query).to_list(None)
+            return mrs
+        except Exception:
+            # Invalid ObjectId format
+            return []
+    
+    # No specific MRs, use zone/state/territory with OR logic
     conditions = []
     
     # Check zones
@@ -43,16 +337,6 @@ async def get_targeted_mrs(targeting: Dict[str, Any]) -> List[Dict[str, Any]]:
     territories = targeting.get("territories", [])
     if territories and len(territories) > 0:
         conditions.append({"territory": {"$in": territories}})
-    
-    # Check specific MRs
-    specific_mrs = targeting.get("specific_mrs", [])
-    if specific_mrs and len(specific_mrs) > 0:
-        try:
-            mr_ids = [ObjectId(mr_id) for mr_id in specific_mrs]
-            conditions.append({"_id": {"$in": mr_ids}})
-        except Exception:
-            # Invalid ObjectId format
-            return []
     
     # Build final query
     if not conditions:
@@ -77,6 +361,7 @@ async def create_communication(
     priority: str,
     targeting: Dict[str, Any],
     attachments: List[Dict[str, Any]],
+    link: Optional[str],
     expires_at: Optional[datetime],
     current_user: Dict
 ) -> Dict[str, Any]:
@@ -90,6 +375,7 @@ async def create_communication(
         priority: Priority level (low, medium, high, urgent)
         targeting: Targeting criteria
         attachments: List of file attachments
+        link: Optional external link (URL)
         expires_at: Optional expiry date
         current_user: Current authenticated admin user
     
@@ -113,6 +399,7 @@ async def create_communication(
         priority=priority,
         targeting=CommunicationTargeting(**targeting),
         attachments=attachments,
+        link=link,
         expires_at=expires_at,
         created_by=current_user["_id"],
         created_by_name=current_user.get("full_name", current_user.get("name", "Admin")),
@@ -170,6 +457,7 @@ async def get_communications_for_mr(
     mr_territory = current_user.get("territory")
     
     # Build base query - find communications that target this MR
+    # Priority: specific_mrs > zone/state/territory > all MRs
     base_conditions = [
         # Target all MRs (all targeting arrays empty)
         {
@@ -178,14 +466,20 @@ async def get_communications_for_mr(
             "targeting.territories": {"$size": 0},
             "targeting.specific_mrs": {"$size": 0}
         },
-        # Target by zone
-        {"targeting.zones": mr_zone},
-        # Target by state
-        {"targeting.states": mr_state},
-        # Target by territory
-        {"targeting.territories": mr_territory},
-        # Target specific MR
-        {"targeting.specific_mrs": mr_id}
+        # Target specific MR (highest priority - if specific_mrs is not empty, only those MRs match)
+        {
+            "targeting.specific_mrs": {"$ne": []},  # specific_mrs is not empty
+            "targeting.specific_mrs": mr_id  # AND this MR is in the list
+        },
+        # Target by zone/state/territory (only if specific_mrs is empty)
+        {
+            "targeting.specific_mrs": {"$size": 0},  # specific_mrs is empty
+            "$or": [
+                {"targeting.zones": mr_zone},
+                {"targeting.states": mr_state},
+                {"targeting.territories": mr_territory}
+            ]
+        }
     ]
     
     query = {
@@ -324,19 +618,24 @@ async def get_communication_detail_for_mr(
     targeting = comm["targeting"]
     has_access = False
     
-    # Check if targeting matches MR
-    if (not targeting["zones"] and not targeting["states"] and 
-        not targeting["territories"] and not targeting["specific_mrs"]):
-        # Target all MRs
+    # Priority: specific_mrs > zone/state/territory > all MRs
+    specific_mrs = targeting.get("specific_mrs", [])
+    
+    if specific_mrs and len(specific_mrs) > 0:
+        # If specific_mrs is provided, ONLY those MRs have access
+        has_access = mr_id in specific_mrs
+    elif (not targeting.get("zones") and not targeting.get("states") and 
+          not targeting.get("territories")):
+        # No targeting specified → all MRs have access
         has_access = True
-    elif mr_zone in targeting.get("zones", []):
-        has_access = True
-    elif mr_state in targeting.get("states", []):
-        has_access = True
-    elif mr_territory in targeting.get("territories", []):
-        has_access = True
-    elif mr_id in targeting.get("specific_mrs", []):
-        has_access = True
+    else:
+        # Check zone/state/territory (OR logic)
+        if mr_zone in targeting.get("zones", []):
+            has_access = True
+        elif mr_state in targeting.get("states", []):
+            has_access = True
+        elif mr_territory in targeting.get("territories", []):
+            has_access = True
     
     if not has_access:
         raise HTTPException(
@@ -378,6 +677,7 @@ async def get_communication_detail_for_mr(
         "priority": comm["priority"],
         "targeting": targeting,
         "attachments": comm.get("attachments", []),
+        "link": comm.get("link"),
         "expires_at": comm.get("expires_at"),
         "created_at": comm["created_at"],
         "created_by_name": comm["created_by_name"],
@@ -403,17 +703,29 @@ async def get_unread_count(current_user: Dict) -> Dict[str, int]:
     mr_territory = current_user.get("territory")
     
     # Find all communications targeted to this MR
+    # Priority: specific_mrs > zone/state/territory > all MRs
     base_conditions = [
+        # Target all MRs (all targeting arrays empty)
         {
             "targeting.zones": {"$size": 0},
             "targeting.states": {"$size": 0},
             "targeting.territories": {"$size": 0},
             "targeting.specific_mrs": {"$size": 0}
         },
-        {"targeting.zones": mr_zone},
-        {"targeting.states": mr_state},
-        {"targeting.territories": mr_territory},
-        {"targeting.specific_mrs": mr_id}
+        # Target specific MR (highest priority - if specific_mrs is not empty, only those MRs match)
+        {
+            "targeting.specific_mrs": {"$ne": []},  # specific_mrs is not empty
+            "targeting.specific_mrs": mr_id  # AND this MR is in the list
+        },
+        # Target by zone/state/territory (only if specific_mrs is empty)
+        {
+            "targeting.specific_mrs": {"$size": 0},  # specific_mrs is empty
+            "$or": [
+                {"targeting.zones": mr_zone},
+                {"targeting.states": mr_state},
+                {"targeting.territories": mr_territory}
+            ]
+        }
     ]
     
     query = {
@@ -504,9 +816,16 @@ async def get_all_communications_admin(
     # Format response
     communications = []
     for comm in comms_list:
+        # Create preview (first 100 chars)
+        preview = comm["content"][:100]
+        if len(comm["content"]) > 100:
+            preview += "..."
+        
         communications.append({
             "id": str(comm["_id"]),
             "title": comm["title"],
+            "content": comm["content"],  # Full content for admin
+            "preview": preview,  # Preview for quick view
             "type": comm["type"],
             "priority": comm["priority"],
             "targeting": comm["targeting"],
@@ -562,6 +881,7 @@ async def get_communication_detail_admin(communication_id: str) -> Dict[str, Any
         "priority": comm["priority"],
         "targeting": comm["targeting"],
         "attachments": comm.get("attachments", []),
+        "link": comm.get("link"),
         "expires_at": comm.get("expires_at"),
         "is_active": comm["is_active"],
         "created_at": comm["created_at"],

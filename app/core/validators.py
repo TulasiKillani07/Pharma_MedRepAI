@@ -31,37 +31,76 @@ class ValidationPatterns:
 
 
 class PhoneValidator:
-    """Phone number validation"""
+    """Phone number validation with flexible input"""
     
     @staticmethod
-    def validate(v: Optional[str]) -> Optional[str]:
+    def validate(v: Optional[str], default_country_code: str = '+91') -> Optional[str]:
         """
-        Validate phone number in E.164 international format.
-        User must enter country code with + prefix.
+        Validate and normalize phone number to E.164 international format.
+        Accepts both formats:
+        1. E.164 format with country code: +919876543210
+        2. 10-digit Indian format: 9876543210 (auto-prepends +91)
         
         Examples:
-            Valid: +919876543210, +14155552671, +442071234567
-            Invalid: 9876543210, +91 98765 43210, 123
+            Input: +919876543210 → Output: +919876543210
+            Input: 9876543210 → Output: +919876543210
+            Input: +14155552671 → Output: +14155552671
+            Invalid: 123, +91 98765 43210 (spaces), 98765 (too short)
+        
+        Args:
+            v: Phone number string
+            default_country_code: Country code to prepend for 10-digit numbers (default: +91 for India)
+        
+        Returns:
+            Normalized phone number in E.164 format
         """
         if v is None or v == '':
             return None
         
         v = v.strip()
         
-        # Check for spaces or dashes in input (not allowed)
-        if ' ' in v or '-' in v:
-            raise ValueError(
-                'Phone number cannot contain spaces or dashes. '
-                'Use format: +919876543210'
-            )
+        # Remove spaces and dashes for validation
+        v_clean = v.replace(' ', '').replace('-', '')
         
-        # Validate E.164 format
-        if not re.match(ValidationPatterns.PHONE, v):
-            raise ValueError(
-                'Phone must be in international format with country code '
-                '(e.g., +919876543210, +14155552671). '
-                'Include + prefix and country code, 10-15 digits total.'
-            )
+        # Case 1: Already has country code (starts with +)
+        if v_clean.startswith('+'):
+            # Validate E.164 format
+            if not re.match(ValidationPatterns.PHONE, v_clean):
+                raise ValueError(
+                    'Phone must be in international format with country code '
+                    '(e.g., +919876543210, +14155552671). '
+                    'Include + prefix and country code, 10-15 digits total.'
+                )
+            return v_clean
+        
+        # Case 2: 10-digit number without country code (Indian format)
+        # Remove any non-digit characters
+        digits_only = re.sub(r'[^0-9]', '', v_clean)
+        
+        if len(digits_only) == 10 and digits_only.isdigit():
+            # Valid 10-digit number, prepend default country code
+            normalized = f"{default_country_code}{digits_only}"
+            return normalized
+        
+        # Case 3: Invalid format
+        raise ValueError(
+            'Phone must be either:\n'
+            '1. 10-digit number (e.g., 9876543210) - will be saved as +919876543210\n'
+            '2. International format with country code (e.g., +919876543210, +14155552671)'
+        )
+    
+    @staticmethod
+    def normalize_for_display(v: Optional[str]) -> Optional[str]:
+        """
+        Format phone number for display.
+        +919876543210 → +91 98765 43210
+        """
+        if v is None or v == '':
+            return None
+        
+        if v.startswith('+91') and len(v) == 13:
+            # Indian number: +91 98765 43210
+            return f"+91 {v[3:8]} {v[8:]}"
         
         return v
 

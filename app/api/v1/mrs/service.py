@@ -12,6 +12,7 @@ import re
 from io import BytesIO, StringIO
 from app.database import get_database
 from app.core.security import hash_password, generate_random_password
+from app.core.validators import PhoneValidator
 from app.config import settings
 from app.api.v1.activity_logs.helpers import log_activity
 from app.api.v1.email.service import send_invitation_email, send_bulk_upload_summary_email
@@ -447,13 +448,6 @@ def validate_email(email: str) -> bool:
     return re.match(pattern, email) is not None
 
 
-def validate_phone(phone: str) -> bool:
-    """Validate phone number (must be 10 digits)"""
-    # Remove any spaces or special characters
-    phone_clean = re.sub(r'[^0-9]', '', phone)
-    return len(phone_clean) == 10 and phone_clean.isdigit()
-
-
 async def download_mrs_template() -> StreamingResponse:
     """Generate and download CSV template for bulk MR upload"""
     
@@ -592,8 +586,12 @@ async def bulk_upload_mrs(
         
         if not phone:
             row_errors.append("Phone is required")
-        elif not validate_phone(phone):
-            row_errors.append("Phone must be 10 digits")
+        else:
+            # Validate phone using PhoneValidator (accepts both formats)
+            try:
+                phone = PhoneValidator.validate(phone)
+            except ValueError as e:
+                row_errors.append(str(e))
         
         if not zone:
             row_errors.append("Zone is required")
@@ -752,4 +750,86 @@ async def bulk_upload_mrs(
         "failed": failed,
         "errors": errors,
         "message": message
+    }
+
+
+
+async def filter_mrs(
+    zone: Optional[str] = None,
+    state: Optional[str] = None,
+    territory: Optional[str] = None,
+    current_user: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """
+    Filter MRs by zone, state, and/or territory (Admin only).
+    Used for communications targeting - helps admin see which MRs match criteria.
+    
+    Args:
+        zone: Filter by zone (optional)
+        state: Filter by state (optional)
+        territory: Filter by territory (optional)
+        current_user: Current authenticated user (must be admin)
+    
+    Returns:
+        dict: Filtered list of MRs with basic info
+    
+    Example:
+        GET /api/v1/mrs/filter?territory=Hyderabad
+        Returns all MRs in Hyderabad territory
+        
+        GET /api/v1/mrs/filter?state=Telangana&territory=Hyderabad
+        Returns all MRs in Hyderabad, Telangana
+        
+        GET /api/v1/mrs/filter
+        Returns all active MRs
+    """
+    # Get company database
+    company_db = get_company_database()
+    
+    # Build query
+    query = {"is_active": True}  # Only show active MRs
+    
+    if zone:
+        query["zone"] = zone
+    
+    if state:
+        query["state"] = state
+    
+    if territory:
+        query["territory"] = territory
+    
+    # Get filtered MRs
+    mrs_cursor = company_db.mrs.find(
+        query,
+        {
+            "_id": 1,
+            "name": 1,
+            "email": 1,
+            "phone": 1,
+            "zone": 1,
+            "state": 1,
+            "territory": 1,
+            "is_active": 1
+        }
+    ).sort("name", 1)  # Sort by name alphabetically
+    
+    mrs = await mrs_cursor.to_list(length=None)
+    
+    # Format response
+    mrs_list = []
+    for mr in mrs:
+        mrs_list.append({
+            "id": str(mr["_id"]),
+            "name": mr["name"],
+            "email": mr["email"],
+            "phone": mr["phone"],
+            "zone": mr["zone"],
+            "state": mr["state"],
+            "territory": mr["territory"],
+            "is_active": mr["is_active"]
+        })
+    
+    return {
+        "total": len(mrs_list),
+        "mrs": mrs_list
     }

@@ -2,8 +2,8 @@
 Communications routes - API endpoints for one-way Admin → MR communication.
 """
 
-from fastapi import APIRouter, Depends, status, Query
-from typing import Dict, Optional
+from fastapi import APIRouter, Depends, status, Query, UploadFile, File, HTTPException, Form
+from typing import Dict, Optional, List
 from app.api.v1.communications.schemas import (
     CommunicationCreateRequest,
     CommunicationUpdateRequest,
@@ -23,7 +23,8 @@ from app.api.v1.communications.service import (
     get_communication_detail_admin,
     update_communication,
     delete_communication,
-    get_communication_analytics
+    get_communication_analytics,
+    create_communication_with_files
 )
 from app.core.auth import get_current_user, require_admin
 
@@ -35,93 +36,87 @@ router = APIRouter()
 
 @router.post("", response_model=CommunicationCreateResponse, status_code=status.HTTP_201_CREATED, summary="Create Communication")
 async def create_communication_endpoint(
-    request: CommunicationCreateRequest,
+    title: str = Form(..., description="Communication title"),
+    content: str = Form(..., description="Communication content"),
+    type: str = Form(..., description="Communication type: announcement, alert, target, training"),
+    priority: str = Form(..., description="Priority: low, medium, high, urgent"),
+    targeting: str = Form(..., description="Targeting criteria as JSON string"),
+    link: Optional[str] = Form(None, description="Optional external link (URL)"),
+    expires_at: Optional[str] = Form(None, description="Expiry date in ISO format (optional)"),
+    files: List[UploadFile] = File(default=[], description="Attachment files (optional, max 5 files)"),
     current_user: Dict = Depends(require_admin)
 ):
     """
-    Create a new communication (Admin only).
+    Create a new communication with optional file attachments (Admin only).
     
     **Access:** Admin only
     
     **Purpose:**
-    Send targeted one-way communication to MRs. MRs cannot reply.
+    Send targeted one-way communication to MRs with optional file attachments.
+    Files are automatically uploaded to Cloudinary.
     
-    **Targeting:**
-    - No `type` field needed - backend derives from populated arrays
-    - Uses OR logic: MR matches if they match ANY condition
-    - Empty arrays = target all MRs
+    **Request Format:** multipart/form-data
     
-    **Examples:**
+    **Form Fields:**
+    - title: Communication title (required)
+    - content: Communication content (required)
+    - type: Communication type (required) - announcement, alert, target, training
+    - priority: Priority level (required) - low, medium, high, urgent
+    - targeting: Targeting criteria as JSON string (required)
+    - expires_at: Expiry date in ISO format (optional)
+    - files: Attachment files (optional, max 5 files, 10MB each)
     
-    1. **Target specific territory:**
+    **Targeting JSON Format:**
     ```json
     {
-      "title": "Hyderabad Meeting Tomorrow",
-      "content": "Team meeting at 10 AM...",
-      "type": "announcement",
-      "priority": "high",
-      "targeting": {
-        "zones": [],
-        "states": [],
-        "territories": ["Hyderabad"],
-        "specific_mrs": []
-      }
+      "zones": ["South"],
+      "states": ["Telangana"],
+      "territories": ["Hyderabad"],
+      "specific_mrs": []
     }
     ```
     
-    2. **Target entire state:**
-    ```json
-    {
-      "targeting": {
-        "zones": [],
-        "states": ["Telangana"],
-        "territories": [],
-        "specific_mrs": []
-      }
-    }
-    ```
+    **Supported File Types:**
+    - Documents: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT
+    - Images: JPG, PNG, GIF, WEBP, SVG
+    - Archives: ZIP, RAR
+    - Max 5 files, 10MB each
     
-    3. **Target all MRs:**
-    ```json
-    {
-      "targeting": {
-        "zones": [],
-        "states": [],
-        "territories": [],
-        "specific_mrs": []
-      }
-    }
-    ```
-    
-    4. **Target specific MRs:**
-    ```json
-    {
-      "targeting": {
-        "zones": [],
-        "states": [],
-        "territories": [],
-        "specific_mrs": ["mr_id_1", "mr_id_2"]
-      }
-    }
-    ```
+    **Example (Swagger UI):**
+    1. Fill in title, content, type, priority
+    2. Enter targeting as JSON string: {"zones":[],"states":["Telangana"],"territories":[],"specific_mrs":[]}
+    3. Optionally add expires_at: 2026-12-31T23:59:59
+    4. Optionally upload files (click "Choose Files")
+    5. Click "Execute"
     
     **Response:**
     ```json
     {
       "message": "Communication sent successfully",
       "communication_id": "507f1f77bcf86cd799439011",
-      "targeted_mrs": 15
+      "targeted_mrs": 15,
+      "attachments": [
+        {
+          "file_name": "agenda.pdf",
+          "file_url": "https://res.cloudinary.com/...",
+          "file_type": "pdf",
+          "file_size": 1024000
+        }
+      ]
     }
     ```
+    
+    **Note:** Files are uploaded automatically during communication creation.
     """
-    return await create_communication(
-        title=request.title,
-        content=request.content,
-        comm_type=request.type,
-        priority=request.priority,
-        targeting=request.targeting.model_dump(),
-        attachments=[att.model_dump() for att in request.attachments],
-        expires_at=request.expires_at,
+    return await create_communication_with_files(
+        title=title,
+        content=content,
+        comm_type=type,
+        priority=priority,
+        targeting_json=targeting,
+        link=link,
+        expires_at_str=expires_at,
+        files=files,
         current_user=current_user
     )
 

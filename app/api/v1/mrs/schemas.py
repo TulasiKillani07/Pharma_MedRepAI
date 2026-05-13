@@ -14,11 +14,16 @@ class MRCreateRequest(BaseModel):
     Schema for creating a new MR (Admin only).
     Password is optional - if not provided, default password will be used.
     Zone, State, Territory are required for communications targeting.
+    
+    Phone Number Format:
+    - Accepts both formats: 9876543210 OR +919876543210
+    - 10-digit numbers are automatically converted to +919876543210
+    - International numbers must include country code (e.g., +14155552671)
     """
     name: str = Field(..., min_length=2, max_length=100, description="MR's full name")
     email: EmailStr = Field(..., description="MR's email address")
     password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
-    phone: str = Field(..., description="Phone number in international format (e.g., +919876543210)")
+    phone: str = Field(..., description="Phone number: 9876543210 or +919876543210")
     
     # Geographic fields (required for communications targeting) - Fixed values with dropdowns
     zone: Literal["South"] = Field(default="South", description="Zone (currently only South supported)")
@@ -51,7 +56,7 @@ class MRCreateRequest(BaseModel):
             "example": {
                 "name": "Rajesh Kumar",
                 "email": "rajesh@xyzpharma.com",
-                "phone": "+919876543210",
+                "phone": "9876543210",
                 "zone": "South",
                 "state": "Telangana",
                 "territory": "Hyderabad",
@@ -271,5 +276,70 @@ class BulkUploadResponse(BaseModel):
                     }
                 ],
                 "message": "Bulk upload completed. 95 MRs added successfully, 5 rows failed."
+            }
+        }
+
+
+class MRFilterItem(BaseModel):
+    """
+    Schema for filtered MR item (minimal info for selection).
+    """
+    id: str = Field(..., description="MR's unique ID")
+    name: str = Field(..., description="MR's full name")
+    email: EmailStr = Field(..., description="MR's email")
+    phone: str = Field(..., description="MR's phone number")
+    zone: str = Field(..., description="MR's zone")
+    state: str = Field(..., description="MR's state")
+    territory: str = Field(..., description="MR's territory")
+    is_active: bool = Field(..., description="Whether MR is active")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "507f1f77bcf86cd799439011",
+                "name": "Rajesh Kumar",
+                "email": "rajesh@xyzpharma.com",
+                "phone": "+919876543210",
+                "zone": "South",
+                "state": "Telangana",
+                "territory": "Hyderabad",
+                "is_active": True
+            }
+        }
+
+
+class MRFilterResponse(BaseModel):
+    """
+    Response for filtered MR list.
+    """
+    total: int = Field(..., description="Total number of MRs matching filters")
+    mrs: List[MRFilterItem] = Field(..., description="List of filtered MRs")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total": 5,
+                "mrs": [
+                    {
+                        "id": "507f1f77bcf86cd799439011",
+                        "name": "Rajesh Kumar",
+                        "email": "rajesh@xyzpharma.com",
+                        "phone": "+919876543210",
+                        "zone": "South",
+                        "state": "Telangana",
+                        "territory": "Hyderabad",
+                        "is_active": True
+                    },
+                    {
+                        "id": "507f1f77bcf86cd799439012",
+                        "name": "Priya Sharma",
+                        "email": "priya@xyzpharma.com",
+                        "phone": "+919876543211",
+                        "zone": "South",
+                        "state": "Telangana",
+                        "territory": "Hyderabad",
+                        "is_active": True
+                    }
+                ]
             }
         }

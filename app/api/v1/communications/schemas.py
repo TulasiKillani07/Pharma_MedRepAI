@@ -45,6 +45,7 @@ class CommunicationCreateRequest(BaseModel):
     priority: CommunicationPriority = Field(..., description="Priority level")
     targeting: CommunicationTargetingRequest = Field(..., description="Targeting criteria")
     attachments: Optional[List[AttachmentInfo]] = Field(default=[], description="File attachments")
+    link: Optional[str] = Field(None, max_length=500, description="Optional external link (URL)")
     expires_at: Optional[datetime] = Field(None, description="Expiry date (optional)")
     
     @field_validator('title')
@@ -90,6 +91,7 @@ class CommunicationUpdateRequest(BaseModel):
     priority: Optional[CommunicationPriority] = None
     targeting: Optional[CommunicationTargetingRequest] = None
     attachments: Optional[List[AttachmentInfo]] = None
+    link: Optional[str] = Field(None, max_length=500, description="Optional external link (URL)")
     expires_at: Optional[datetime] = None
     
     @field_validator('title')
@@ -156,6 +158,7 @@ class CommunicationDetailResponse(BaseModel):
     priority: CommunicationPriority
     targeting: CommunicationTargetingResponse
     attachments: List[AttachmentInfo]
+    link: Optional[str] = Field(None, description="External link (URL)")
     expires_at: Optional[datetime]
     created_at: datetime
     created_by_name: str
@@ -200,6 +203,7 @@ class CommunicationAdminDetailResponse(BaseModel):
     priority: CommunicationPriority
     targeting: CommunicationTargetingResponse
     attachments: List[AttachmentInfo]
+    link: Optional[str] = Field(None, description="External link (URL)")
     expires_at: Optional[datetime]
     is_active: bool
     created_at: datetime
@@ -221,13 +225,22 @@ class CommunicationCreateResponse(BaseModel):
     message: str
     communication_id: str
     targeted_mrs: int = Field(..., description="Number of MRs targeted")
+    attachments: List[AttachmentInfo] = Field(default=[], description="Uploaded attachments")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "message": "Communication sent successfully",
                 "communication_id": "507f1f77bcf86cd799439011",
-                "targeted_mrs": 15
+                "targeted_mrs": 15,
+                "attachments": [
+                    {
+                        "file_name": "agenda.pdf",
+                        "file_url": "https://res.cloudinary.com/...",
+                        "file_type": "pdf",
+                        "file_size": 1024000
+                    }
+                ]
             }
         }
 

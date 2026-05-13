@@ -13,11 +13,16 @@ class DoctorCreateRequest(BaseModel):
     """
     Schema for creating a new doctor (Admin only).
     Password is optional - if not provided, default password will be used.
+    
+    Phone Number Format:
+    - Accepts both formats: 9876543210 OR +919876543210
+    - 10-digit numbers are automatically converted to +919876543210
+    - International numbers must include country code (e.g., +14155552671)
     """
     name: str = Field(..., min_length=2, max_length=100, description="Doctor's full name")
     email: EmailStr = Field(..., description="Doctor's email address")
     password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
-    phone: str = Field(..., description="Phone number in international format (e.g., +919876543210)")
+    phone: str = Field(..., description="Phone number: 9876543210 or +919876543210")
     specialization: str = Field(..., description="Medical specialization (e.g., Cardiologist)")
     hospital: Optional[str] = Field(None, description="Hospital name")
     license_number: Optional[str] = Field(None, description="Medical license number")
@@ -52,7 +57,7 @@ class DoctorCreateRequest(BaseModel):
             "example": {
                 "name": "Dr. Sarah Sharma",
                 "email": "sharma@gmail.com",
-                "phone": "+919876543210",
+                "phone": "9876543210",
                 "specialization": "Cardiologist",
                 "hospital": "City Hospital",
                 "license_number": "MH12345",

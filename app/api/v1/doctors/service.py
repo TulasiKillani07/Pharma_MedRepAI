@@ -12,6 +12,7 @@ import re
 from io import BytesIO, StringIO
 from app.database import get_database
 from app.core.security import hash_password, generate_random_password
+from app.core.validators import PhoneValidator
 from app.config import settings
 from app.api.v1.activity_logs.helpers import log_activity
 from app.api.v1.email.service import send_invitation_email, send_bulk_upload_summary_email
@@ -422,14 +423,6 @@ def validate_email(email: str) -> bool:
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
-
-def validate_phone(phone: str) -> bool:
-    """Validate phone number (must be 10 digits)"""
-    # Remove any spaces or special characters
-    phone_clean = re.sub(r'[^0-9]', '', phone)
-    return len(phone_clean) == 10 and phone_clean.isdigit()
-
-
 async def download_doctors_template() -> StreamingResponse:
     """Generate and download CSV template for bulk doctor upload"""
     
@@ -571,8 +564,12 @@ async def bulk_upload_doctors(
         
         if not phone:
             row_errors.append("Phone is required")
-        elif not validate_phone(phone):
-            row_errors.append("Phone must be 10 digits")
+        else:
+            # Validate phone using PhoneValidator (accepts both formats)
+            try:
+                phone = PhoneValidator.validate(phone)
+            except ValueError as e:
+                row_errors.append(str(e))
         
         if not specialization:
             row_errors.append("Specialization is required")
