@@ -12,7 +12,9 @@ class MRBase(BaseModel):
     email: EmailStr
     full_name: str
     phone: str
-    territory: str
+    zone: str  # Geographic zone (e.g., South, North, East, West)
+    state: str  # State (e.g., Telangana, Karnataka, Maharashtra)
+    territory: str  # Sales territory (e.g., Hyderabad, Bangalore North)
     assigned_doctors: List[str] = []
 
 

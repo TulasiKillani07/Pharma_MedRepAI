@@ -55,7 +55,9 @@ async def add_mr(
         "name": "Rajesh Kumar",
         "email": "rajesh@xyzpharma.com",
         "phone": "+919876543210",
-        "territory": "Mumbai North",
+        "zone": "South",
+        "state": "Telangana",
+        "territory": "Hyderabad",
         "assigned_doctors": []
     }
     ```
@@ -75,6 +77,8 @@ async def add_mr(
         email=request.email,
         password=request.password,
         phone=request.phone,
+        zone=request.zone,
+        state=request.state,
         territory=request.territory,
         assigned_doctors=request.assigned_doctors,
         current_user=current_user
@@ -95,12 +99,15 @@ async def download_mrs_template_endpoint():
     1. name (REQUIRED) - MR's full name
     2. email (REQUIRED) - MR's email address
     3. phone (REQUIRED) - Phone number with country code (e.g., +919876543210)
-    4. territory (REQUIRED) - Sales territory
+    4. zone (REQUIRED) - Geographic zone (currently only "South" supported)
+    5. state (REQUIRED) - State (e.g., Telangana, Karnataka, Maharashtra)
+    6. territory (REQUIRED) - Sales territory
     
     **Instructions:**
-    - Fill all required fields (name, email, phone, territory)
+    - Fill all required fields (name, email, phone, zone, state, territory)
     - Email must be unique (not already in system)
     - Phone must be unique and in E.164 format (+country code)
+    - Zone must be "South" (currently only South zone is supported)
     - Maximum 100 rows per upload
     - Doctors can be assigned later via update endpoint
     
@@ -146,20 +153,23 @@ async def bulk_upload_mrs_endpoint(
     - name: MR's full name
     - email: MR's email (must be unique)
     - phone: Phone number (must be 10 digits)
+    - zone: Geographic zone (currently only "South" supported)
+    - state: State (e.g., Telangana, Karnataka, Maharashtra)
     - territory: Sales territory/region
     
     **CSV Example:**
     ```csv
-    name,email,phone,territory
-    Rajesh Kumar,rajesh@xyzpharma.com,9876543210,Mumbai North
-    Priya Sharma,priya@xyzpharma.com,9876543211,Delhi Central
-    Amit Patel,amit@xyzpharma.com,9876543212,Ahmedabad West
+    name,email,phone,zone,state,territory
+    Rajesh Kumar,rajesh@xyzpharma.com,9876543210,South,Telangana,Hyderabad
+    Priya Sharma,priya@xyzpharma.com,9876543211,South,Karnataka,Bangalore North
+    Amit Patel,amit@xyzpharma.com,9876543212,South,Maharashtra,Mumbai West
     ```
     
     **Validation Rules:**
     - Email must be valid format and unique in database
     - Phone must be exactly 10 digits and unique in database
-    - Name, email, phone, territory are required
+    - Name, email, phone, zone, state, territory are required
+    - Zone must be "South" (currently only South zone is supported)
     - Invalid rows are skipped, valid rows are inserted
     - All uploaded MRs get default password: Welcome@123
     - assigned_doctors will be empty (can be assigned later via update)
@@ -228,6 +238,9 @@ async def bulk_upload_mrs_endpoint(
     - "Phone is required"
     - "Phone must be 10 digits"
     - "Phone number already exists in database"
+    - "Zone is required"
+    - "Currently only 'South' zone is supported"
+    - "State is required"
     - "Territory is required"
     
     **Notes:**
@@ -264,7 +277,9 @@ async def list_mrs(current_user: Dict = Depends(get_current_user)):
                 "name": "Rajesh Kumar",
                 "email": "rajesh@xyzpharma.com",
                 "phone": "+919876543210",
-                "territory": "Mumbai North",
+                "zone": "South",
+                "state": "Telangana",
+                "territory": "Hyderabad",
                 "assigned_doctors": [
                     {
                         "id": "507f1f77bcf86cd799439012",
@@ -308,7 +323,9 @@ async def get_mr(
         "name": "Rajesh Kumar",
         "email": "rajesh@xyzpharma.com",
         "phone": "+919876543210",
-        "territory": "Mumbai North",
+        "zone": "South",
+        "state": "Telangana",
+        "territory": "Hyderabad",
         "assigned_doctors": [
             {
                 "id": "507f1f77bcf86cd799439012",
@@ -342,7 +359,9 @@ async def update_mr_endpoint(
     Headers: Authorization: Bearer <admin_token>
     {
         "phone": "+919876543211",
-        "territory": "Mumbai South",
+        "zone": "South",
+        "state": "Karnataka",
+        "territory": "Bangalore North",
         "assigned_doctors": ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"],
         "is_active": true
     }
@@ -354,7 +373,9 @@ async def update_mr_endpoint(
         "message": "MR updated successfully",
         "updated_fields": {
             "phone": "+919876543211",
-            "territory": "Mumbai South",
+            "zone": "South",
+            "state": "Karnataka",
+            "territory": "Bangalore North",
             "assigned_doctors": ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"],
             "is_active": true
         }

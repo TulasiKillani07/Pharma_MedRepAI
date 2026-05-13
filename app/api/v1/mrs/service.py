@@ -35,6 +35,8 @@ async def create_mr(
     email: str,
     password: Optional[str],
     phone: str,
+    zone: str,
+    state: str,
     territory: str,
     assigned_doctors: List[str],
     current_user: Dict[str, Any]
@@ -48,7 +50,9 @@ async def create_mr(
         email: MR's email
         password: Plain text password (optional, uses default if not provided)
         phone: Phone number
-        territory: Sales territory
+        zone: Geographic zone (e.g., South)
+        state: State (e.g., Telangana, Karnataka)
+        territory: Sales territory (e.g., Hyderabad)
         assigned_doctors: List of assigned doctor IDs
         current_user: Current authenticated user
     
@@ -107,6 +111,8 @@ async def create_mr(
         "email": email,
         "password_hash": password_hash,
         "phone": phone,
+        "zone": zone,  # NEW: Geographic zone
+        "state": state,  # NEW: State
         "territory": territory,
         "assigned_doctors": assigned_doctors or [],
         "is_active": True,
@@ -130,6 +136,8 @@ async def create_mr(
         target_name=name,
         details={
             "email": email,
+            "zone": zone,
+            "state": state,
             "territory": territory,
             "assigned_doctors_count": len(assigned_doctors) if assigned_doctors else 0
         },
@@ -454,6 +462,8 @@ async def download_mrs_template() -> StreamingResponse:
         "name",
         "email",
         "phone",
+        "zone",
+        "state",
         "territory"
     ]
     
@@ -462,7 +472,9 @@ async def download_mrs_template() -> StreamingResponse:
         "name": "John Doe",
         "email": "john.doe@example.com",
         "phone": "+919876543210",
-        "territory": "North Region"
+        "zone": "South",
+        "state": "Telangana",
+        "territory": "Hyderabad"
     }
     
     df = pd.DataFrame([sample_row], columns=columns)
@@ -533,7 +545,7 @@ async def bulk_upload_mrs(
         )
     
     # Validate required columns
-    required_columns = ['name', 'email', 'phone', 'territory']
+    required_columns = ['name', 'email', 'phone', 'zone', 'state', 'territory']
     missing_columns = [col for col in required_columns if col not in df.columns]
     
     if missing_columns:
@@ -565,6 +577,8 @@ async def bulk_upload_mrs(
         name = str(row.get('name', '')).strip() if pd.notna(row.get('name')) else ''
         email = str(row.get('email', '')).strip().lower() if pd.notna(row.get('email')) else ''
         phone = str(row.get('phone', '')).strip() if pd.notna(row.get('phone')) else ''
+        zone = str(row.get('zone', '')).strip() if pd.notna(row.get('zone')) else ''
+        state = str(row.get('state', '')).strip() if pd.notna(row.get('state')) else ''
         territory = str(row.get('territory', '')).strip() if pd.notna(row.get('territory')) else ''
         
         # Validate required fields
@@ -581,8 +595,20 @@ async def bulk_upload_mrs(
         elif not validate_phone(phone):
             row_errors.append("Phone must be 10 digits")
         
+        if not zone:
+            row_errors.append("Zone is required")
+        elif zone != "South":
+            row_errors.append("Zone must be 'South'")
+        
+        if not state:
+            row_errors.append("State is required")
+        elif state not in ["Telangana", "Andhra Pradesh"]:
+            row_errors.append("State must be 'Telangana' or 'Andhra Pradesh'")
+        
         if not territory:
             row_errors.append("Territory is required")
+        elif territory not in ["Hyderabad", "Visakhapatnam"]:
+            row_errors.append("Territory must be 'Hyderabad' or 'Visakhapatnam'")
         
         # If basic validation failed, skip to next row
         if row_errors:
@@ -631,6 +657,8 @@ async def bulk_upload_mrs(
                 "email": email,
                 "password_hash": password_hash,
                 "phone": phone,
+                "zone": zone,
+                "state": state,
                 "territory": territory,
                 "assigned_doctors": [],  # Empty on bulk upload
                 "is_active": True,

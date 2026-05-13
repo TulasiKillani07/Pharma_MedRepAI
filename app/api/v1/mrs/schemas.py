@@ -4,7 +4,7 @@ Defines the structure of data for MR operations.
 """
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
 from app.core.validators import PhoneValidator, NameValidator, EmailValidator, TerritoryValidator
 
@@ -13,12 +13,18 @@ class MRCreateRequest(BaseModel):
     """
     Schema for creating a new MR (Admin only).
     Password is optional - if not provided, default password will be used.
+    Zone, State, Territory are required for communications targeting.
     """
     name: str = Field(..., min_length=2, max_length=100, description="MR's full name")
     email: EmailStr = Field(..., description="MR's email address")
     password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
     phone: str = Field(..., description="Phone number in international format (e.g., +919876543210)")
-    territory: str = Field(..., description="Sales territory/region")
+    
+    # Geographic fields (required for communications targeting) - Fixed values with dropdowns
+    zone: Literal["South"] = Field(default="South", description="Zone (currently only South supported)")
+    state: Literal["Telangana", "Andhra Pradesh"] = Field(..., description="State")
+    territory: Literal["Hyderabad", "Visakhapatnam"] = Field(..., description="Territory")
+    
     assigned_doctors: Optional[List[str]] = Field(default=[], description="List of assigned doctor IDs")
     
     # Validators
@@ -40,21 +46,15 @@ class MRCreateRequest(BaseModel):
             raise ValueError('Phone number is required')
         return result
     
-    @field_validator('territory')
-    @classmethod
-    def validate_territory(cls, v: str) -> str:
-        result = TerritoryValidator.validate(v)
-        if result is None:
-            raise ValueError('Territory is required')
-        return result
-    
     class Config:
         json_schema_extra = {
             "example": {
                 "name": "Rajesh Kumar",
                 "email": "rajesh@xyzpharma.com",
                 "phone": "+919876543210",
-                "territory": "Mumbai North",
+                "zone": "South",
+                "state": "Telangana",
+                "territory": "Hyderabad",
                 "assigned_doctors": []
             }
         }
@@ -67,7 +67,9 @@ class MRUpdateRequest(BaseModel):
     """
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = None
-    territory: Optional[str] = None
+    zone: Optional[Literal["South"]] = None
+    state: Optional[Literal["Telangana", "Andhra Pradesh"]] = None
+    territory: Optional[Literal["Hyderabad", "Visakhapatnam"]] = None
     assigned_doctors: Optional[List[str]] = None
     is_active: Optional[bool] = None
     
@@ -82,16 +84,12 @@ class MRUpdateRequest(BaseModel):
     def validate_phone(cls, v: Optional[str]) -> Optional[str]:
         return PhoneValidator.validate(v)
     
-    @field_validator('territory')
-    @classmethod
-    def validate_territory(cls, v: Optional[str]) -> Optional[str]:
-        return TerritoryValidator.validate(v)
-    
     class Config:
         json_schema_extra = {
             "example": {
                 "phone": "+919876543211",
-                "territory": "Mumbai South",
+                "state": "Andhra Pradesh",
+                "territory": "Visakhapatnam",
                 "assigned_doctors": ["507f1f77bcf86cd799439011"],
                 "is_active": True
             }
@@ -122,6 +120,8 @@ class MRResponse(BaseModel):
     name: str
     email: EmailStr
     phone: str
+    zone: str
+    state: str
     territory: str
     assigned_doctors: List[AssignedDoctorInfo]
     is_active: bool
@@ -134,7 +134,9 @@ class MRResponse(BaseModel):
                 "name": "Rajesh Kumar",
                 "email": "rajesh@xyzpharma.com",
                 "phone": "+919876543210",
-                "territory": "Mumbai North",
+                "zone": "South",
+                "state": "Telangana",
+                "territory": "Hyderabad",
                 "assigned_doctors": [
                     {
                         "id": "507f1f77bcf86cd799439012",

@@ -410,5 +410,109 @@ async def initialize_collections():
     except Exception as e:
         print(f"[WARNING] CME registrations index creation note: {e}")
     
+    # Create communications collection if it doesn't exist
+    try:
+        if "communications" not in existing_collections:
+            await database.create_collection("communications")
+            print(f"[SUCCESS] Created communications collection")
+        
+        # Index 1: Compound index on (is_active, expires_at) - Fast active communications query
+        await database["communications"].create_index(
+            [("is_active", 1), ("expires_at", 1)],
+            name="comm_active_expires_idx"
+        )
+        print(f"[SUCCESS] Created compound index on communications.(is_active, expires_at)")
+        
+        # Index 2: Index on targeting.zones - Fast zone-based targeting
+        await database["communications"].create_index(
+            "targeting.zones",
+            name="comm_zones_idx"
+        )
+        print(f"[SUCCESS] Created index on communications.targeting.zones")
+        
+        # Index 3: Index on targeting.states - Fast state-based targeting
+        await database["communications"].create_index(
+            "targeting.states",
+            name="comm_states_idx"
+        )
+        print(f"[SUCCESS] Created index on communications.targeting.states")
+        
+        # Index 4: Index on targeting.territories - Fast territory-based targeting
+        await database["communications"].create_index(
+            "targeting.territories",
+            name="comm_territories_idx"
+        )
+        print(f"[SUCCESS] Created index on communications.targeting.territories")
+        
+        # Index 5: Index on targeting.specific_mrs - Fast specific MR targeting
+        await database["communications"].create_index(
+            "targeting.specific_mrs",
+            name="comm_specific_mrs_idx"
+        )
+        print(f"[SUCCESS] Created index on communications.targeting.specific_mrs")
+        
+        # Index 6: Index on created_at - Fast sorting by date
+        await database["communications"].create_index(
+            "created_at",
+            name="comm_created_at_idx"
+        )
+        print(f"[SUCCESS] Created index on communications.created_at")
+        
+        # Index 7: Index on priority - Fast filtering by priority
+        await database["communications"].create_index(
+            "priority",
+            name="comm_priority_idx"
+        )
+        print(f"[SUCCESS] Created index on communications.priority")
+        
+    except Exception as e:
+        print(f"[WARNING] Communications index creation note: {e}")
+    
+    # Create communication_reads collection if it doesn't exist
+    try:
+        if "communication_reads" not in existing_collections:
+            await database.create_collection("communication_reads")
+            print(f"[SUCCESS] Created communication_reads collection")
+        
+        # Index 1: Compound unique index on (communication_id, mr_id) - Prevent duplicate reads
+        await database["communication_reads"].create_index(
+            [("communication_id", 1), ("mr_id", 1)],
+            unique=True,
+            name="comm_read_unique_idx"
+        )
+        print(f"[SUCCESS] Created compound unique index on communication_reads.(communication_id, mr_id)")
+        
+        # Index 2: Index on communication_id - Fast analytics queries
+        await database["communication_reads"].create_index(
+            "communication_id",
+            name="comm_read_comm_idx"
+        )
+        print(f"[SUCCESS] Created index on communication_reads.communication_id")
+        
+        # Index 3: Index on mr_id - Fast MR read history
+        await database["communication_reads"].create_index(
+            "mr_id",
+            name="comm_read_mr_idx"
+        )
+        print(f"[SUCCESS] Created index on communication_reads.mr_id")
+        
+        # Index 4: Index on read_at - Fast sorting by read time
+        await database["communication_reads"].create_index(
+            "read_at",
+            name="comm_read_at_idx"
+        )
+        print(f"[SUCCESS] Created index on communication_reads.read_at")
+        
+        # Index 5: TTL index on created_at - Auto-delete old read records after 90 days
+        await database["communication_reads"].create_index(
+            "created_at",
+            name="comm_read_ttl_idx",
+            expireAfterSeconds=7776000  # 90 days
+        )
+        print(f"[SUCCESS] Created TTL index on communication_reads.created_at (auto-delete after 90 days)")
+        
+    except Exception as e:
+        print(f"[WARNING] Communication reads index creation note: {e}")
+    
     print(f"[SUCCESS] Collections and indexes initialized")
 
