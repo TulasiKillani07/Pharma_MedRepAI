@@ -13,6 +13,7 @@ class AdminBase(BaseModel):
     full_name: str
     phone: str
     company_name: str
+    department: str = Field(default="general", description="Department code (general, hr, finance, it)")
 
 
 class AdminInDB(AdminBase):

@@ -103,6 +103,10 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
         "collection": collection_name
     }
     
+    # Add department to token if user is admin
+    if role == UserRole.ADMIN:
+        token_data["department"] = user.get("department", "general")
+    
     access_token = create_access_token(data=token_data)
     
     # Prepare user info (without password)
@@ -115,6 +119,10 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
         "name": name_field,
         "role": role.value
     }
+    
+    # Add department to user info if admin
+    if role == UserRole.ADMIN:
+        user_info["department"] = user.get("department", "general")
     
     # Log successful login
     actor_dict = {
@@ -193,6 +201,7 @@ async def register_admin(email: str, password: str, full_name: str, phone: str, 
         "password_hash": password_hash,
         "full_name": full_name,
         "phone": phone,
+        "department": "general",  # Default to general department
         "role": "ADMIN",  # Explicitly set role
         "is_active": True,
         "created_at": datetime.utcnow(),

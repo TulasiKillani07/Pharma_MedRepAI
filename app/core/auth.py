@@ -59,6 +59,7 @@ async def get_current_user(
     # Extract user information from token
     user_id: str = payload.get("sub")
     role: str = payload.get("role")
+    department: str = payload.get("department")  # Extract department from token
     
     if user_id is None or role is None:
         raise HTTPException(
@@ -100,6 +101,10 @@ async def get_current_user(
     # Convert ObjectId to string for JSON serialization
     user["_id"] = str(user["_id"])
     user["role"] = role  # Add role to user object
+    
+    # Add department to user object if present in token (for admins)
+    if department:
+        user["department"] = department
     
     return user
 

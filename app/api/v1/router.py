@@ -21,6 +21,9 @@ from app.api.v1.activity_logs.routes import router as activity_logs_router
 from app.api.v1.search.routes import router as search_router
 from app.api.v1.ai.routes import router as ai_router
 from app.api.v1.communications.routes import router as communications_router
+from app.api.v1.departments.routes import router as departments_router
+from app.api.v1.grievances.routes import router as grievances_router
+from app.api.v1.admin.routes import router as admin_router
 
 
 # Create main API router
@@ -75,3 +78,12 @@ api_router.include_router(ai_router, prefix="/ai", tags=["AI Report Analyzer"])
 
 # Communications routes (One-way Admin → MR broadcast)
 api_router.include_router(communications_router, prefix="/communications", tags=["Communications"])
+
+# Departments routes (Admin only - department management)
+api_router.include_router(departments_router, prefix="/departments", tags=["Departments"])
+
+# Grievances routes (MR creates, Admin responds)
+api_router.include_router(grievances_router, prefix="/grievances", tags=["Grievances"])
+
+# Admin management routes (General Admin only - create/manage department admins)
+api_router.include_router(admin_router, prefix="/admin", tags=["Admin Management"])

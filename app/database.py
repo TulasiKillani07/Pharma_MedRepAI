@@ -514,5 +514,138 @@ async def initialize_collections():
     except Exception as e:
         print(f"[WARNING] Communication reads index creation note: {e}")
     
+    # Create departments collection if it doesn't exist
+    try:
+        if "departments" not in existing_collections:
+            await database.create_collection("departments")
+            print(f"[SUCCESS] Created departments collection")
+        
+        # Index 1: Unique index on code - Prevent duplicate department codes
+        await database["departments"].create_index(
+            "code",
+            unique=True,
+            name="dept_code_unique_idx"
+        )
+        print(f"[SUCCESS] Created unique index on departments.code")
+        
+        # Index 2: Index on is_active - Fast active departments query
+        await database["departments"].create_index(
+            "is_active",
+            name="dept_active_idx"
+        )
+        print(f"[SUCCESS] Created index on departments.is_active")
+        
+        # Index 3: Index on order - Fast sorting
+        await database["departments"].create_index(
+            "order",
+            name="dept_order_idx"
+        )
+        print(f"[SUCCESS] Created index on departments.order")
+        
+        # Seed initial departments if collection is empty
+        dept_count = await database["departments"].count_documents({})
+        if dept_count == 0:
+            from datetime import datetime
+            initial_departments = [
+                {
+                    "code": "hr",
+                    "name": "Human Resources",
+                    "description": "Leave, transfers, performance issues, harassment complaints",
+                    "is_active": True,
+                    "order": 1,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                },
+                {
+                    "code": "finance",
+                    "name": "Finance & Accounts",
+                    "description": "Salary, reimbursements, incentives, travel claims",
+                    "is_active": True,
+                    "order": 2,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                },
+                {
+                    "code": "it",
+                    "name": "IT Support",
+                    "description": "System access, technical issues, software problems",
+                    "is_active": True,
+                    "order": 3,
+                    "created_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            ]
+            await database["departments"].insert_many(initial_departments)
+            print(f"[SUCCESS] Seeded initial departments (hr, finance, it)")
+        
+    except Exception as e:
+        print(f"[WARNING] Departments collection creation note: {e}")
+    
+    # Create grievances collection if it doesn't exist
+    try:
+        if "grievances" not in existing_collections:
+            await database.create_collection("grievances")
+            print(f"[SUCCESS] Created grievances collection")
+        
+        # Index 1: Unique index on ticket_id - Prevent duplicate tickets
+        await database["grievances"].create_index(
+            "ticket_id",
+            unique=True,
+            name="grievance_ticket_unique_idx"
+        )
+        print(f"[SUCCESS] Created unique index on grievances.ticket_id")
+        
+        # Index 2: Compound index on (created_by, status) - Fast MR grievance queries
+        await database["grievances"].create_index(
+            [("created_by", 1), ("status", 1)],
+            name="grievance_mr_status_idx"
+        )
+        print(f"[SUCCESS] Created compound index on grievances.(created_by, status)")
+        
+        # Index 3: Compound index on (department, status) - Fast admin queries
+        await database["grievances"].create_index(
+            [("department", 1), ("status", 1)],
+            name="grievance_dept_status_idx"
+        )
+        print(f"[SUCCESS] Created compound index on grievances.(department, status)")
+        
+        # Index 4: Compound index on (status, priority) - Fast sorting
+        await database["grievances"].create_index(
+            [("status", 1), ("priority", -1)],
+            name="grievance_status_priority_idx"
+        )
+        print(f"[SUCCESS] Created compound index on grievances.(status, priority)")
+        
+        # Index 5: Index on created_at - Fast date sorting
+        await database["grievances"].create_index(
+            [("created_at", -1)],
+            name="grievance_created_at_idx"
+        )
+        print(f"[SUCCESS] Created index on grievances.created_at")
+        
+        # Index 6: Index on is_active - Fast active grievances query
+        await database["grievances"].create_index(
+            "is_active",
+            name="grievance_active_idx"
+        )
+        print(f"[SUCCESS] Created index on grievances.is_active")
+        
+        # Index 7: Index on created_by - Fast MR lookup
+        await database["grievances"].create_index(
+            "created_by",
+            name="grievance_created_by_idx"
+        )
+        print(f"[SUCCESS] Created index on grievances.created_by")
+        
+        # Index 8: Index on department - Fast department lookup
+        await database["grievances"].create_index(
+            "department",
+            name="grievance_department_idx"
+        )
+        print(f"[SUCCESS] Created index on grievances.department")
+        
+    except Exception as e:
+        print(f"[WARNING] Grievances collection creation note: {e}")
+    
     print(f"[SUCCESS] Collections and indexes initialized")
 
