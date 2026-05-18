@@ -26,6 +26,8 @@ class ProfileUpdateRequest(BaseModel):
     
     # MR-specific fields
     territory: Optional[str] = Field(None, max_length=100, description="Territory/Region (MR only)")
+    zone: Optional[str] = Field(None, max_length=100, description="Zone (MR only)")
+    state: Optional[str] = Field(None, max_length=100, description="State (MR only)")
     
     # Admin/Manager-specific fields (personal profile only, NOT company)
     admin_bio: Optional[str] = Field(None, max_length=500, description="Admin/Manager bio")
@@ -62,18 +64,60 @@ class ProfileUpdateRequest(BaseModel):
     def validate_territory(cls, v: Optional[str]) -> Optional[str]:
         return TerritoryValidator.validate(v)
     
+    @field_validator('zone', 'state')
+    @classmethod
+    def validate_zone_state(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v = v.strip()
+            if len(v) == 0:
+                return None
+            if len(v) > 100:
+                raise ValueError("Zone/State must be 100 characters or less")
+        return v
+    
     class Config:
         json_schema_extra = {
-            "example": {
-                "full_name": "Dr. Sarah Sharma",
-                "phone": "+919876543210",
-                "bio": "Cardiologist with 10 years of experience specializing in interventional cardiology",
-                "avatar_url": "https://example.com/avatars/sarah.jpg",
-                "location": "Mumbai, Maharashtra",
-                "experience_years": 10.5,
-                "specialization": "Cardiology",
-                "hospital": "Apollo Hospital"
-            }
+            "examples": [
+                {
+                    "summary": "Doctor Update",
+                    "description": "Update doctor profile fields",
+                    "value": {
+                        "full_name": "Dr. Sarah Sharma",
+                        "phone": "+919876543210",
+                        "bio": "Cardiologist with 10 years of experience",
+                        "avatar_url": "https://example.com/avatars/sarah.jpg",
+                        "location": "Mumbai, Maharashtra",
+                        "experience_years": 10.5,
+                        "specialization": "Cardiology",
+                        "hospital": "Apollo Hospital"
+                    }
+                },
+                {
+                    "summary": "MR Update",
+                    "description": "Update MR profile fields",
+                    "value": {
+                        "full_name": "Rajesh Kumar",
+                        "phone": "+919876543211",
+                        "bio": "Medical Representative with 5 years experience",
+                        "avatar_url": "https://example.com/avatars/rajesh.jpg",
+                        "location": "Hyderabad, Telangana",
+                        "experience_years": 5.0,
+                        "territory": "Hyderabad",
+                        "zone": "South",
+                        "state": "Telangana"
+                    }
+                },
+                {
+                    "summary": "Admin Update",
+                    "description": "Update admin profile fields",
+                    "value": {
+                        "full_name": "John Admin",
+                        "phone": "+919876543212",
+                        "admin_bio": "CEO of XYZ Pharma",
+                        "admin_avatar_url": "https://example.com/avatars/admin.jpg"
+                    }
+                }
+            ]
         }
 
 
@@ -96,10 +140,13 @@ class ProfileResponse(BaseModel):
     
     # MR-specific
     territory: Optional[str] = None
+    zone: Optional[str] = None
+    state: Optional[str] = None
     
     # Admin/Manager-specific (personal profile only)
     admin_bio: Optional[str] = None
     admin_avatar_url: Optional[str] = None
+    department: Optional[str] = None  # Admin department (general, hr, finance, it)
     
     # Metadata
     is_active: bool
@@ -122,6 +169,118 @@ class ProfileResponse(BaseModel):
                 "hospital": "Apollo Hospital",
                 "license_number": "MH12345",
                 "territory": None,
+                "is_active": True,
+                "created_at": "2024-01-01T00:00:00",
+                "updated_at": "2024-04-14T10:00:00"
+            }
+        }
+
+
+class DoctorProfileResponse(BaseModel):
+    """Response schema for Doctor profile"""
+    user_id: str
+    email: str
+    full_name: str
+    phone: str
+    role: str = "DOCTOR"
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    location: Optional[str] = None
+    experience_years: Optional[float] = None
+    specialization: Optional[str] = None
+    hospital: Optional[str] = None
+    license_number: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "507f1f77bcf86cd799439011",
+                "email": "sarah@example.com",
+                "full_name": "Dr. Sarah Sharma",
+                "phone": "+919876543210",
+                "role": "DOCTOR",
+                "bio": "Cardiologist with 10 years of experience",
+                "avatar_url": "https://example.com/avatars/sarah.jpg",
+                "location": "Mumbai, Maharashtra",
+                "experience_years": 10.5,
+                "specialization": "Cardiology",
+                "hospital": "Apollo Hospital",
+                "license_number": "MH12345",
+                "is_active": True,
+                "created_at": "2024-01-01T00:00:00",
+                "updated_at": "2024-04-14T10:00:00"
+            }
+        }
+
+
+class MRProfileResponse(BaseModel):
+    """Response schema for MR profile"""
+    user_id: str
+    email: str
+    full_name: str
+    phone: str
+    role: str = "MR"
+    bio: Optional[str] = None
+    avatar_url: Optional[str] = None
+    location: Optional[str] = None
+    experience_years: Optional[float] = None
+    territory: Optional[str] = None
+    zone: Optional[str] = None
+    state: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "507f1f77bcf86cd799439012",
+                "email": "rajesh@example.com",
+                "full_name": "Rajesh Kumar",
+                "phone": "+919876543211",
+                "role": "MR",
+                "bio": "Medical Representative with 5 years experience",
+                "avatar_url": "https://example.com/avatars/rajesh.jpg",
+                "location": "Hyderabad, Telangana",
+                "experience_years": 5.0,
+                "territory": "Hyderabad",
+                "zone": "South",
+                "state": "Telangana",
+                "is_active": True,
+                "created_at": "2024-01-01T00:00:00",
+                "updated_at": "2024-04-14T10:00:00"
+            }
+        }
+
+
+class AdminProfileResponse(BaseModel):
+    """Response schema for Admin profile"""
+    user_id: str
+    email: str
+    full_name: str
+    phone: str
+    role: str = "ADMIN"
+    admin_bio: Optional[str] = None
+    admin_avatar_url: Optional[str] = None
+    department: str = "general"
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "507f1f77bcf86cd799439013",
+                "email": "admin@xyzpharma.com",
+                "full_name": "John Admin",
+                "phone": "+919876543212",
+                "role": "ADMIN",
+                "admin_bio": "CEO of XYZ Pharma",
+                "admin_avatar_url": "https://example.com/avatars/admin.jpg",
+                "department": "general",
                 "is_active": True,
                 "created_at": "2024-01-01T00:00:00",
                 "updated_at": "2024-04-14T10:00:00"
@@ -199,13 +358,40 @@ class CompanyUpdateRequest(BaseModel):
     
     class Config:
         json_schema_extra = {
-            "example": {
-                "company_name": "XYZ Pharma",
-                "company_logo_url": "https://example.com/logo.png",
-                "company_description": "Leading pharmaceutical company",
-                "company_city": "Mumbai",
-                "company_state": "Maharashtra"
-            }
+            "examples": [
+                {
+                    "summary": "Admin Update (Full Access)",
+                    "description": "Admin can update all company fields including restricted ones",
+                    "value": {
+                        "company_name": "XYZ Pharmaceuticals Ltd",
+                        "company_logo_url": "https://example.com/logo.png",
+                        "company_description": "Leading pharmaceutical company",
+                        "company_address": "123 Main St, Mumbai",
+                        "company_city": "Mumbai",
+                        "company_state": "Maharashtra",
+                        "company_country": "India",
+                        "company_pincode": "400001",
+                        "company_website": "https://xyzpharma.com",
+                        "company_industry": "Pharmaceuticals",
+                        "company_founded_year": 2010,
+                        "company_size": "100-500",
+                        "company_gst_number": "GST123456",
+                        "company_pan_number": "PAN123456"
+                    }
+                },
+                {
+                    "summary": "Manager Update (Limited Access)",
+                    "description": "Manager can only update public fields (logo, description, website, etc.)",
+                    "value": {
+                        "company_logo_url": "https://example.com/new-logo.png",
+                        "company_description": "Updated company description",
+                        "company_website": "https://newwebsite.com",
+                        "company_city": "Mumbai",
+                        "company_state": "Maharashtra",
+                        "company_country": "India"
+                    }
+                }
+            ]
         }
 
 

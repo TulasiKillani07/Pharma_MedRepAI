@@ -18,80 +18,138 @@ from app.api.v1.profile import service
 router = APIRouter()
 
 
-@router.get("/me", response_model=ProfileResponse)
+@router.get(
+    "/me",
+    response_model=ProfileResponse,
+    responses={
+        200: {
+            "description": "Profile retrieved successfully. Response varies by role.",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "doctor": {
+                            "summary": "Doctor Profile",
+                            "description": "Profile response for a Doctor user",
+                            "value": {
+                                "user_id": "507f1f77bcf86cd799439011",
+                                "email": "sarah@example.com",
+                                "full_name": "Dr. Sarah Sharma",
+                                "phone": "+919876543210",
+                                "role": "DOCTOR",
+                                "bio": "Cardiologist with 10 years of experience",
+                                "avatar_url": "https://example.com/avatars/sarah.jpg",
+                                "location": "Mumbai, Maharashtra",
+                                "experience_years": 10.5,
+                                "specialization": "Cardiology",
+                                "hospital": "Apollo Hospital",
+                                "license_number": "MH12345",
+                                "territory": None,
+                                "zone": None,
+                                "state": None,
+                                "admin_bio": None,
+                                "admin_avatar_url": None,
+                                "department": None,
+                                "is_active": True,
+                                "created_at": "2024-01-01T00:00:00",
+                                "updated_at": "2024-04-14T10:00:00"
+                            }
+                        },
+                        "mr": {
+                            "summary": "MR Profile",
+                            "description": "Profile response for a Medical Representative user",
+                            "value": {
+                                "user_id": "507f1f77bcf86cd799439012",
+                                "email": "rajesh@example.com",
+                                "full_name": "Rajesh Kumar",
+                                "phone": "+919876543211",
+                                "role": "MR",
+                                "bio": "Medical Representative with 5 years experience",
+                                "avatar_url": "https://example.com/avatars/rajesh.jpg",
+                                "location": "Hyderabad, Telangana",
+                                "experience_years": 5.0,
+                                "specialization": None,
+                                "hospital": None,
+                                "license_number": None,
+                                "territory": "Hyderabad",
+                                "zone": "South",
+                                "state": "Telangana",
+                                "admin_bio": None,
+                                "admin_avatar_url": None,
+                                "department": None,
+                                "is_active": True,
+                                "created_at": "2024-01-01T00:00:00",
+                                "updated_at": "2024-04-14T10:00:00"
+                            }
+                        },
+                        "admin": {
+                            "summary": "Admin Profile",
+                            "description": "Profile response for an Admin user",
+                            "value": {
+                                "user_id": "507f1f77bcf86cd799439013",
+                                "email": "admin@xyzpharma.com",
+                                "full_name": "John Admin",
+                                "phone": "+919876543212",
+                                "role": "ADMIN",
+                                "bio": None,
+                                "avatar_url": None,
+                                "location": None,
+                                "experience_years": None,
+                                "specialization": None,
+                                "hospital": None,
+                                "license_number": None,
+                                "territory": None,
+                                "zone": None,
+                                "state": None,
+                                "admin_bio": "CEO of XYZ Pharma",
+                                "admin_avatar_url": "https://example.com/avatars/admin.jpg",
+                                "department": "general",
+                                "is_active": True,
+                                "created_at": "2024-01-01T00:00:00",
+                                "updated_at": "2024-04-14T10:00:00"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
 async def get_my_profile_endpoint(
     current_user: Dict = Depends(get_current_user)
 ):
     """
     Get your own complete profile.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Doctor, MR, Admin
     
-    **Purpose:**
-    View your complete profile including all private and public fields.
+    **Purpose:** View your complete profile including all private and public fields.
     
-    **Flow:**
-    1. User opens "My Profile" section
-    2. System retrieves complete profile
-    3. Returns all fields including email, phone, license number (doctors)
+    **Response varies by role:**
     
-    **Response (Doctor/MR):**
-    ```json
-    {
-        "user_id": "507f1f77bcf86cd799439011",
-        "email": "sarah@example.com",
-        "full_name": "Dr. Sarah Sharma",
-        "phone": "+919876543210",
-        "role": "DOCTOR",
-        "bio": "Cardiologist with 10 years of experience",
-        "avatar_url": "https://example.com/avatars/sarah.jpg",
-        "location": "Mumbai, Maharashtra",
-        "experience_years": 10,
-        "specialization": "Cardiology",
-        "hospital": "Apollo Hospital",
-        "license_number": "MH12345",
-        "is_active": true,
-        "created_at": "2024-01-01T00:00:00",
-        "updated_at": "2024-04-14T10:00:00"
-    }
-    ```
+    - **DOCTOR**: Includes specialization, hospital, license_number
+    - **MR**: Includes territory, zone, state
+    - **ADMIN**: Includes admin_bio, admin_avatar_url, department
     
-    **Response (Admin/Manager):**
-    ```json
-    {
-        "user_id": "admin123",
-        "email": "admin@xyzpharma.com",
-        "full_name": "John Admin",
-        "phone": "+919876543210",
-        "role": "ADMIN",
-        "admin_bio": "CEO of XYZ Pharma",
-        "admin_avatar_url": "https://example.com/avatars/admin.jpg",
-        "bio": null,
-        "avatar_url": null,
-        "location": null,
-        "experience_years": null,
-        "specialization": null,
-        "hospital": null,
-        "license_number": null,
-        "territory": null,
-        "is_active": true,
-        "created_at": "2024-01-01T00:00:00",
-        "updated_at": "2024-04-15T10:00:00"
-    }
-    ```
-    
-    **Note:** Admin/Manager profiles do NOT include company fields. 
-    Use `GET /api/v1/profile/company` to view company information.
-    
-    **Use Cases:**
-    - View own profile
-    - Check profile completeness
-    - See all personal information
+    **Use the "Example Value" dropdown above to see role-specific responses.**
     """
     return await service.get_my_profile(current_user)
 
 
-@router.put("/me")
+@router.put(
+    "/me",
+    responses={
+        200: {
+            "description": "Profile updated successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Profile updated successfully"
+                    }
+                }
+            }
+        }
+    }
+)
 async def update_my_profile_endpoint(
     profile_data: ProfileUpdateRequest,
     request: Request,
@@ -102,57 +160,21 @@ async def update_my_profile_endpoint(
     
     **Access:** Doctor, MR, Admin, Manager
     
-    **Purpose:**
-    Update your personal profile information (bio, avatar, location, etc.).
+    **Purpose:** Update your personal profile information (bio, avatar, location, etc.).
     
-    **Flow:**
-    1. User edits profile fields
-    2. System validates changes
-    3. Updates profile in database
-    4. Returns success message
+    **Request Body varies by role:**
     
-    **Request Body (Doctor/MR):**
-    ```json
-    {
-        "full_name": "Dr. Sarah Sharma",
-        "phone": "+919876543210",
-        "bio": "Cardiologist with 10 years of experience",
-        "avatar_url": "https://example.com/avatars/sarah.jpg",
-        "location": "Mumbai, Maharashtra",
-        "experience_years": 10,
-        "specialization": "Cardiology",
-        "hospital": "Apollo Hospital"
-    }
-    ```
-    
-    **Request Body (Admin/Manager):**
-    ```json
-    {
-        "full_name": "John Admin",
-        "phone": "+919876543210",
-        "admin_bio": "CEO of XYZ Pharma",
-        "admin_avatar_url": "https://example.com/avatars/admin.jpg"
-    }
-    ```
-    
-    **Note:** Admin/Manager cannot update company fields here. 
-    Use `PUT /api/v1/profile/company` to update company information.
-    
-    **Response:**
-    ```json
-    {
-        "message": "Profile updated successfully"
-    }
-    ```
+    - **DOCTOR**: Can update bio, avatar_url, location, experience_years, specialization, hospital
+    - **MR**: Can update bio, avatar_url, location, experience_years, territory, zone, state
+    - **ADMIN**: Can update admin_bio, admin_avatar_url
     
     **Rules:**
     - All fields are optional (only send fields you want to update)
     - Cannot update: email, role, license_number
-    - Doctors cannot update MR-specific fields (territory)
+    - Doctors cannot update MR-specific fields (territory, zone, state)
     - MRs cannot update doctor-specific fields (specialization, hospital)
-    - Admin/Manager cannot update doctor/MR fields
+    - Admin cannot update doctor/MR fields
     - Doctor/MR cannot update admin fields
-    - **Company fields CANNOT be updated here** - use `PUT /api/v1/profile/company` instead
     - To remove avatar: send `"avatar_url": null` or `"admin_avatar_url": null`
     - Full name: 2-100 characters
     - Bio: max 500 characters
@@ -251,7 +273,57 @@ async def get_company_profile_endpoint(
     return await service.get_company_profile(current_user)
 
 
-@router.get("/{user_id}", response_model=PublicProfileResponse)
+@router.get(
+    "/{user_id}",
+    response_model=PublicProfileResponse,
+    responses={
+        200: {
+            "description": "Public profile retrieved successfully. Response varies by role.",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "doctor": {
+                            "summary": "Doctor Public Profile",
+                            "description": "Public profile of a Doctor user",
+                            "value": {
+                                "user_id": "507f1f77bcf86cd799439011",
+                                "full_name": "Dr. Sarah Sharma",
+                                "role": "DOCTOR",
+                                "bio": "Cardiologist with 10 years of experience",
+                                "avatar_url": "https://example.com/avatars/sarah.jpg",
+                                "location": "Mumbai, Maharashtra",
+                                "experience_years": 10.5,
+                                "specialization": "Cardiology",
+                                "hospital": "Apollo Hospital",
+                                "territory": None,
+                                "is_connected": True,
+                                "connection_status": "connected"
+                            }
+                        },
+                        "mr": {
+                            "summary": "MR Public Profile",
+                            "description": "Public profile of an MR user",
+                            "value": {
+                                "user_id": "507f1f77bcf86cd799439012",
+                                "full_name": "Rajesh Kumar",
+                                "role": "MR",
+                                "bio": "Medical Representative with 5 years experience",
+                                "avatar_url": "https://example.com/avatars/rajesh.jpg",
+                                "location": "Hyderabad, Telangana",
+                                "experience_years": 5.0,
+                                "specialization": None,
+                                "hospital": None,
+                                "territory": "Hyderabad",
+                                "is_connected": False,
+                                "connection_status": "not_connected"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
 async def get_user_profile_endpoint(
     user_id: str,
     current_user: Dict = Depends(get_current_user)
@@ -261,71 +333,25 @@ async def get_user_profile_endpoint(
     
     **Access:** Doctor, MR, Admin, Manager
     
-    **Purpose:**
-    View public profile information of another user.
+    **Purpose:** View public profile information of another user.
     
-    **Flow:**
-    1. User clicks on another user's name/profile
-    2. System checks permissions
-    3. Returns public profile information
+    **Response varies by role:**
     
-    **Admin/Manager Access:**
-    - Admin/Manager can view ALL doctors and MRs profiles
-    - No connection check required for admin/manager
-    - Useful for managing company employees
-    
-    **Doctor/MR Access:**
-    - Can view other doctors and MRs
-    - Connection status shown
-    - Cannot view blocked users
-    
-    **Path Parameters:**
-    - `user_id`: User ID to view
-    
-    **Response:**
-    ```json
-    {
-        "user_id": "507f1f77bcf86cd799439011",
-        "full_name": "Dr. Sarah Sharma",
-        "role": "DOCTOR",
-        "bio": "Cardiologist with 10 years of experience",
-        "avatar_url": "https://example.com/avatars/sarah.jpg",
-        "location": "Mumbai, Maharashtra",
-        "experience_years": 10,
-        "specialization": "Cardiology",
-        "hospital": "Apollo Hospital",
-        "is_connected": true,
-        "connection_status": "connected"
-    }
-    ```
-    
-    **Public Fields (visible to others):**
-    - Name, role, bio, avatar, location, experience
-    - Specialization, hospital (doctors)
-    - Territory (MRs)
-    - Connection status
-    
-    **Private Fields (NOT visible):**
-    - Email, phone, license number
+    - **DOCTOR**: Shows specialization, hospital (territory is null)
+    - **MR**: Shows territory (specialization, hospital are null)
     
     **Connection Status:**
-    - `"connected"` - You are connected (Doctor/MR viewing)
-    - `"pending"` - Connection request pending (Doctor/MR viewing)
-    - `"not_connected"` - Not connected (Doctor/MR viewing)
-    - `"company_staff_view"` - Admin/Manager viewing employee profile (no connection needed)
+    - `"connected"` - You are connected
+    - `"pending"` - Connection request pending
+    - `"not_connected"` - Not connected
+    - `"company_staff_view"` - Admin/Manager viewing employee
     
     **Rules:**
-    - Admin/Manager can view ALL doctors and MRs (no restrictions)
+    - Admin/Manager can view ALL doctors and MRs
     - Doctors/MRs cannot view blocked users
     - Cannot view own profile (use GET /profile/me)
     
-    **Use Cases:**
-    - Admin/Manager: View employee profiles for management
-    - Doctor/MR: View user profile before connecting
-    - Check connected user's details
-    - See user's specialization/territory
-    - View user's bio and experience
-    
+    **Use the "Example Value" dropdown above to see role-specific responses.**
     **Errors:**
     - 400: Trying to view own profile
     - 403: User is blocked (Doctor/MR only) or insufficient permissions
@@ -335,7 +361,31 @@ async def get_user_profile_endpoint(
 
 
 
-@router.put("/company")
+@router.put(
+    "/company",
+    responses={
+        200: {
+            "description": "Company profile updated successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "Company profile updated successfully"
+                    }
+                }
+            }
+        },
+        403: {
+            "description": "Manager trying to update admin-only fields",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Manager cannot update company_name. Only admin can update company name, GST, PAN, and address."
+                    }
+                }
+            }
+        }
+    }
+)
 async def update_company_profile_endpoint(
     company_data: CompanyUpdateRequest,
     current_user: Dict = Depends(get_current_user)
@@ -345,93 +395,17 @@ async def update_company_profile_endpoint(
     
     **Access:** Admin & Manager (with restrictions)
     
-    **Permissions:**
-    
     **ADMIN can update:**
-    - Company name
-    - Company logo & description
-    - GST & PAN numbers
-    - Full address (address, city, state, country, pincode)
-    - Website, industry, founded year, size
+    - All fields including company_name, company_gst_number, company_pan_number, company_address, company_pincode
     
     **MANAGER can update:**
-    - Company logo & description
-    - City, state, country
-    - Website, industry, founded year, size
-    - [RESTRICTED] Company name (Admin only)
-    - [RESTRICTED] GST & PAN numbers (Admin only)
-    - [RESTRICTED] Full address & pincode (Admin only)
-    
-    **Purpose:**
-    Update company information with role-based access control.
-    
-    **Flow:**
-    1. Admin/Manager opens "Company Settings"
-    2. Edits allowed fields based on role
-    3. System validates permissions
-    4. Updates company profile
-    5. All employees see updated info
-    
-    **Request Body (Admin - all fields):**
-    ```json
-    {
-        "company_name": "XYZ Pharmaceuticals Ltd",
-        "company_logo_url": "https://example.com/logo.png",
-        "company_description": "Leading pharmaceutical company",
-        "company_address": "123 Main St, Mumbai",
-        "company_city": "Mumbai",
-        "company_state": "Maharashtra",
-        "company_country": "India",
-        "company_pincode": "400001",
-        "company_website": "https://xyzpharma.com",
-        "company_industry": "Pharmaceuticals",
-        "company_founded_year": 2010,
-        "company_size": "100-500",
-        "company_gst_number": "GST123456",
-        "company_pan_number": "PAN123456"
-    }
-    ```
-    
-    **Request Body (Manager - limited fields):**
-    ```json
-    {
-        "company_logo_url": "https://example.com/new-logo.png",
-        "company_description": "Updated company description",
-        "company_website": "https://newwebsite.com",
-        "company_city": "Mumbai",
-        "company_state": "Maharashtra"
-    }
-    ```
-    
-    **Response:**
-    ```json
-    {
-        "message": "Company profile updated successfully"
-    }
-    ```
+    - Only public fields: logo, description, city, state, country, website, industry, founded_year, size
+    - CANNOT update: company_name, GST, PAN, address, pincode
     
     **Rules:**
     - All fields are optional
     - Manager attempting to update restricted fields → 403 error
-    - Updates single company document
     - Changes visible to all employees immediately
-    
-    **Use Cases:**
-    - Admin: Update company name, legal info (GST/PAN)
-    - Manager: Update branding (logo, description)
-    - Both: Update public info (website, industry)
-    
-    **Errors:**
-    - 403: Manager trying to update admin-only fields (name, GST, PAN, address)
-    - 403: Doctor/MR trying to update company
-    - 404: Company not found
-    
-    **Example Error (Manager updating name):**
-    ```json
-    {
-        "detail": "Manager cannot update company_name. Only admin can update company name, GST, PAN, and address."
-    }
-    ```
     """
     # Convert Pydantic model to dict, excluding unset fields
     update_data = company_data.model_dump(exclude_unset=True)

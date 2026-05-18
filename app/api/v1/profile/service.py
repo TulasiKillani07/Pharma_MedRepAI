@@ -74,6 +74,8 @@ async def get_my_profile(current_user: Dict) -> Dict[str, Any]:
         profile["hospital"] = None
         profile["license_number"] = None
         profile["territory"] = user.get("territory")
+        profile["zone"] = user.get("zone")  # Add zone
+        profile["state"] = user.get("state")  # Add state
         profile["admin_bio"] = None
         profile["admin_avatar_url"] = None
         
@@ -89,6 +91,7 @@ async def get_my_profile(current_user: Dict) -> Dict[str, Any]:
         profile["territory"] = None
         profile["admin_bio"] = user.get("admin_bio")
         profile["admin_avatar_url"] = user.get("admin_avatar_url")
+        profile["department"] = user.get("department", "general")  # Add department field for admins
     
     return profile
 
