@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # AI Configuration (Groq API)
     GROQ_API_KEY: str  # Groq API key for AI report analysis
     
+    # Logging Configuration
+    LOG_DIR: Optional[str] = None  # Log directory (optional, uses platform default if not set)
+    LOG_LEVEL: str = "INFO"  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    
     class Config:
         """
         Pydantic configuration.

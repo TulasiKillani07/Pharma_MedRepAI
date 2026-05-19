@@ -8,10 +8,14 @@ from app.database import get_database
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.roles import UserRole, get_collection_name
 from app.config import settings
+from app.utils.logger import get_medrep_logger
 from bson import ObjectId
 from typing import Optional
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+
+# Initialize logger
+logger = get_medrep_logger(__name__)
 
 
 async def login_user(email: str, password: str, role: UserRole, request: Optional[Request] = None) -> dict:
@@ -42,23 +46,23 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
     collection_name = get_collection_name(role)
     collection = db[collection_name]
     
-    print(f"[AUTH] Login attempt - Email: {email}, Role: {role}, Collection: {collection_name}, Database: {settings.DATABASE_NAME}")
+    logger.info(f"Login attempt - Email: {email}, Role: {role}, Collection: {collection_name}, Database: {settings.DATABASE_NAME}")
     
     # Find user by email
     user = await collection.find_one({"email": email})
     
     if not user:
-        print(f"[AUTH] User not found in {settings.DATABASE_NAME}.{collection_name} collection")
+        logger.info(f"User not found in {settings.DATABASE_NAME}.{collection_name} collection")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
     
-    print(f"[AUTH] User found: {user.get('name') or user.get('full_name')}")
+    logger.info(f"User found: {user.get('name') or user.get('full_name')}")
     
     # Verify password
     password_valid = verify_password(password, user["password_hash"])
-    print(f"[AUTH] Password verification: {password_valid}")
+    logger.info(f"Password verification: {password_valid}")
     
     if not password_valid:
         raise HTTPException(
@@ -372,7 +376,7 @@ async def request_password_reset(email: str, role: UserRole) -> dict:
     
     # If user doesn't exist, return generic success message (don't reveal if email exists)
     if not user:
-        print(f"[WARNING] Password reset requested for non-existent email: {email} (role: {role.value})")
+        logger.warning(f"Password reset requested for non-existent email: {email} (role: {role.value})")
         return {
             "message": "If an account exists with this email, you will receive a password reset OTP",
             "expires_in": 900  # 15 minutes
@@ -424,9 +428,9 @@ async def request_password_reset(email: str, role: UserRole) -> dict:
             name=name_field,
             otp=otp
         )
-        print(f"[SUCCESS] Password reset OTP sent to {email}")
+        logger.info(f"Password reset OTP sent to {email}")
     except Exception as e:
-        print(f"[ERROR] Failed to send password reset OTP to {email}: {str(e)}")
+        logger.error(f"Failed to send password reset OTP to {email}: {str(e)}")
     
     # Return generic success message
     return {
@@ -535,9 +539,9 @@ async def reset_password_with_otp(
             timestamp=timestamp,
             ip_address=ip_address
         )
-        print(f"[SUCCESS] Password reset confirmation sent to {email}")
+        logger.info(f"Password reset confirmation sent to {email}")
     except Exception as e:
-        print(f"[ERROR] Failed to send confirmation email to {email}: {str(e)}")
+        logger.error(f"Failed to send confirmation email to {email}: {str(e)}")
     
     # Log activity
     actor_dict = {
@@ -567,3 +571,4 @@ async def reset_password_with_otp(
     return {
         "message": "Password reset successfully. You can now login with your new password."
     }
+

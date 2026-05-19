@@ -40,6 +40,18 @@ Thumbs.db
 
 # Logs
 *.log
+*.log.*
+logs/
+*.log.1
+*.log.2
+*.log.3
+*.log.4
+*.log.5
+*.log.6
+*.log.7
+*.log.8
+*.log.9
+*.log.10
 
 # Database
 *.db
@@ -54,3 +66,9 @@ REFACTORING_PROGRESS.md
 CODING_STANDARDS.md
 REFACTORING_PROGRESS.md
 REFACTORING-COMPLETE.md
+PROFILE_API_UPDATES.md
+LOGGING_GUIDE.md
+LOGGER_IMPLEMENTATION_SUMMARY.md
+LOGGER_REPLACEMENT_SUMMARY.md
+LOGGER_EXPLANATION.md
+LOGGER_FINAL_STATUS.md

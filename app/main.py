@@ -9,8 +9,12 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
 from app.api.v1.router import api_router
+from app.utils.logger import get_medrep_logger
 from datetime import datetime
 import json
+
+# Initialize logger
+logger = get_medrep_logger(__name__)
 
 
 # Custom JSON encoder for datetime serialization
@@ -64,9 +68,9 @@ async def startup_event():
     This function runs when the application starts.
     It connects to MongoDB.
     """
-    print(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     await connect_to_mongo()
-    print("Application started successfully!")
+    logger.info("Application started successfully!")
 
 
 # Event: Application Shutdown
@@ -76,9 +80,9 @@ async def shutdown_event():
     This function runs when the application shuts down.
     It closes the MongoDB connection.
     """
-    print("Shutting down application...")
+    logger.info("Shutting down application...")
     await close_mongo_connection()
-    print("Application shut down successfully!")
+    logger.info("Application shut down successfully!")
 
 
 # Include API routes
