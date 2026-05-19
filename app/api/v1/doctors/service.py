@@ -37,6 +37,7 @@ async def create_doctor(
     password: Optional[str],
     phone: str,
     specialization: str,
+    classification: str,
     hospital: Optional[str],
     license_number: Optional[str],
     address: Optional[str],
@@ -52,6 +53,7 @@ async def create_doctor(
         password: Plain text password (optional, uses default if not provided)
         phone: Phone number
         specialization: Medical specialization
+        classification: Doctor classification (A/B/C) for SFE tracking
         hospital: Hospital name (optional)
         license_number: Medical license number (optional)
         address: Address (optional)
@@ -91,6 +93,7 @@ async def create_doctor(
         "password_hash": password_hash,
         "phone": phone,
         "specialization": specialization,
+        "classification": classification,
         "hospital": hospital,
         "license_number": license_number,
         "address": address,
@@ -432,6 +435,7 @@ async def download_doctors_template() -> StreamingResponse:
         "email",
         "phone",
         "specialization",
+        "classification",
         "hospital",
         "license_number",
         "address"
@@ -443,6 +447,7 @@ async def download_doctors_template() -> StreamingResponse:
         "email": "john.smith@example.com",
         "phone": "+919876543210",
         "specialization": "Cardiologist",
+        "classification": "A",
         "hospital": "City Hospital",
         "license_number": "MED12345",
         "address": "123 Medical Street, City"
@@ -516,7 +521,7 @@ async def bulk_upload_doctors(
         )
     
     # Validate required columns
-    required_columns = ['name', 'email', 'phone', 'specialization']
+    required_columns = ['name', 'email', 'phone', 'specialization', 'classification']
     missing_columns = [col for col in required_columns if col not in df.columns]
     
     if missing_columns:
@@ -549,6 +554,7 @@ async def bulk_upload_doctors(
         email = str(row.get('email', '')).strip().lower() if pd.notna(row.get('email')) else ''
         phone = str(row.get('phone', '')).strip() if pd.notna(row.get('phone')) else ''
         specialization = str(row.get('specialization', '')).strip() if pd.notna(row.get('specialization')) else ''
+        classification = str(row.get('classification', '')).strip().upper() if pd.notna(row.get('classification')) else ''
         hospital = str(row.get('hospital', '')).strip() if pd.notna(row.get('hospital')) else None
         license_number = str(row.get('license_number', '')).strip() if pd.notna(row.get('license_number')) else None
         address = str(row.get('address', '')).strip() if pd.notna(row.get('address')) else None
@@ -573,6 +579,11 @@ async def bulk_upload_doctors(
         
         if not specialization:
             row_errors.append("Specialization is required")
+        
+        if not classification:
+            row_errors.append("Classification is required")
+        elif classification not in ['A', 'B', 'C']:
+            row_errors.append("Classification must be A, B, or C")
         
         # If basic validation failed, skip to next row
         if row_errors:
@@ -622,6 +633,7 @@ async def bulk_upload_doctors(
                 "password_hash": password_hash,
                 "phone": phone,
                 "specialization": specialization,
+                "classification": classification,
                 "hospital": hospital if hospital else None,
                 "license_number": license_number if license_number else None,
                 "address": address if address else None,
@@ -717,3 +729,423 @@ async def bulk_upload_doctors(
         "errors": errors,
         "message": message
     }
+
+
+
+# ============================================================================
+# DOCTOR REQUEST FUNCTIONS (MR Request → Admin Approval Workflow)
+# ============================================================================
+
+async def create_doctor_request(
+    name: str,
+    email: str,
+    phone: str,
+    specialization: str,
+    classification: str,
+    hospital: Optional[str],
+    license_number: Optional[str],
+    address: Optional[str],
+    current_user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Create a doctor addition request (MR only).
+    MR submits doctor details, admin must approve before doctor is created.
+    
+    Args:
+        name: Doctor's full name
+        email: Doctor's email
+        phone: Phone number
+        specialization: Medical specialization
+        classification: Doctor classification (A/B/C) for SFE tracking
+        hospital: Hospital name (optional)
+        license_number: Medical license number (optional)
+        address: Address (optional)
+        current_user: Current authenticated user (must be MR)
+    
+    Returns:
+        dict: Success message and request ID
+    
+    Raises:
+        HTTPException: If email already exists or request already pending
+    """
+    from app.api.v1.notifications.service import create_notification
+    from app.models.notification_model import NotificationType
+    
+    # Get company database
+    company_db = get_company_database()
+    
+    # Check if email already exists in doctors collection
+    existing_doctor = await company_db.doctors.find_one({"email": email})
+    if existing_doctor:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Doctor with this email already exists in the system"
+        )
+    
+    # Check if there's already a pending request for this email
+    existing_request = await company_db.doctor_requests.find_one({
+        "email": email,
+        "status": "pending"
+    })
+    if existing_request:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A pending request for this doctor already exists. Please wait for admin approval."
+        )
+    
+    # Create doctor request document
+    request_doc = {
+        "requested_by": current_user["_id"],
+        "requested_by_name": current_user["name"],
+        "requested_by_email": current_user["email"],
+        "status": "pending",
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "specialization": specialization,
+        "classification": classification,
+        "hospital": hospital,
+        "license_number": license_number,
+        "address": address,
+        "reviewed_by": None,
+        "reviewed_by_name": None,
+        "reviewed_at": None,
+        "rejection_reason": None,
+        "doctor_id": None,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    # Insert into database
+    result = await company_db.doctor_requests.insert_one(request_doc)
+    request_id = str(result.inserted_id)
+    
+    # Get all admin users to send notifications
+    admins_cursor = company_db.admins.find({"is_active": True}, {"_id": 1})
+    admins = await admins_cursor.to_list(length=None)
+    
+    # Send notification to all admins
+    for admin in admins:
+        await create_notification(
+            user_id=str(admin["_id"]),
+            notification_type=NotificationType.DOCTOR_REQUEST_PENDING,
+            title="New Doctor Addition Request",
+            message=f"{current_user['name']} requested to add Dr. {name} ({specialization})",
+            data={
+                "request_id": request_id,
+                "mr_id": current_user["_id"],
+                "mr_name": current_user["name"],
+                "doctor_name": name,
+                "doctor_email": email,
+                "specialization": specialization
+            }
+        )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_CREATED,  # Using existing action type
+        actor=current_user,
+        target_type=TargetType.DOCTOR,
+        target_id=request_id,
+        target_name=f"Doctor Request: {name}",
+        details={
+            "email": email,
+            "specialization": specialization,
+            "hospital": hospital,
+            "status": "pending_approval"
+        },
+        severity=LogSeverity.INFO
+    )
+    
+    return {
+        "message": "Doctor request submitted successfully. Waiting for admin approval.",
+        "request_id": request_id
+    }
+
+
+async def get_doctor_requests(
+    current_user: Dict[str, Any],
+    status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get doctor requests.
+    - Admin: Can see all requests
+    - MR: Can see only their own requests
+    
+    Args:
+        current_user: Current authenticated user
+        status_filter: Filter by status (pending, approved, rejected)
+    
+    Returns:
+        list: List of doctor request documents
+    """
+    # Get company database
+    company_db = get_company_database()
+    
+    # Build query based on user role
+    query = {}
+    user_role = current_user.get("role")
+    
+    if user_role == "MR":
+        # MR can only see their own requests
+        query["requested_by"] = current_user["_id"]
+    # Admin can see all requests (no filter)
+    
+    # Add status filter if provided
+    if status_filter:
+        query["status"] = status_filter
+    
+    # Get requests
+    requests_cursor = company_db.doctor_requests.find(query).sort("created_at", -1)
+    requests = await requests_cursor.to_list(length=None)
+    
+    # Convert ObjectId to string
+    for request in requests:
+        request["request_id"] = str(request.pop("_id"))
+    
+    return requests
+
+
+async def approve_doctor_request(
+    request_id: str,
+    current_user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Approve a doctor request and create the doctor account (Admin only).
+    
+    Args:
+        request_id: Doctor request ID
+        current_user: Current authenticated user (must be admin)
+    
+    Returns:
+        dict: Success message and created doctor ID
+    
+    Raises:
+        HTTPException: If request not found, already processed, or email exists
+    """
+    from app.api.v1.notifications.service import create_notification
+    from app.models.notification_model import NotificationType
+    
+    # Get company database
+    company_db = get_company_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(request_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request ID"
+        )
+    
+    # Find request
+    request = await company_db.doctor_requests.find_one({"_id": ObjectId(request_id)})
+    
+    if not request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor request not found"
+        )
+    
+    # Check if already processed
+    if request["status"] != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request already {request['status']}"
+        )
+    
+    # Check if email already exists (in case it was added after request)
+    existing_doctor = await company_db.doctors.find_one({"email": request["email"]})
+    if existing_doctor:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Doctor with this email already exists in the system"
+        )
+    
+    # Generate random password for the doctor
+    random_password = generate_random_password()
+    password_hash = hash_password(random_password)
+    
+    # Create doctor document
+    doctor_doc = {
+        "name": request["name"],
+        "email": request["email"],
+        "password_hash": password_hash,
+        "phone": request["phone"],
+        "specialization": request["specialization"],
+        "classification": request.get("classification", "C"),  # Default to C if not provided (for backward compatibility)
+        "hospital": request.get("hospital"),
+        "license_number": request.get("license_number"),
+        "address": request.get("address"),
+        "is_active": True,
+        "is_password_changed": False,
+        "password_changed_at": None,
+        "first_login_completed": False,
+        "first_login_at": None,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    # Insert doctor into database
+    doctor_result = await company_db.doctors.insert_one(doctor_doc)
+    doctor_id = str(doctor_result.inserted_id)
+    
+    # Update request status
+    await company_db.doctor_requests.update_one(
+        {"_id": ObjectId(request_id)},
+        {
+            "$set": {
+                "status": "approved",
+                "reviewed_by": current_user["_id"],
+                "reviewed_by_name": current_user["name"],
+                "reviewed_at": datetime.utcnow(),
+                "doctor_id": doctor_id,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send notification to MR who requested
+    await create_notification(
+        user_id=request["requested_by"],
+        notification_type=NotificationType.DOCTOR_REQUEST_APPROVED,
+        title="Doctor Request Approved",
+        message=f"Your request to add Dr. {request['name']} has been approved by {current_user['name']}",
+        data={
+            "request_id": request_id,
+            "doctor_id": doctor_id,
+            "doctor_name": request["name"],
+            "doctor_email": request["email"],
+            "approved_by": current_user["name"]
+        }
+    )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_CREATED,
+        actor=current_user,
+        target_type=TargetType.DOCTOR,
+        target_id=doctor_id,
+        target_name=request["name"],
+        details={
+            "email": request["email"],
+            "specialization": request["specialization"],
+            "hospital": request.get("hospital"),
+            "requested_by": request["requested_by_name"],
+            "approved_from_request": request_id
+        },
+        severity=LogSeverity.INFO
+    )
+    
+    # Send invitation email with credentials
+    try:
+        await send_invitation_email(
+            to_email=request["email"],
+            name=request["name"],
+            role="doctor",
+            email=request["email"],
+            password=random_password
+        )
+    except Exception as e:
+        # Log email error but don't fail the approval
+        print(f"Failed to send invitation email to {request['email']}: {str(e)}")
+    
+    return {
+        "message": "Doctor request approved and doctor account created successfully",
+        "doctor_id": doctor_id
+    }
+
+
+async def reject_doctor_request(
+    request_id: str,
+    rejection_reason: str,
+    current_user: Dict[str, Any]
+) -> Dict[str, str]:
+    """
+    Reject a doctor request (Admin only).
+    
+    Args:
+        request_id: Doctor request ID
+        rejection_reason: Reason for rejection
+        current_user: Current authenticated user (must be admin)
+    
+    Returns:
+        dict: Success message
+    
+    Raises:
+        HTTPException: If request not found or already processed
+    """
+    from app.api.v1.notifications.service import create_notification
+    from app.models.notification_model import NotificationType
+    
+    # Get company database
+    company_db = get_company_database()
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(request_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid request ID"
+        )
+    
+    # Find request
+    request = await company_db.doctor_requests.find_one({"_id": ObjectId(request_id)})
+    
+    if not request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor request not found"
+        )
+    
+    # Check if already processed
+    if request["status"] != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Request already {request['status']}"
+        )
+    
+    # Update request status
+    await company_db.doctor_requests.update_one(
+        {"_id": ObjectId(request_id)},
+        {
+            "$set": {
+                "status": "rejected",
+                "reviewed_by": current_user["_id"],
+                "reviewed_by_name": current_user["name"],
+                "reviewed_at": datetime.utcnow(),
+                "rejection_reason": rejection_reason,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send notification to MR who requested
+    await create_notification(
+        user_id=request["requested_by"],
+        notification_type=NotificationType.DOCTOR_REQUEST_REJECTED,
+        title="Doctor Request Rejected",
+        message=f"Your request to add Dr. {request['name']} was rejected by {current_user['name']}",
+        data={
+            "request_id": request_id,
+            "doctor_name": request["name"],
+            "doctor_email": request["email"],
+            "rejected_by": current_user["name"],
+            "rejection_reason": rejection_reason
+        }
+    )
+    
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.USER_UPDATED,  # Using existing action type
+        actor=current_user,
+        target_type=TargetType.DOCTOR,
+        target_id=request_id,
+        target_name=f"Doctor Request: {request['name']}",
+        details={
+            "email": request["email"],
+            "requested_by": request["requested_by_name"],
+            "rejection_reason": rejection_reason,
+            "status": "rejected"
+        },
+        severity=LogSeverity.WARNING
+    )
+    
+    return {"message": "Doctor request rejected successfully"}

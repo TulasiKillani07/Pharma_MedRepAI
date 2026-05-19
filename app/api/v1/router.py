@@ -24,6 +24,7 @@ from app.api.v1.communications.routes import router as communications_router
 from app.api.v1.departments.routes import router as departments_router
 from app.api.v1.grievances.routes import router as grievances_router
 from app.api.v1.admin.routes import router as admin_router
+from app.api.v1.sfe.routes import router as sfe_router
 
 
 # Create main API router
@@ -87,3 +88,6 @@ api_router.include_router(grievances_router, prefix="/grievances", tags=["Grieva
 
 # Admin management routes (General Admin only - create/manage department admins)
 api_router.include_router(admin_router, prefix="/admin", tags=["Admin Management"])
+
+# SFE (Sales Force Effectiveness) routes
+api_router.include_router(sfe_router, tags=["SFE - Sales Force Effectiveness"])

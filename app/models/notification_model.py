@@ -38,6 +38,11 @@ class NotificationType(str, Enum):
     VISIT_RESCHEDULED = "visit_rescheduled"
     VISIT_COMPLETED = "visit_completed"
     VISIT_CANCELLED = "visit_cancelled"
+    
+    # Doctor approval notifications
+    DOCTOR_REQUEST_PENDING = "doctor_request_pending"
+    DOCTOR_REQUEST_APPROVED = "doctor_request_approved"
+    DOCTOR_REQUEST_REJECTED = "doctor_request_rejected"
 
 
 class NotificationInDB(BaseModel):

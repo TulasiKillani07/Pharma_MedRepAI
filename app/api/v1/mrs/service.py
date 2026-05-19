@@ -40,6 +40,7 @@ async def create_mr(
     state: str,
     territory: str,
     assigned_doctors: List[str],
+    assigned_drugs: List[str],
     current_user: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
@@ -55,6 +56,7 @@ async def create_mr(
         state: State (e.g., Telangana, Karnataka)
         territory: Sales territory (e.g., Hyderabad)
         assigned_doctors: List of assigned doctor IDs
+        assigned_drugs: List of assigned drug/product IDs
         current_user: Current authenticated user
     
     Returns:
@@ -116,6 +118,7 @@ async def create_mr(
         "state": state,  # NEW: State
         "territory": territory,
         "assigned_doctors": assigned_doctors or [],
+        "assigned_drugs": assigned_drugs or [],
         "is_active": True,
         "is_password_changed": False,  # User must change password on first login
         "password_changed_at": None,
@@ -140,7 +143,8 @@ async def create_mr(
             "zone": zone,
             "state": state,
             "territory": territory,
-            "assigned_doctors_count": len(assigned_doctors) if assigned_doctors else 0
+            "assigned_doctors_count": len(assigned_doctors) if assigned_doctors else 0,
+            "assigned_drugs_count": len(assigned_drugs) if assigned_drugs else 0
         },
         severity=LogSeverity.INFO
     )
@@ -203,6 +207,23 @@ async def get_all_mrs(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         })
         
         mr["assigned_doctors"] = doctor_details
+        
+        # Fetch drug details for assigned_drugs
+        drug_details = []
+        if mr.get("assigned_drugs"):
+            for drug_id in mr["assigned_drugs"]:
+                if ObjectId.is_valid(drug_id):
+                    drug = await company_db.drugs.find_one(
+                        {"_id": ObjectId(drug_id)},
+                        {"name": 1}
+                    )
+                    if drug:
+                        drug_details.append({
+                            "id": drug_id,
+                            "name": drug["name"]
+                        })
+        
+        mr["assigned_drugs"] = drug_details
     
     return mrs
 
@@ -261,6 +282,23 @@ async def get_mr_by_id(mr_id: str, current_user: Dict[str, Any]) -> Dict[str, An
                     })
     
     mr["assigned_doctors"] = doctor_details
+    
+    # Fetch drug details for assigned_drugs
+    drug_details = []
+    if mr.get("assigned_drugs"):
+        for drug_id in mr["assigned_drugs"]:
+            if ObjectId.is_valid(drug_id):
+                drug = await company_db.drugs.find_one(
+                    {"_id": ObjectId(drug_id)},
+                    {"name": 1}
+                )
+                if drug:
+                    drug_details.append({
+                        "id": drug_id,
+                        "name": drug["name"]
+                    })
+    
+    mr["assigned_drugs"] = drug_details
     
     return mr
 
@@ -329,6 +367,11 @@ async def update_mr(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Doctor {doctor_name} is already assigned to MR {existing_assignment.get('name')}"
                         )
+    
+    # If updating assigned_drugs, ensure it's a list
+    if "assigned_drugs" in update_data:
+        if update_data["assigned_drugs"] is None:
+            update_data["assigned_drugs"] = []
     
     # Store the fields that will be updated (before adding updated_at)
     updated_fields = update_data.copy()
@@ -659,6 +702,7 @@ async def bulk_upload_mrs(
                 "state": state,
                 "territory": territory,
                 "assigned_doctors": [],  # Empty on bulk upload
+                "assigned_drugs": [],  # Empty on bulk upload
                 "is_active": True,
                 "is_password_changed": False,  # User must change password on first login
                 "password_changed_at": None,

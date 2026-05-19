@@ -43,16 +43,20 @@ async def add_mr(
     **Access:** Company Admin only
     
     **Flow:**
-    1. Admin provides MR details
+    1. Admin provides MR details (name, email, phone, location, assigned doctors & drugs)
     2. Backend validates email is unique
-    3. Backend hashes password (or uses default)
-    4. Backend creates MR account
-    5. MR can now login
+    3. Backend validates assigned doctors are not already assigned to another MR
+    4. Backend hashes password (or uses default Welcome@123)
+    5. Backend creates MR account
+    6. Backend sends invitation email with credentials
+    7. MR can now login
     
     **Usage:**
     ```
     POST /api/v1/mrs
     Headers: Authorization: Bearer <admin_token>
+    Content-Type: application/json
+    
     {
         "name": "Rajesh Kumar",
         "email": "rajesh@xyzpharma.com",
@@ -60,7 +64,8 @@ async def add_mr(
         "zone": "South",
         "state": "Telangana",
         "territory": "Hyderabad",
-        "assigned_doctors": []
+        "assigned_doctors": ["507f1f77bcf86cd799439012"],
+        "assigned_drugs": ["507f1f77bcf86cd799439021", "507f1f77bcf86cd799439022"]
     }
     ```
     
@@ -72,7 +77,11 @@ async def add_mr(
     }
     ```
     
-    **Note:** Password is optional. If not provided, default password (Welcome@123) will be used.
+    **Notes:**
+    - Password is optional. If not provided, default password (Welcome@123) will be used
+    - assigned_doctors: Array of doctor IDs to assign (optional, defaults to empty array)
+    - assigned_drugs: Array of drug/product IDs to assign (optional, defaults to empty array)
+    - Invitation email is sent automatically with login credentials
     """
     return await create_mr(
         name=request.name,
@@ -368,9 +377,18 @@ async def bulk_upload_mrs_endpoint(
 @router.get("", response_model=MRListResponse, summary="List All MRs")
 async def list_mrs(current_user: Dict = Depends(get_current_user)):
     """
-    Get list of all Medical Representatives.
+    Get list of all Medical Representatives with their assigned doctors and drugs.
     
     **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Purpose:** View all MRs in the system with complete details including assigned doctors and drugs
+    
+    **Flow:**
+    1. User requests list of MRs
+    2. Backend fetches all MR records
+    3. Backend fetches doctor details (id + name) for each assigned doctor
+    4. Backend fetches drug details (id + name) for each assigned drug
+    5. Returns complete MR list with nested doctor and drug information
     
     **Usage:**
     ```
@@ -397,12 +415,24 @@ async def list_mrs(current_user: Dict = Depends(get_current_user)):
                         "name": "Dr. Sarah Sharma"
                     }
                 ],
+                "assigned_drugs": [
+                    {
+                        "id": "507f1f77bcf86cd799439021",
+                        "name": "Amlovas 5mg"
+                    },
+                    {
+                        "id": "507f1f77bcf86cd799439022",
+                        "name": "Telma 40mg"
+                    }
+                ],
                 "is_active": true,
                 "created_at": "2024-03-30T10:00:00"
             }
         ]
     }
     ```
+    
+    **Note:** Response includes full details (id + name) for both assigned_doctors and assigned_drugs arrays
     """
     mrs = await get_all_mrs(current_user)
     return {
@@ -417,9 +447,19 @@ async def get_mr(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Get details of a specific Medical Representative.
+    Get detailed information of a specific Medical Representative.
     
     **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Purpose:** View complete details of a single MR including assigned doctors and drugs
+    
+    **Flow:**
+    1. User provides MR ID
+    2. Backend validates MR ID format
+    3. Backend fetches MR record
+    4. Backend fetches doctor details for assigned_doctors
+    5. Backend fetches drug details for assigned_drugs
+    6. Returns complete MR information
     
     **Usage:**
     ```
@@ -443,10 +483,20 @@ async def get_mr(
                 "name": "Dr. Sarah Sharma"
             }
         ],
+        "assigned_drugs": [
+            {
+                "id": "507f1f77bcf86cd799439021",
+                "name": "Amlovas 5mg"
+            }
+        ],
         "is_active": true,
         "created_at": "2024-03-30T10:00:00"
     }
     ```
+    
+    **Error Responses:**
+    - 400: Invalid MR ID format
+    - 404: MR not found
     """
     return await get_mr_by_id(mr_id, current_user)
 
@@ -462,20 +512,35 @@ async def update_mr_endpoint(
     
     **Access:** Company Admin only
     
-    **Note:** Only provided fields will be updated. Email cannot be changed.
+    **Purpose:** Modify MR details including phone, location, assigned doctors/drugs, or active status
     
-    **Usage:**
-    ```
-    PUT /api/v1/mrs/507f1f77bcf86cd799439011
-    Headers: Authorization: Bearer <admin_token>
+    **Flow:**
+    1. Admin provides MR ID and fields to update
+    2. Backend validates MR exists
+    3. Backend validates assigned doctors are not already assigned to another MR
+    4. Backend updates only the provided fields
+    5. Backend logs the activity
+    6. Returns success message with list of updated fields
+    
+    **Request Body (all fields optional):**
+    ```json
     {
+        "name": "Rajesh Kumar Updated",
         "phone": "+919876543211",
         "zone": "South",
         "state": "Karnataka",
         "territory": "Bangalore North",
         "assigned_doctors": ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"],
+        "assigned_drugs": ["507f1f77bcf86cd799439021", "507f1f77bcf86cd799439022", "507f1f77bcf86cd799439023"],
         "is_active": true
     }
+    ```
+    
+    **Usage:**
+    ```
+    PUT /api/v1/mrs/507f1f77bcf86cd799439011
+    Headers: Authorization: Bearer <admin_token>
+    Content-Type: application/json
     ```
     
     **Response:**
@@ -488,10 +553,22 @@ async def update_mr_endpoint(
             "state": "Karnataka",
             "territory": "Bangalore North",
             "assigned_doctors": ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013"],
+            "assigned_drugs": ["507f1f77bcf86cd799439021", "507f1f77bcf86cd799439022", "507f1f77bcf86cd799439023"],
             "is_active": true
         }
     }
     ```
+    
+    **Notes:**
+    - Only provided fields will be updated (partial update supported)
+    - Email cannot be changed
+    - assigned_doctors: Replaces entire list (not append)
+    - assigned_drugs: Replaces entire list (not append)
+    - Activity is logged for audit trail
+    
+    **Error Responses:**
+    - 400: Invalid MR ID or doctor already assigned to another MR
+    - 404: MR not found
     """
     update_data = request.model_dump(exclude_unset=True)
     return await update_mr(mr_id, update_data, current_user)
@@ -507,9 +584,15 @@ async def delete_mr_endpoint(
     
     **Access:** Company Admin only
     
-    **Note:** This is a soft delete - MR is marked as inactive (is_active = false).
-    The MR account remains in the database but cannot login.
-    Admin can reactivate by updating is_active to true.
+    **Purpose:** Soft delete an MR account (mark as inactive without removing from database)
+    
+    **Flow:**
+    1. Admin provides MR ID to deactivate
+    2. Backend validates MR exists
+    3. Backend sets is_active = false
+    4. Backend logs deactivation activity
+    5. MR can no longer login
+    6. MR data remains in database for historical records
     
     **Usage:**
     ```
@@ -524,12 +607,27 @@ async def delete_mr_endpoint(
     }
     ```
     
-    **To reactivate:**
+    **What Happens:**
+    - MR account is marked as inactive (is_active = false)
+    - MR cannot login anymore
+    - MR data remains in database
+    - Assigned doctors and drugs remain linked
+    - Historical data (visits, activities) is preserved
+    
+    **To Reactivate:**
     ```
     PUT /api/v1/mrs/507f1f77bcf86cd799439011
+    Content-Type: application/json
+    
     {
         "is_active": true
     }
     ```
+    
+    **Note:** This is a soft delete, not a hard delete. Use this to temporarily disable an MR account.
+    
+    **Error Responses:**
+    - 400: Invalid MR ID format
+    - 404: MR not found
     """
     return await delete_mr(mr_id, current_user)

@@ -16,6 +16,7 @@ class MRBase(BaseModel):
     state: str  # State (e.g., Telangana, Karnataka, Maharashtra)
     territory: str  # Sales territory (e.g., Hyderabad, Bangalore North)
     assigned_doctors: List[str] = []
+    assigned_drugs: List[str] = []  # List of assigned drug/product IDs
 
 
 class MRInDB(MRBase):

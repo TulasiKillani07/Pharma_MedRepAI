@@ -31,6 +31,7 @@ class MRCreateRequest(BaseModel):
     territory: Literal["Hyderabad", "Visakhapatnam"] = Field(..., description="Territory")
     
     assigned_doctors: Optional[List[str]] = Field(default=[], description="List of assigned doctor IDs")
+    assigned_drugs: Optional[List[str]] = Field(default=[], description="List of assigned drug/product IDs")
     
     # Validators
     @field_validator('name')
@@ -60,7 +61,8 @@ class MRCreateRequest(BaseModel):
                 "zone": "South",
                 "state": "Telangana",
                 "territory": "Hyderabad",
-                "assigned_doctors": []
+                "assigned_doctors": [],
+                "assigned_drugs": []
             }
         }
 
@@ -76,6 +78,7 @@ class MRUpdateRequest(BaseModel):
     state: Optional[Literal["Telangana", "Andhra Pradesh"]] = None
     territory: Optional[Literal["Hyderabad", "Visakhapatnam"]] = None
     assigned_doctors: Optional[List[str]] = None
+    assigned_drugs: Optional[List[str]] = None
     is_active: Optional[bool] = None
     
     # Validators
@@ -96,6 +99,7 @@ class MRUpdateRequest(BaseModel):
                 "state": "Andhra Pradesh",
                 "territory": "Visakhapatnam",
                 "assigned_doctors": ["507f1f77bcf86cd799439011"],
+                "assigned_drugs": ["507f1f77bcf86cd799439021"],
                 "is_active": True
             }
         }
@@ -117,6 +121,22 @@ class AssignedDoctorInfo(BaseModel):
         }
 
 
+class AssignedDrugInfo(BaseModel):
+    """
+    Schema for assigned drug/product information.
+    """
+    id: str
+    name: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "507f1f77bcf86cd799439021",
+                "name": "Amlovas 5mg"
+            }
+        }
+
+
 class MRResponse(BaseModel):
     """
     Schema for MR response (without password).
@@ -129,6 +149,7 @@ class MRResponse(BaseModel):
     state: str
     territory: str
     assigned_doctors: List[AssignedDoctorInfo]
+    assigned_drugs: List[AssignedDrugInfo]
     is_active: bool
     created_at: datetime
     
@@ -146,6 +167,12 @@ class MRResponse(BaseModel):
                     {
                         "id": "507f1f77bcf86cd799439012",
                         "name": "Dr. Sarah Sharma"
+                    }
+                ],
+                "assigned_drugs": [
+                    {
+                        "id": "507f1f77bcf86cd799439021",
+                        "name": "Amlovas 5mg"
                     }
                 ],
                 "is_active": True,

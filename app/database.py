@@ -655,6 +655,158 @@ async def initialize_collections():
     except Exception as e:
         logger.warning("Grievances collection creation note: {e}")
     
+    # ========================================================================
+    # SFE (Sales Force Effectiveness) Collections
+    # ========================================================================
+    
+    # Create doctor_assignments collection
+    try:
+        # Index 1: Compound unique index on (mr_id, doctor_id) - Prevent duplicate assignments
+        await database["doctor_assignments"].create_index(
+            [("mr_id", 1), ("doctor_id", 1)],
+            unique=True,
+            name="assignment_mr_doctor_idx"
+        )
+        logger.info("Created compound unique index on doctor_assignments.(mr_id, doctor_id)")
+        
+        # Index 2: Index on mr_id - Fast MR assignments lookup
+        await database["doctor_assignments"].create_index(
+            "mr_id",
+            name="assignment_mr_idx"
+        )
+        logger.info("Created index on doctor_assignments.mr_id")
+        
+        # Index 3: Index on doctor_id - Fast doctor assignment lookup
+        await database["doctor_assignments"].create_index(
+            "doctor_id",
+            name="assignment_doctor_idx"
+        )
+        logger.info("Created index on doctor_assignments.doctor_id")
+        
+        # Index 4: Index on classification - Fast filtering by class
+        await database["doctor_assignments"].create_index(
+            "classification",
+            name="assignment_class_idx"
+        )
+        logger.info("Created index on doctor_assignments.classification")
+    except Exception as e:
+        logger.warning(f"Doctor assignments index creation note: {e}")
+    
+    # Create sfe_config collection (single document, no indexes needed)
+    if "sfe_config" not in existing_collections:
+        await database.create_collection("sfe_config")
+        logger.info("Created sfe_config collection")
+    
+    # Create prescription_commitments collection
+    try:
+        # Index 1: Index on mr_id - Fast MR commitments lookup
+        await database["prescription_commitments"].create_index(
+            "mr_id",
+            name="commitment_mr_idx"
+        )
+        logger.info("Created index on prescription_commitments.mr_id")
+        
+        # Index 2: Index on doctor_id - Fast doctor commitments lookup
+        await database["prescription_commitments"].create_index(
+            "doctor_id",
+            name="commitment_doctor_idx"
+        )
+        logger.info("Created index on prescription_commitments.doctor_id")
+        
+        # Index 3: Index on product_id - Fast product commitments lookup
+        await database["prescription_commitments"].create_index(
+            "product_id",
+            name="commitment_product_idx"
+        )
+        logger.info("Created index on prescription_commitments.product_id")
+        
+        # Index 4: Index on territory - Fast territory-wise aggregation
+        await database["prescription_commitments"].create_index(
+            "territory",
+            name="commitment_territory_idx"
+        )
+        logger.info("Created index on prescription_commitments.territory")
+        
+        # Index 5: Index on status - Fast active commitments filtering
+        await database["prescription_commitments"].create_index(
+            "status",
+            name="commitment_status_idx"
+        )
+        logger.info("Created index on prescription_commitments.status")
+        
+        # Index 6: Index on created_at - Fast sorting by date
+        await database["prescription_commitments"].create_index(
+            "created_at",
+            name="commitment_created_idx"
+        )
+        logger.info("Created index on prescription_commitments.created_at")
+    except Exception as e:
+        logger.warning(f"Prescription commitments index creation note: {e}")
+    
+    # Create chemist_checks collection (optional)
+    try:
+        # Index 1: Index on mr_id - Fast MR checks lookup
+        await database["chemist_checks"].create_index(
+            "mr_id",
+            name="chemist_mr_idx"
+        )
+        logger.info("Created index on chemist_checks.mr_id")
+        
+        # Index 2: Index on product_id - Fast product checks lookup
+        await database["chemist_checks"].create_index(
+            "product_id",
+            name="chemist_product_idx"
+        )
+        logger.info("Created index on chemist_checks.product_id")
+        
+        # Index 3: Index on territory - Fast territory-wise aggregation
+        await database["chemist_checks"].create_index(
+            "territory",
+            name="chemist_territory_idx"
+        )
+        logger.info("Created index on chemist_checks.territory")
+        
+        # Index 4: Index on date - Fast date-based queries
+        await database["chemist_checks"].create_index(
+            "date",
+            name="chemist_date_idx"
+        )
+        logger.info("Created index on chemist_checks.date")
+    except Exception as e:
+        logger.warning(f"Chemist checks index creation note: {e}")
+    
+    # Create doctor_requests collection (MR request → Admin approval workflow)
+    try:
+        # Index 1: Index on status - Fast pending requests filtering
+        await database["doctor_requests"].create_index(
+            "status",
+            name="doctor_request_status_idx"
+        )
+        logger.info("Created index on doctor_requests.status")
+        
+        # Index 2: Index on requested_by - Fast MR requests lookup
+        await database["doctor_requests"].create_index(
+            "requested_by",
+            name="doctor_request_mr_idx"
+        )
+        logger.info("Created index on doctor_requests.requested_by")
+        
+        # Index 3: Index on created_at - Fast sorting by date
+        await database["doctor_requests"].create_index(
+            [("created_at", -1)],
+            name="doctor_request_created_idx"
+        )
+        logger.info("Created index on doctor_requests.created_at")
+        
+        # Index 4: Compound index on email + status - Fast duplicate check
+        await database["doctor_requests"].create_index(
+            [("email", 1), ("status", 1)],
+            name="doctor_request_email_status_idx"
+        )
+        logger.info("Created compound index on doctor_requests.(email, status)")
+    except Exception as e:
+        logger.warning(f"Doctor requests index creation note: {e}")
+    
     logger.info("Collections and indexes initialized")
 
 

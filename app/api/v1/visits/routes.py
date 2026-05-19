@@ -195,17 +195,40 @@ async def complete_visit_endpoint(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Complete a visit (MR only).
+    Complete a visit with SFE data (MR only).
     
     **Access:** MR only (own visits)
+    
+    **Required fields:**
+    - outcome: Visit outcome summary (min 10 characters)
+    
+    **Optional SFE fields:**
+    - products_promoted: List of product IDs discussed
+    - samples_given: Number of samples distributed
+    - doctor_mood: Doctor's receptiveness (positive/neutral/negative)
+    - competitor_info: Competitor information observed
+    - followup_date: Next follow-up date (auto-creates next visit)
+    - rx_commitment: Prescription commitment (product_id, rx_per_week, confidence)
+    - gps_lat, gps_lng: GPS coordinates for location proof
     
     **Usage:**
     ```
     PUT /api/v1/visits/{visit_id}/complete
     Headers: Authorization: Bearer <mr_token>
     {
-        "outcome": "Successfully presented new product line",
-        "feedback": "Doctor requested follow-up next month"
+        "outcome": "Successfully presented Amlovas 5mg. Doctor showed interest.",
+        "feedback": "Doctor requested follow-up next month",
+        "products_promoted": ["prod_id_1", "prod_id_2"],
+        "samples_given": 10,
+        "doctor_mood": "positive",
+        "followup_date": "2026-06-15",
+        "rx_commitment": {
+            "product_id": "prod_id_1",
+            "rx_per_week": 15,
+            "confidence": "high"
+        },
+        "gps_lat": 17.3850,
+        "gps_lng": 78.4867
     }
     ```
     """
@@ -221,7 +244,16 @@ async def complete_visit_endpoint(
         outcome=complete_request.outcome,
         feedback=complete_request.feedback,
         current_user=current_user,
-        request=request
+        request=request,
+        # SFE fields
+        products_promoted=complete_request.products_promoted,
+        samples_given=complete_request.samples_given,
+        doctor_mood=complete_request.doctor_mood,
+        competitor_info=complete_request.competitor_info,
+        followup_date=complete_request.followup_date,
+        rx_commitment=complete_request.rx_commitment.model_dump() if complete_request.rx_commitment else None,
+        gps_lat=complete_request.gps_lat,
+        gps_lng=complete_request.gps_lng
     )
 
 

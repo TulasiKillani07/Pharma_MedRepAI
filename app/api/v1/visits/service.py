@@ -380,10 +380,19 @@ async def complete_visit(
     outcome: str,
     feedback: Optional[str],
     current_user: Dict[str, Any],
-    request: Optional[Request] = None
+    request: Optional[Request] = None,
+    # SFE fields
+    products_promoted: Optional[List[str]] = None,
+    samples_given: Optional[int] = None,
+    doctor_mood: Optional[str] = None,
+    competitor_info: Optional[str] = None,
+    followup_date: Optional[date] = None,
+    rx_commitment: Optional[Dict[str, Any]] = None,
+    gps_lat: Optional[float] = None,
+    gps_lng: Optional[float] = None
 ) -> Dict[str, str]:
     """
-    Complete a visit.
+    Complete a visit with SFE data.
     Only scheduled visits can be completed.
     
     Args:
@@ -391,6 +400,14 @@ async def complete_visit(
         outcome: Visit outcome
         feedback: Additional feedback
         current_user: Current authenticated MR
+        products_promoted: List of product IDs promoted
+        samples_given: Number of samples distributed
+        doctor_mood: Doctor's receptiveness (positive/neutral/negative)
+        competitor_info: Competitor information
+        followup_date: Next follow-up date
+        rx_commitment: Prescription commitment data
+        gps_lat: GPS latitude
+        gps_lng: GPS longitude
     
     Returns:
         dict: Success message
@@ -417,7 +434,7 @@ async def complete_visit(
         )
     
     # Check authorization
-    user_id = current_user.get("_id")  # Changed from "sub" to "_id"
+    user_id = current_user.get("_id")
     if visit["mr_id"] != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -431,19 +448,87 @@ async def complete_visit(
             detail=f"Cannot complete {visit['status']} visit"
         )
     
+    # Prepare update data
+    update_data = {
+        "status": "completed",
+        "outcome": outcome,
+        "feedback": feedback,
+        "completed_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    # Add SFE fields if provided
+    if products_promoted is not None:
+        update_data["products_promoted"] = products_promoted
+    if samples_given is not None:
+        update_data["samples_given"] = samples_given
+    if doctor_mood is not None:
+        update_data["doctor_mood"] = doctor_mood
+    if competitor_info is not None:
+        update_data["competitor_info"] = competitor_info
+    if followup_date is not None:
+        update_data["followup_date"] = datetime.combine(followup_date, datetime.min.time())
+    if gps_lat is not None:
+        update_data["gps_lat"] = gps_lat
+    if gps_lng is not None:
+        update_data["gps_lng"] = gps_lng
+    
     # Update visit
     await company_db.visits.update_one(
         {"_id": ObjectId(visit_id)},
-        {
-            "$set": {
-                "status": "completed",
-                "outcome": outcome,
-                "feedback": feedback,
-                "completed_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-        }
+        {"$set": update_data}
     )
+    
+    # Handle follow-up visit creation
+    if followup_date:
+        # Auto-create next scheduled visit
+        from app.models.visit_model import VisitInDB, VisitStatus
+        
+        followup_visit = VisitInDB(
+            mr_id=visit["mr_id"],
+            mr_name=visit["mr_name"],
+            doctor_id=visit["doctor_id"],
+            doctor_name=visit["doctor_name"],
+            scheduled_date=followup_date,
+            scheduled_time=visit["scheduled_time"],  # Use same time as previous visit
+            purpose=f"Follow-up from visit on {visit['scheduled_date'].strftime('%Y-%m-%d')}",
+            location=visit["location"],
+            notes=f"Auto-scheduled follow-up",
+            status=VisitStatus.SCHEDULED
+        )
+        
+        followup_doc = followup_visit.model_dump()
+        followup_doc["scheduled_date"] = datetime.combine(followup_date, datetime.min.time())
+        
+        await company_db.visits.insert_one(followup_doc)
+    
+    # Handle prescription commitment
+    if rx_commitment:
+        from app.models.sfe_models import PrescriptionCommitment, CommitmentConfidence
+        
+        # Get product details
+        product = await company_db.drugs.find_one({"_id": ObjectId(rx_commitment["product_id"])})
+        
+        if product:
+            # Get MR details for territory info
+            mr = await company_db.mrs.find_one({"_id": ObjectId(user_id)})
+            
+            commitment = PrescriptionCommitment(
+                mr_id=user_id,
+                mr_name=visit["mr_name"],
+                doctor_id=visit["doctor_id"],
+                doctor_name=visit["doctor_name"],
+                product_id=rx_commitment["product_id"],
+                product_name=product["name"],
+                rx_per_week=rx_commitment["rx_per_week"],
+                confidence=CommitmentConfidence(rx_commitment.get("confidence", "medium")),
+                visit_id=visit_id,
+                territory=mr.get("territory") if mr else None,
+                zone=mr.get("zone") if mr else None,
+                state=mr.get("state") if mr else None
+            )
+            
+            await company_db.prescription_commitments.insert_one(commitment.model_dump())
     
     # Send notification to MR (self-notification for confirmation)
     await notify_visit_completed(
@@ -455,18 +540,27 @@ async def complete_visit(
     )
     
     # Log activity
+    activity_details = {
+        "doctor_id": visit["doctor_id"],
+        "doctor_name": visit["doctor_name"],
+        "outcome": outcome,
+        "scheduled_date": visit["scheduled_date"].strftime("%Y-%m-%d")
+    }
+    
+    if products_promoted:
+        activity_details["products_promoted_count"] = len(products_promoted)
+    if samples_given:
+        activity_details["samples_given"] = samples_given
+    if rx_commitment:
+        activity_details["rx_commitment"] = True
+    
     await log_activity(
         action_type=ActivityLogAction.VISIT_COMPLETED,
         actor=current_user,
         target_type=TargetType.VISIT,
         target_id=visit_id,
         target_name=None,
-        details={
-            "doctor_id": visit["doctor_id"],
-            "doctor_name": visit["doctor_name"],
-            "outcome": outcome,
-            "scheduled_date": visit["scheduled_date"].strftime("%Y-%m-%d")
-        },
+        details=activity_details,
         severity=LogSeverity.INFO,
         request=request
     )

@@ -114,10 +114,28 @@ class VisitRescheduleRequest(BaseModel):
         }
 
 
+class RxCommitmentRequest(BaseModel):
+    """Prescription commitment data"""
+    product_id: str = Field(..., description="Product/Drug ID")
+    rx_per_week: int = Field(..., ge=1, le=1000, description="Expected prescriptions per week")
+    confidence: str = Field(default="medium", description="Confidence level: high/medium/low")
+
+
 class VisitCompleteRequest(BaseModel):
-    """Schema for completing a visit"""
+    """Schema for completing a visit (with SFE fields)"""
+    # Original fields
     outcome: str = Field(..., min_length=10, description="Visit outcome summary")
     feedback: Optional[str] = Field(None, description="Additional feedback")
+    
+    # SFE fields (optional for backward compatibility)
+    products_promoted: Optional[List[str]] = Field(None, description="List of product IDs promoted")
+    samples_given: Optional[int] = Field(None, ge=0, le=1000, description="Number of samples distributed")
+    doctor_mood: Optional[str] = Field(None, description="Doctor's receptiveness: positive/neutral/negative")
+    competitor_info: Optional[str] = Field(None, max_length=500, description="Competitor information")
+    followup_date: Optional[date] = Field(None, description="Next follow-up date (YYYY-MM-DD)")
+    rx_commitment: Optional[RxCommitmentRequest] = Field(None, description="Prescription commitment")
+    gps_lat: Optional[float] = Field(None, ge=-90, le=90, description="GPS latitude")
+    gps_lng: Optional[float] = Field(None, ge=-180, le=180, description="GPS longitude")
     
     # Validators
     @field_validator('outcome')
@@ -128,16 +146,44 @@ class VisitCompleteRequest(BaseModel):
             raise ValueError('Outcome is required')
         return result
     
-    @field_validator('feedback')
+    @field_validator('feedback', 'competitor_info')
     @classmethod
-    def validate_feedback(cls, v: Optional[str]) -> Optional[str]:
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
         return TextValidator.validate(v, max_length=1000, strip_html=True)
+    
+    @field_validator('followup_date')
+    @classmethod
+    def validate_followup_date(cls, v: Optional[date]) -> Optional[date]:
+        """Validate follow-up date is in the future"""
+        if v and v < date.today():
+            raise ValueError('Follow-up date must be in the future')
+        return v
+    
+    @field_validator('doctor_mood')
+    @classmethod
+    def validate_doctor_mood(cls, v: Optional[str]) -> Optional[str]:
+        """Validate doctor mood is valid"""
+        if v and v not in ["positive", "neutral", "negative"]:
+            raise ValueError('Doctor mood must be: positive, neutral, or negative')
+        return v
     
     class Config:
         json_schema_extra = {
             "example": {
-                "outcome": "Successfully presented new product line. Doctor showed interest.",
-                "feedback": "Doctor requested follow-up meeting next month"
+                "outcome": "Successfully presented new product line. Doctor showed interest in Amlovas 5mg.",
+                "feedback": "Doctor requested follow-up meeting next month",
+                "products_promoted": ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"],
+                "samples_given": 10,
+                "doctor_mood": "positive",
+                "competitor_info": "Doctor mentioned competitor's new diabetes drug",
+                "followup_date": "2026-06-15",
+                "rx_commitment": {
+                    "product_id": "507f1f77bcf86cd799439011",
+                    "rx_per_week": 15,
+                    "confidence": "high"
+                },
+                "gps_lat": 17.3850,
+                "gps_lng": 78.4867
             }
         }
 
