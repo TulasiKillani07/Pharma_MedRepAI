@@ -92,6 +92,7 @@ async def add_mr(
         state=request.state,
         territory=request.territory,
         assigned_doctors=request.assigned_doctors,
+        assigned_drugs=request.assigned_drugs,
         current_user=current_user
     )
 

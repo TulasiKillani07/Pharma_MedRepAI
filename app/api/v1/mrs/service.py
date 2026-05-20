@@ -17,6 +17,10 @@ from app.config import settings
 from app.api.v1.activity_logs.helpers import log_activity
 from app.api.v1.email.service import send_invitation_email, send_bulk_upload_summary_email
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.utils.logger import get_medrep_logger
+
+# Initialize logger
+logger = get_medrep_logger(__name__)
 
 
 def get_company_database():
@@ -39,8 +43,8 @@ async def create_mr(
     zone: str,
     state: str,
     territory: str,
-    assigned_doctors: List[str],
-    assigned_drugs: List[str],
+    assigned_doctors: Optional[List[str]],
+    assigned_drugs: Optional[List[str]],
     current_user: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
@@ -55,8 +59,8 @@ async def create_mr(
         zone: Geographic zone (e.g., South)
         state: State (e.g., Telangana, Karnataka)
         territory: Sales territory (e.g., Hyderabad)
-        assigned_doctors: List of assigned doctor IDs
-        assigned_drugs: List of assigned drug/product IDs
+        assigned_doctors: List of assigned doctor IDs (optional)
+        assigned_drugs: List of assigned drug/product IDs (optional)
         current_user: Current authenticated user
     
     Returns:
@@ -214,14 +218,31 @@ async def get_all_mrs(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
             for drug_id in mr["assigned_drugs"]:
                 if ObjectId.is_valid(drug_id):
                     drug = await company_db.drugs.find_one(
-                        {"_id": ObjectId(drug_id)},
-                        {"name": 1}
+                        {"_id": ObjectId(drug_id)}
                     )
                     if drug:
+                        # Extract drug name from field_values
+                        drug_name = "Unknown Drug"
+                        if drug.get("field_values"):
+                            # Try to find name field - primary key is "drug_name"
+                            for field in drug["field_values"]:
+                                field_key = field.get("key", "")
+                                if field_key == "drug_name":
+                                    drug_name = field.get("value", "Unknown Drug")
+                                    break
+                                # Fallback to other name variations
+                                elif field_key in ["name", "product_name", "brand_name"]:
+                                    drug_name = field.get("value", "Unknown Drug")
+                                    break
+                        
                         drug_details.append({
                             "id": drug_id,
-                            "name": drug["name"]
+                            "name": drug_name
                         })
+                        
+                        # Log for debugging if name not found
+                        if drug_name == "Unknown Drug" and drug.get("field_values"):
+                            logger.warning(f"Could not find drug_name field for drug {drug_id}. Available fields: {[f.get('key') for f in drug.get('field_values', [])]}")
         
         mr["assigned_drugs"] = drug_details
     
@@ -289,14 +310,31 @@ async def get_mr_by_id(mr_id: str, current_user: Dict[str, Any]) -> Dict[str, An
         for drug_id in mr["assigned_drugs"]:
             if ObjectId.is_valid(drug_id):
                 drug = await company_db.drugs.find_one(
-                    {"_id": ObjectId(drug_id)},
-                    {"name": 1}
+                    {"_id": ObjectId(drug_id)}
                 )
                 if drug:
+                    # Extract drug name from field_values
+                    drug_name = "Unknown Drug"
+                    if drug.get("field_values"):
+                        # Try to find name field - primary key is "drug_name"
+                        for field in drug["field_values"]:
+                            field_key = field.get("key", "")
+                            if field_key == "drug_name":
+                                drug_name = field.get("value", "Unknown Drug")
+                                break
+                            # Fallback to other name variations
+                            elif field_key in ["name", "product_name", "brand_name"]:
+                                drug_name = field.get("value", "Unknown Drug")
+                                break
+                    
                     drug_details.append({
                         "id": drug_id,
-                        "name": drug["name"]
+                        "name": drug_name
                     })
+                    
+                    # Log for debugging if name not found
+                    if drug_name == "Unknown Drug" and drug.get("field_values"):
+                        logger.warning(f"Could not find drug_name field for drug {drug_id}. Available fields: {[f.get('key') for f in drug.get('field_values', [])]}")
     
     mr["assigned_drugs"] = drug_details
     

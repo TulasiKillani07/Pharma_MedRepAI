@@ -128,6 +128,8 @@ class DoctorResponse(BaseModel):
     license_number: Optional[str] = None
     address: Optional[str] = None
     is_active: bool
+    added_by: Optional[dict] = Field(None, description="Who added this doctor: {role, id, name, department}")
+    approved_by: Optional[dict] = Field(None, description="Who approved (if MR request): {role, id, name, department}")
     created_at: datetime
     
     class Config:
@@ -143,6 +145,13 @@ class DoctorResponse(BaseModel):
                 "license_number": "MH12345",
                 "address": "123 Medical Street, Mumbai",
                 "is_active": True,
+                "added_by": {
+                    "role": "ADMIN",
+                    "id": "admin_id",
+                    "name": "Admin Name",
+                    "department": "general"
+                },
+                "approved_by": None,
                 "created_at": "2024-03-30T10:00:00"
             }
         }
@@ -348,7 +357,7 @@ class DoctorRequestResponse(BaseModel):
     email: EmailStr
     phone: str
     specialization: str
-    classification: str = Field(..., description="Doctor classification: A, B, or C")
+    classification: Optional[str] = Field(default="C", description="Doctor classification: A, B, or C (defaults to C if not specified)")
     hospital: Optional[str] = None
     license_number: Optional[str] = None
     address: Optional[str] = None

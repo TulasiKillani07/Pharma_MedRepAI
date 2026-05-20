@@ -171,10 +171,5 @@ if __name__ == "__main__":
     log_dir = get_log_directory()
     print(f"[INFO] Log directory: {log_dir}")
     print(f"[INFO] Platform: {platform.system()}")
-    
-    logger = get_medrep_logger(__name__)
-    logger.info("Logger test - INFO message")
-    logger.warning("Logger test - WARNING message")
-    logger.error("Logger test - ERROR message")
-    
     print(f"[SUCCESS] Check log file: {log_dir / 'app.log'}")
+

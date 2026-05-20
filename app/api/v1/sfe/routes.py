@@ -15,125 +15,6 @@ router = APIRouter(prefix="/sfe", tags=["SFE - Sales Force Effectiveness"])
 
 
 # ============================================================================
-# DOCTOR CLASSIFICATION
-# ============================================================================
-
-@router.put(
-    "/doctors/{doctor_id}/classify",
-    response_model=schemas.MessageResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Classify Doctor",
-    description="""
-    **Purpose:** Set doctor classification (A/B/C) which determines required visit frequency for SFE tracking.
-    
-    **Classification Guide:**
-    - **A-class**: High prescriber, opinion leader (4 visits/month by default)
-    - **B-class**: Medium prescriber, growing practice (2 visits/month by default)
-    - **C-class**: Low prescriber, new/unknown (1 visit/month by default)
-    
-    **Required Role:** Admin only
-    
-    **Use Case:** Admin classifies doctors based on prescription potential to optimize MR visit planning.
-    
-    **Example Request:**
-    ```json
-    PUT /api/v1/sfe/doctors/507f1f77bcf86cd799439011/classify
-    Headers: Authorization: Bearer <admin_token>
-    Body:
-    {
-      "classification": "A"
-    }
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "message": "Doctor classified as A-class successfully"
-    }
-    ```
-    
-    **What Happens:**
-    1. Doctor is assigned to specified class (A/B/C)
-    2. Visit frequency is set based on SFE config (e.g., A=4 visits/month)
-    3. Record is created/updated in doctor_assignments collection
-    4. MVC calculations will use this to track visit compliance
-    """
-)
-async def classify_doctor(
-    doctor_id: str,
-    request_data: schemas.DoctorClassifyRequest,
-    current_user: Dict[str, Any] = Depends(require_admin)
-):
-    logger.info(f"Admin {current_user['_id']} classifying doctor {doctor_id} as {request_data.classification}")
-    
-    result = await service.classify_doctor(
-        doctor_id=doctor_id,
-        classification=request_data.classification,
-        current_user=current_user
-    )
-    
-    return {"message": result["message"]}
-
-
-@router.get(
-    "/doctors/{doctor_id}/classification",
-    response_model=schemas.DoctorClassificationResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Get Doctor Classification",
-    description="""
-    **Purpose:** Retrieve doctor's classification details including class, required visit frequency, and assignment info.
-    
-    **Required Role:** MR (own assigned doctors), Admin (all doctors)
-    
-    **Use Case:** 
-    - MR checks how many times they should visit a specific doctor
-    - Admin reviews doctor classifications
-    
-    **Example Request:**
-    ```
-    GET /api/v1/sfe/doctors/507f1f77bcf86cd799439011/classification
-    Headers: Authorization: Bearer <token>
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "doctor_id": "507f1f77bcf86cd799439011",
-      "doctor_name": "Dr. Arjun Sharma",
-      "mr_id": "507f1f77bcf86cd799439012",
-      "mr_name": "Rajesh Kumar",
-      "classification": "A",
-      "visit_frequency": 4,
-      "territory": "Visakhapatnam",
-      "zone": "South",
-      "state": "Andhra Pradesh",
-      "assigned_at": "2026-05-01T10:00:00Z",
-      "updated_at": "2026-05-19T15:30:00Z"
-    }
-    ```
-    
-    **What It Tells You:**
-    - Doctor's class (A/B/C)
-    - Required visits per month (from SFE config)
-    - Which MR is assigned
-    - Territory/zone/state information
-    """
-)
-async def get_doctor_classification(
-    doctor_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    logger.info(f"User {current_user['_id']} fetching classification for doctor {doctor_id}")
-    
-    result = await service.get_doctor_classification(
-        doctor_id=doctor_id,
-        current_user=current_user
-    )
-    
-    return result
-
-
-# ============================================================================
 # SFE CONFIGURATION
 # ============================================================================
 
@@ -189,7 +70,6 @@ async def get_doctor_classification(
 async def get_sfe_config(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    logger.info(f"User {current_user['_id']} fetching SFE config")
     
     config = await service.get_sfe_config()
     
@@ -357,7 +237,6 @@ async def get_mcr_report(
     mr_id: Optional[str] = Query(None, description="MR ID (admin only, optional for MR)"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    logger.info(f"User {current_user['_id']} requesting MCR for month={month}, year={year}, mr_id={mr_id}")
     
     result = await service.get_mcr_report(
         month=month,
@@ -490,7 +369,6 @@ async def get_mvc_report(
     mr_id: Optional[str] = Query(None, description="MR ID (admin only, optional for MR)"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    logger.info(f"User {current_user['_id']} requesting MVC for month={month}, year={year}, mr_id={mr_id}")
     
     result = await service.get_mvc_report(
         month=month,
@@ -665,7 +543,6 @@ async def get_rcpa_commitments(
     status: Optional[str] = Query(None, description="Status filter"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    logger.info(f"User {current_user['_id']} fetching RCPA commitments")
     
     result = await service.get_rcpa_commitments(
         month=month,
@@ -829,7 +706,6 @@ async def get_rcpa_summary(
     year: Optional[int] = Query(None, ge=2020, le=2030, description="Year"),
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
-    logger.info(f"Admin {current_user['_id']} fetching RCPA summary")
     
     result = await service.get_rcpa_summary(
         month=month,
@@ -970,7 +846,6 @@ async def get_sfe_dashboard(
     year: int = Query(..., ge=2020, le=2030, description="Year (e.g., 2026)"),
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
-    logger.info(f"Admin {current_user['_id']} fetching SFE dashboard for {month}/{year}")
     
     result = await service.get_sfe_dashboard(
         month=month,
@@ -1074,7 +949,6 @@ async def get_mr_drilldown(
     year: int = Query(..., ge=2020, le=2030, description="Year (e.g., 2026)"),
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
-    logger.info(f"Admin {current_user['_id']} fetching drill-down for MR {mr_id} ({month}/{year})")
     
     result = await service.get_mr_drilldown(
         mr_id=mr_id,
@@ -1260,7 +1134,6 @@ async def get_chemist_checks(
     territory: Optional[str] = Query(None, description="Territory"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    logger.info(f"User {current_user['_id']} fetching chemist checks")
     
     result = await service.get_chemist_checks(
         month=month,
@@ -1366,7 +1239,6 @@ async def get_chemist_check_summary(
     year: Optional[int] = Query(None, ge=2020, le=2030, description="Year"),
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
-    logger.info(f"Admin {current_user['_id']} fetching chemist check summary")
     
     result = await service.get_chemist_check_summary(
         month=month,

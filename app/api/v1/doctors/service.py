@@ -86,6 +86,10 @@ async def create_doctor(
     # Hash password
     password_hash = hash_password(password)
     
+    # Get admin info from JWT token (no database query needed!)
+    admin_name = current_user.get("full_name", "Admin")
+    admin_department = current_user.get("department", "general")
+    
     # Create doctor document
     doctor_doc = {
         "name": name,
@@ -102,6 +106,13 @@ async def create_doctor(
         "password_changed_at": None,
         "first_login_completed": False,  # Track first login
         "first_login_at": None,
+        "added_by": {
+            "role": "ADMIN",
+            "id": current_user["_id"],
+            "name": admin_name,
+            "department": admin_department
+        },
+        "approved_by": None,  # Admin added directly, no approval needed
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
@@ -135,7 +146,9 @@ async def create_doctor(
         )
     except Exception as e:
         # Log email error but don't fail the creation
-        print(f"Failed to send invitation email to {email}: {str(e)}")
+        from app.utils.logger import get_medrep_logger
+        logger = get_medrep_logger(__name__)
+        logger.error(f"Failed to send invitation email to {email}: {str(e)}")
     
     return {
         "message": "Doctor added successfully",
@@ -146,7 +159,9 @@ async def create_doctor(
 async def get_all_doctors(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Get all doctors for a company.
-    All roles can view doctors.
+    - Admin: Can see all doctors
+    - MR: Can see only their assigned doctors
+    - Doctor: Can see all doctors
     
     Args:
         current_user: Current authenticated user
@@ -157,14 +172,43 @@ async def get_all_doctors(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     # Get company database
     company_db = get_company_database()
     
-    # Get all doctors
-    doctors_cursor = company_db.doctors.find()
+    # Check user role
+    user_role = current_user.get("role")
+    
+    # If MR, filter to show only assigned doctors
+    if user_role == "MR":
+        # Get MR's assigned doctors
+        mr_id = current_user.get("_id")
+        mr = await company_db.mrs.find_one({"_id": ObjectId(mr_id)}, {"assigned_doctors": 1})
+        
+        if not mr or not mr.get("assigned_doctors"):
+            # MR has no assigned doctors
+            return []
+        
+        assigned_doctor_ids = mr.get("assigned_doctors", [])
+        
+        # Get only assigned doctors
+        doctors_cursor = company_db.doctors.find({
+            "_id": {"$in": [ObjectId(doc_id) for doc_id in assigned_doctor_ids if ObjectId.is_valid(doc_id)]}
+        })
+    else:
+        # Admin and Doctor can see all doctors
+        doctors_cursor = company_db.doctors.find()
+    
     doctors = await doctors_cursor.to_list(length=None)
     
     # Convert ObjectId to string and remove password_hash
     for doctor in doctors:
         doctor["id"] = str(doctor.pop("_id"))
         doctor.pop("password_hash", None)
+        
+        # Add default classification if not present (for backward compatibility)
+        if "classification" not in doctor:
+            doctor["classification"] = "C"
+        
+        # For MR users: Remove added_by field (they know they added it, only need to see who approved)
+        if user_role == "MR":
+            doctor.pop("added_by", None)
     
     return doctors
 
@@ -205,6 +249,11 @@ async def get_available_doctors(current_user: Dict[str, Any]) -> List[Dict[str, 
             doctor["id"] = doctor_id
             doctor.pop("_id")
             doctor.pop("password_hash", None)
+            
+            # Add default classification if not present (for backward compatibility)
+            if "classification" not in doctor:
+                doctor["classification"] = "C"
+            
             available_doctors.append(doctor)
     
     return available_doctors
@@ -247,6 +296,15 @@ async def get_doctor_by_id(doctor_id: str, current_user: Dict[str, Any]) -> Dict
     # Convert ObjectId to string and remove password_hash
     doctor["id"] = str(doctor.pop("_id"))
     doctor.pop("password_hash", None)
+    
+    # Add default classification if not present (for backward compatibility)
+    if "classification" not in doctor:
+        doctor["classification"] = "C"
+    
+    # For MR users: Remove added_by field (they know they added it, only need to see who approved)
+    user_role = current_user.get("role")
+    if user_role == "MR":
+        doctor.pop("added_by", None)
     
     return doctor
 
@@ -627,6 +685,10 @@ async def bulk_upload_doctors(
             random_password = generate_random_password()
             password_hash = hash_password(random_password)
             
+            # Get admin info from JWT token (no database query needed!)
+            admin_name = current_user.get("full_name", "Admin")
+            admin_department = current_user.get("department", "general")
+            
             doctor_doc = {
                 "name": name,
                 "email": email,
@@ -642,6 +704,13 @@ async def bulk_upload_doctors(
                 "password_changed_at": None,
                 "first_login_completed": False,  # Track first login
                 "first_login_at": None,
+                "added_by": {
+                    "role": "ADMIN",
+                    "id": current_user["_id"],
+                    "name": admin_name,
+                    "department": admin_department
+                },
+                "approved_by": None,  # Bulk upload by admin, no approval needed
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
@@ -661,7 +730,9 @@ async def bulk_upload_doctors(
                     password=random_password
                 )
             except Exception as email_error:
-                print(f"Failed to send email to {email}: {str(email_error)}")
+                from app.utils.logger import get_medrep_logger
+                logger = get_medrep_logger(__name__)
+                logger.error(f"Failed to send email to {email}: {str(email_error)}")
             
             # Track created user for summary
             created_users.append({
@@ -720,7 +791,9 @@ async def bulk_upload_doctors(
                 created_users=created_users
             )
         except Exception as e:
-            print(f"Failed to send summary email to admin: {str(e)}")
+            from app.utils.logger import get_medrep_logger
+            logger = get_medrep_logger(__name__)
+            logger.error(f"Failed to send summary email to admin: {str(e)}")
     
     return {
         "total_rows": total_rows,
@@ -879,31 +952,55 @@ async def get_doctor_requests(
     Returns:
         list: List of doctor request documents
     """
-    # Get company database
-    company_db = get_company_database()
+    from app.utils.logger import get_medrep_logger
+    logger = get_medrep_logger(__name__)
     
-    # Build query based on user role
-    query = {}
-    user_role = current_user.get("role")
-    
-    if user_role == "MR":
-        # MR can only see their own requests
-        query["requested_by"] = current_user["_id"]
-    # Admin can see all requests (no filter)
-    
-    # Add status filter if provided
-    if status_filter:
-        query["status"] = status_filter
-    
-    # Get requests
-    requests_cursor = company_db.doctor_requests.find(query).sort("created_at", -1)
-    requests = await requests_cursor.to_list(length=None)
-    
-    # Convert ObjectId to string
-    for request in requests:
-        request["request_id"] = str(request.pop("_id"))
-    
-    return requests
+    try:
+        # Get company database
+        company_db = get_company_database()
+        
+        # Build query based on user role
+        query = {}
+        user_role = current_user.get("role")
+        
+        if user_role == "MR":
+            # MR can only see their own requests
+            query["requested_by"] = current_user["_id"]
+        # Admin can see all requests (no filter)
+        
+        # Add status filter if provided
+        if status_filter:
+            query["status"] = status_filter
+        
+        # Get requests
+        requests_cursor = company_db.doctor_requests.find(query).sort("created_at", -1)
+        requests = await requests_cursor.to_list(length=None)
+        
+        # Note: Approved requests are deleted after doctor creation,
+        # so this will only return pending and rejected requests
+        
+        # Filter out requests for doctors that have been deleted
+        # (Only for rejected requests - approved requests are already deleted)
+        filtered_requests = []
+        for request in requests:
+            # Convert ObjectId to string
+            request["request_id"] = str(request.pop("_id"))
+            
+            # Add default classification if not present (backward compatibility)
+            if "classification" not in request:
+                request["classification"] = "C"
+            
+            # Note: We no longer need to check if approved doctors exist
+            # because approved requests are deleted after doctor creation
+            # Only pending and rejected requests remain in the collection
+            
+            filtered_requests.append(request)
+        
+        return filtered_requests
+        
+    except Exception as e:
+        logger.error(f"Error in get_doctor_requests: {str(e)}", exc_info=True)
+        raise
 
 
 async def approve_doctor_request(
@@ -925,6 +1022,9 @@ async def approve_doctor_request(
     """
     from app.api.v1.notifications.service import create_notification
     from app.models.notification_model import NotificationType
+    from app.utils.logger import get_medrep_logger
+    
+    logger = get_medrep_logger(__name__)
     
     # Get company database
     company_db = get_company_database()
@@ -964,6 +1064,10 @@ async def approve_doctor_request(
     random_password = generate_random_password()
     password_hash = hash_password(random_password)
     
+    # Get admin info from JWT token (no database query needed!)
+    admin_name = current_user.get("full_name", "Admin")
+    admin_department = current_user.get("department", "general")
+    
     # Create doctor document
     doctor_doc = {
         "name": request["name"],
@@ -980,6 +1084,17 @@ async def approve_doctor_request(
         "password_changed_at": None,
         "first_login_completed": False,
         "first_login_at": None,
+        "added_by": {
+            "role": "MR",
+            "id": request["requested_by"],
+            "name": request["requested_by_name"]
+        },
+        "approved_by": {
+            "role": "ADMIN",
+            "id": current_user["_id"],
+            "name": admin_name,
+            "department": admin_department
+        },
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
@@ -988,33 +1103,45 @@ async def approve_doctor_request(
     doctor_result = await company_db.doctors.insert_one(doctor_doc)
     doctor_id = str(doctor_result.inserted_id)
     
-    # Update request status
-    await company_db.doctor_requests.update_one(
-        {"_id": ObjectId(request_id)},
+    logger.info(f"Doctor created from approved request - Doctor ID: {doctor_id}, Email: {request['email']}, Requested by: {request['requested_by_name']}")
+    
+    # Add doctor to MR's assigned_doctors list
+    mr_id = request["requested_by"]
+    mr_update_result = await company_db.mrs.update_one(
+        {"_id": ObjectId(mr_id)},
         {
+            "$addToSet": {
+                "assigned_doctors": doctor_id
+            },
             "$set": {
-                "status": "approved",
-                "reviewed_by": current_user["_id"],
-                "reviewed_by_name": current_user["name"],
-                "reviewed_at": datetime.utcnow(),
-                "doctor_id": doctor_id,
                 "updated_at": datetime.utcnow()
             }
         }
     )
+    
+    if mr_update_result.matched_count > 0:
+        logger.info(f"Doctor auto-assigned to MR - Doctor: {doctor_id}, MR: {mr_id}")
+    else:
+        logger.warning(f"Failed to auto-assign doctor to MR - Doctor: {doctor_id}, MR: {mr_id} not found")
+    
+    # Get admin name from JWT token (already fetched above, reuse it)
+    # admin_name and admin_department are already set from JWT above
+    
+    # Delete the request from doctor_requests collection (no longer needed)
+    await company_db.doctor_requests.delete_one({"_id": ObjectId(request_id)})
     
     # Send notification to MR who requested
     await create_notification(
         user_id=request["requested_by"],
         notification_type=NotificationType.DOCTOR_REQUEST_APPROVED,
         title="Doctor Request Approved",
-        message=f"Your request to add Dr. {request['name']} has been approved by {current_user['name']}",
+        message=f"Your request to add Dr. {request['name']} has been approved by {admin_name}",
         data={
             "request_id": request_id,
             "doctor_id": doctor_id,
             "doctor_name": request["name"],
             "doctor_email": request["email"],
-            "approved_by": current_user["name"]
+            "approved_by": admin_name
         }
     )
     
@@ -1046,7 +1173,9 @@ async def approve_doctor_request(
         )
     except Exception as e:
         # Log email error but don't fail the approval
-        print(f"Failed to send invitation email to {request['email']}: {str(e)}")
+        from app.utils.logger import get_medrep_logger
+        logger = get_medrep_logger(__name__)
+        logger.error(f"Failed to send invitation email to {request['email']}: {str(e)}")
     
     return {
         "message": "Doctor request approved and doctor account created successfully",
@@ -1075,6 +1204,9 @@ async def reject_doctor_request(
     """
     from app.api.v1.notifications.service import create_notification
     from app.models.notification_model import NotificationType
+    from app.utils.logger import get_medrep_logger
+    
+    logger = get_medrep_logger(__name__)
     
     # Get company database
     company_db = get_company_database()
@@ -1102,6 +1234,10 @@ async def reject_doctor_request(
             detail=f"Request already {request['status']}"
         )
     
+    # Get admin info from JWT token (no database query needed!)
+    admin_name = current_user.get("full_name", "Admin")
+    admin_department = current_user.get("department", "general")
+    
     # Update request status
     await company_db.doctor_requests.update_one(
         {"_id": ObjectId(request_id)},
@@ -1109,7 +1245,7 @@ async def reject_doctor_request(
             "$set": {
                 "status": "rejected",
                 "reviewed_by": current_user["_id"],
-                "reviewed_by_name": current_user["name"],
+                "reviewed_by_name": admin_name,
                 "reviewed_at": datetime.utcnow(),
                 "rejection_reason": rejection_reason,
                 "updated_at": datetime.utcnow()
@@ -1117,17 +1253,19 @@ async def reject_doctor_request(
         }
     )
     
+    logger.info(f"Doctor request rejected - Request ID: {request_id}, Requested by: {request['requested_by_name']}, Reason: {rejection_reason}")
+    
     # Send notification to MR who requested
     await create_notification(
         user_id=request["requested_by"],
         notification_type=NotificationType.DOCTOR_REQUEST_REJECTED,
         title="Doctor Request Rejected",
-        message=f"Your request to add Dr. {request['name']} was rejected by {current_user['name']}",
+        message=f"Your request to add Dr. {request['name']} was rejected by {admin_name}",
         data={
             "request_id": request_id,
             "doctor_name": request["name"],
             "doctor_email": request["email"],
-            "rejected_by": current_user["name"],
+            "rejected_by": admin_name,
             "rejection_reason": rejection_reason
         }
     )

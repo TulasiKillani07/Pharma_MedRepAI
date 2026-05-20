@@ -62,7 +62,6 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
     
     # Verify password
     password_valid = verify_password(password, user["password_hash"])
-    logger.info(f"Password verification: {password_valid}")
     
     if not password_valid:
         raise HTTPException(
@@ -104,7 +103,8 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
         "sub": str(user["_id"]),  # Subject (user ID)
         "email": user["email"],
         "role": role.value,
-        "collection": collection_name
+        "collection": collection_name,
+        "full_name": user.get("full_name") or user.get("name", "User")  # Add name to JWT
     }
     
     # Add department to token if user is admin

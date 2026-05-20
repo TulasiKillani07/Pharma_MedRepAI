@@ -2,8 +2,8 @@
 Doctor routes - API endpoints for doctor management.
 """
 
-from fastapi import APIRouter, Depends, status, UploadFile, File
-from typing import Dict, Any
+from fastapi import APIRouter, Depends, status, UploadFile, File, HTTPException, Query
+from typing import Dict, Any, Optional
 from app.api.v1.doctors.schemas import (
     DoctorCreateRequest,
     DoctorUpdateRequest,
@@ -83,10 +83,28 @@ async def add_doctor(
     ```
     
     **Response:**
-    ```
+    ```json
     {
         "message": "Doctor added successfully",
         "doctor_id": "507f1f77bcf86cd799439011"
+    }
+    ```
+    
+    **Creator Tracking:**
+    When admin adds a doctor directly:
+    - `added_by`: Contains admin's role, id, name, and department
+    - `approved_by`: null (no approval needed for direct admin adds)
+    
+    The created doctor will have:
+    ```json
+    {
+        "added_by": {
+            "role": "ADMIN",
+            "id": "admin_id",
+            "name": "Admin Full Name",
+            "department": "general"
+        },
+        "approved_by": null
     }
     ```
     """
@@ -216,6 +234,24 @@ async def bulk_upload_doctors_endpoint(
     }
     ```
     
+    **Creator Tracking:**
+    All doctors uploaded via bulk upload will have:
+    - `added_by`: Contains admin's role, id, name, and department
+    - `approved_by`: null (no approval needed for bulk uploads by admin)
+    
+    Example:
+    ```json
+    {
+        "added_by": {
+            "role": "ADMIN",
+            "id": "admin_id",
+            "name": "Admin Full Name",
+            "department": "general"
+        },
+        "approved_by": null
+    }
+    ```
+    
     **Response (Partial Success):**
     ```json
     {
@@ -297,6 +333,15 @@ async def list_doctors(current_user: Dict = Depends(get_current_user)):
     
     **Access:** All authenticated users (Admin, Doctor, MR)
     
+    **Purpose:**
+    Retrieve a complete list of all doctors in the system with their details including classification.
+    
+    **Flow:**
+    1. User sends request with valid JWT token
+    2. Backend retrieves all doctors from database
+    3. Returns list with doctor details including classification (A/B/C)
+    4. Password hash is excluded from response
+    
     **Usage:**
     ```
     GET /api/v1/doctors
@@ -304,7 +349,7 @@ async def list_doctors(current_user: Dict = Depends(get_current_user)):
     ```
     
     **Response:**
-    ```
+    ```json
     {
         "total": 2,
         "doctors": [
@@ -314,13 +359,69 @@ async def list_doctors(current_user: Dict = Depends(get_current_user)):
                 "email": "sharma@gmail.com",
                 "phone": "+919876543210",
                 "specialization": "Cardiologist",
+                "classification": "A",
                 "hospital": "City Hospital",
+                "license_number": "MH12345",
+                "address": "123 Medical Street, Mumbai",
                 "is_active": true,
+                "added_by": {
+                    "role": "ADMIN",
+                    "id": "admin_id",
+                    "name": "Admin Name",
+                    "department": "general"
+                },
+                "approved_by": null,
                 "created_at": "2024-03-30T10:00:00"
+            },
+            {
+                "id": "507f1f77bcf86cd799439012",
+                "name": "Dr. Amit Patel",
+                "email": "amit@hospital.com",
+                "phone": "+919876543211",
+                "specialization": "Neurologist",
+                "classification": "B",
+                "hospital": "Apollo Hospital",
+                "license_number": "MH12346",
+                "address": "456 Medical Street, Mumbai",
+                "is_active": true,
+                "added_by": {
+                    "role": "MR",
+                    "id": "mr_id",
+                    "name": "MR Name"
+                },
+                "approved_by": {
+                    "role": "ADMIN",
+                    "id": "admin_id",
+                    "name": "Admin Name",
+                    "department": "general"
+                },
+                "created_at": "2024-03-30T11:00:00"
             }
         ]
     }
     ```
+    
+    **Creator Tracking:**
+    - `added_by`: Shows who originally added the doctor (ADMIN or MR)
+      - **Note:** MR users will NOT see this field (they already know they added it)
+    - `approved_by`: Shows which admin approved (only for MR requests, null for direct admin adds)
+    - `department`: Admin's department (only present for admin roles)
+    
+    **Role-Based Filtering:**
+    - **Admin**: Sees all doctors with full creator tracking
+    - **MR**: Sees only their assigned doctors, without `added_by` field
+    - **Doctor**: Sees all doctors with full creator tracking
+    
+    **Classification Guide:**
+    - **A**: High-value doctors (2 visits/month required)
+    - **B**: Medium-value doctors (1 visit/month required)
+    - **C**: Low-value doctors (1 visit/2 months required)
+    
+    **Notes:**
+    - All doctors include classification field
+    - Doctors without classification default to "C"
+    - Password hash is never included in response
+    - List includes both active and inactive doctors
     """
     doctors = await get_all_doctors(current_user)
     return {
@@ -353,13 +454,28 @@ async def list_available_doctors(current_user: Dict = Depends(require_admin)):
                 "email": "sharma@gmail.com",
                 "phone": "+919876543210",
                 "specialization": "Cardiologist",
+                "classification": "C",
                 "hospital": "City Hospital",
+                "license_number": "MH12345",
+                "address": "123 Medical Street, Mumbai",
                 "is_active": true,
+                "added_by": {
+                    "role": "ADMIN",
+                    "id": "admin_id",
+                    "name": "Admin Full Name",
+                    "department": "general"
+                },
+                "approved_by": null,
                 "created_at": "2024-03-30T10:00:00"
             }
         ]
     }
     ```
+    
+    **Creator Tracking:**
+    - `added_by`: Shows who originally added the doctor
+    - `approved_by`: Shows which admin approved (null for direct admin adds)
+    - `department`: Admin's department (only for admin roles)
     
     **Use Case:** When admin is adding/updating MR and needs to assign doctors.
     """
@@ -370,134 +486,11 @@ async def list_available_doctors(current_user: Dict = Depends(require_admin)):
     }
 
 
-@router.get("/{doctor_id}", response_model=DoctorResponse, summary="Get Doctor Details")
-async def get_doctor(
-    doctor_id: str,
-    current_user: Dict = Depends(get_current_user)
-):
-    """
-    Get details of a specific doctor.
-    
-    **Access:** All authenticated users (Admin, Doctor, MR)
-    
-    **Usage:**
-    ```
-    GET /api/v1/doctors/507f1f77bcf86cd799439011
-    Headers: Authorization: Bearer <token>
-    ```
-    
-    **Response:**
-    ```
-    {
-        "id": "507f1f77bcf86cd799439011",
-        "name": "Dr. Sarah Sharma",
-        "email": "sharma@gmail.com",
-        "phone": "+919876543210",
-        "specialization": "Cardiologist",
-        "hospital": "City Hospital",
-        "license_number": "MH12345",
-        "address": "123 Medical Street",
-        "is_active": true,
-        "created_at": "2024-03-30T10:00:00"
-    }
-    ```
-    """
-    return await get_doctor_by_id(doctor_id, current_user)
-
-
-@router.put("/{doctor_id}", response_model=DoctorUpdateResponse, summary="Update Doctor")
-async def update_doctor_endpoint(
-    doctor_id: str,
-    request: DoctorUpdateRequest,
-    current_user: Dict = Depends(get_current_user)
-):
-    """
-    Update doctor information.
-    
-    **Access:** 
-    - Admin: Can update any doctor's information including is_active status
-    - Doctor: Can update only their own information (except email and is_active)
-    
-    **Note:** Email cannot be changed by anyone.
-    
-    **Usage (Admin):**
-    ```
-    PUT /api/v1/doctors/507f1f77bcf86cd799439011
-    Headers: Authorization: Bearer <admin_token>
-    {
-        "phone": "+919876543211",
-        "hospital": "New City Hospital",
-        "is_active": false
-    }
-    ```
-    
-    **Usage (Doctor - updating own profile):**
-    ```
-    PUT /api/v1/doctors/507f1f77bcf86cd799439011
-    Headers: Authorization: Bearer <doctor_token>
-    {
-        "phone": "+919876543211",
-        "hospital": "New City Hospital",
-        "specialization": "Senior Cardiologist"
-    }
-    ```
-    
-    **Response:**
-    ```
-    {
-        "message": "Doctor updated successfully",
-        "updated_fields": {
-            "phone": "+919876543211",
-            "hospital": "New City Hospital"
-        }
-    }
-    ```
-    """
-    update_data = request.model_dump(exclude_unset=True)
-    return await update_doctor(doctor_id, update_data, current_user)
-
-
-@router.delete("/{doctor_id}", response_model=MessageResponse, summary="Deactivate Doctor")
-async def delete_doctor_endpoint(
-    doctor_id: str,
-    current_user: Dict = Depends(require_admin)
-):
-    """
-    Deactivate a doctor (Admin only).
-    
-    **Access:** Company Admin only
-    
-    **Note:** This is a soft delete - doctor is marked as inactive (is_active = false).
-    The doctor account remains in the database but cannot login.
-    Admin can reactivate by updating is_active to true.
-    
-    **Usage:**
-    ```
-    DELETE /api/v1/doctors/507f1f77bcf86cd799439011
-    Headers: Authorization: Bearer <admin_token>
-    ```
-    
-    **Response:**
-    ```
-    {
-        "message": "Doctor deactivated successfully"
-    }
-    ```
-    
-    **To reactivate:**
-    ```
-    PUT /api/v1/doctors/507f1f77bcf86cd799439011
-    {
-        "is_active": true
-    }
-    ```
-    """
-    return await delete_doctor(doctor_id, current_user)
-
-
-
 # ============================================================================
 # DOCTOR REQUEST ENDPOINTS (MR Request → Admin Approval Workflow)
+# ============================================================================
+# NOTE: These routes MUST be defined BEFORE the /{doctor_id} catch-all route
+# to avoid route conflicts where "requests" is treated as a doctor_id
 # ============================================================================
 
 @router.post("/request", response_model=DoctorRequestCreateResponse, status_code=status.HTTP_201_CREATED, summary="Request to Add Doctor (MR)")
@@ -577,7 +570,7 @@ async def request_add_doctor(
     )
 
 
-@router.get("/requests", response_model=DoctorRequestListResponse, summary="List Doctor Requests")
+@router.get("/requests", summary="List Doctor Requests")
 async def list_doctor_requests(
     status_filter: Optional[str] = Query(None, description="Filter by status: pending, approved, rejected"),
     current_user: Dict = Depends(get_current_user)
@@ -590,11 +583,11 @@ async def list_doctor_requests(
     - MR: Can see only their own requests
     
     **Query Parameters:**
-    - status: Filter by status (optional) - "pending", "approved", "rejected"
+    - status_filter: Filter by status (optional) - "pending", "approved", "rejected"
     
     **Usage (Admin - see all pending requests):**
     ```
-    GET /api/v1/doctors/requests?status=pending
+    GET /api/v1/doctors/requests?status_filter=pending
     Headers: Authorization: Bearer <admin_token>
     ```
     
@@ -638,7 +631,7 @@ async def list_doctor_requests(
     
     1. **Admin Dashboard - Pending Approvals:**
     ```
-    GET /api/v1/doctors/requests?status=pending
+    GET /api/v1/doctors/requests?status_filter=pending
     ```
     Shows all pending doctor requests that need admin review
     
@@ -692,11 +685,37 @@ async def approve_doctor_request_endpoint(
     }
     ```
     
+    **Creator Tracking:**
+    When admin approves an MR request, the created doctor will have:
+    - `added_by`: Contains MR's role, id, and name (who originally requested)
+    - `approved_by`: Contains admin's role, id, name, and department (who approved)
+    
+    Example:
+    ```json
+    {
+        "added_by": {
+            "role": "MR",
+            "id": "mr_id",
+            "name": "MR Full Name"
+        },
+        "approved_by": {
+            "role": "ADMIN",
+            "id": "admin_id",
+            "name": "Admin Full Name",
+            "department": "general"
+        }
+    }
+    ```
+    
+    **Note:** After approval, the request is DELETED from the `doctor_requests` collection.
+    Only pending and rejected requests remain in that collection.
+    
     **What happens after approval:**
     - Doctor account is created in doctors collection
     - Doctor gets default random password (sent via email)
+    - **Doctor is automatically added to the requesting MR's assigned_doctors list**
     - Request status changes to "approved"
-    - Request is linked to created doctor_id
+    - Request is DELETED from doctor_requests collection (no longer needed)
     - MR receives notification
     - Doctor receives invitation email
     - Doctor can now login and change password
@@ -757,7 +776,201 @@ async def reject_doctor_request_endpoint(
     
     **Error Cases:**
     - Request not found: 404
-    - Request already processed: 400 "Request already approved/rejected"
+    - Request already processed: 400 "Request already processed/rejected"
     - Rejection reason too short: 400 "Rejection reason must be at least 10 characters"
     """
     return await reject_doctor_request(request_id, request.rejection_reason, current_user)
+
+
+@router.get("/{doctor_id:path}", response_model=DoctorResponse, summary="Get Doctor Details")
+async def get_doctor(
+    doctor_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Get details of a specific doctor.
+    
+    **Access:** All authenticated users (Admin, Doctor, MR)
+    
+    **Note:** This route uses a path parameter. Specific routes like /requests, /available 
+    must be defined before this catch-all route to avoid conflicts.
+    
+    **Purpose:**
+    Retrieve detailed information about a specific doctor including their classification.
+    
+    **Flow:**
+    1. User provides doctor ID in URL
+    2. Backend validates doctor ID format
+    3. Backend retrieves doctor from database
+    4. Returns doctor details with classification
+    
+    **Usage:**
+    ```
+    GET /api/v1/doctors/507f1f77bcf86cd799439011
+    Headers: Authorization: Bearer <token>
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "id": "507f1f77bcf86cd799439011",
+        "name": "Dr. Sarah Sharma",
+        "email": "sharma@gmail.com",
+        "phone": "+919876543210",
+        "specialization": "Cardiologist",
+        "classification": "A",
+        "hospital": "City Hospital",
+        "license_number": "MH12345",
+        "address": "123 Medical Street, Mumbai",
+        "is_active": true,
+        "added_by": {
+            "role": "ADMIN",
+            "id": "admin_id",
+            "name": "Admin Full Name",
+            "department": "general"
+        },
+        "approved_by": null,
+        "created_at": "2024-03-30T10:00:00"
+    }
+    ```
+    
+    **Creator Tracking:**
+    - `added_by`: Shows who originally added the doctor (ADMIN or MR with their details)
+      - **Note:** MR users will NOT see this field (they already know they added it)
+    - `approved_by`: Shows which admin approved (only for MR requests, null for direct admin adds)
+    - `department`: Admin's department (only present for admin roles)
+    
+    **Classification:**
+    - **A**: High-value (2 visits/month)
+    - **B**: Medium-value (1 visit/month)
+    - **C**: Low-value (1 visit/2 months)
+    
+    **Error Responses:**
+    - 400: Invalid doctor ID format
+    - 404: Doctor not found
+    """
+    return await get_doctor_by_id(doctor_id, current_user)
+
+
+@router.put("/{doctor_id}", response_model=DoctorUpdateResponse, summary="Update Doctor")
+async def update_doctor_endpoint(
+    doctor_id: str,
+    request: DoctorUpdateRequest,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Update doctor information.
+    
+    **Access:** 
+    - Admin: Can update any doctor's information including is_active status and classification
+    - Doctor: Can update only their own information (except email, is_active, and classification)
+    
+    **Note:** Email cannot be changed by anyone.
+    
+    **Purpose:**
+    Update doctor details including classification, contact info, or active status.
+    
+    **Flow:**
+    1. User provides doctor ID and fields to update
+    2. Backend validates authorization
+    3. Backend updates specified fields
+    4. Returns success message with updated fields
+    
+    **Usage (Admin - update classification):**
+    ```json
+    PUT /api/v1/doctors/507f1f77bcf86cd799439011
+    Headers: Authorization: Bearer <admin_token>
+    {
+        "classification": "A",
+        "phone": "+919876543211",
+        "hospital": "New City Hospital"
+    }
+    ```
+    
+    **Usage (Admin - deactivate doctor):**
+    ```json
+    PUT /api/v1/doctors/507f1f77bcf86cd799439011
+    Headers: Authorization: Bearer <admin_token>
+    {
+        "is_active": false
+    }
+    ```
+    
+    **Usage (Doctor - updating own profile):**
+    ```json
+    PUT /api/v1/doctors/507f1f77bcf86cd799439011
+    Headers: Authorization: Bearer <doctor_token>
+    {
+        "phone": "+919876543211",
+        "hospital": "New City Hospital",
+        "specialization": "Senior Cardiologist"
+    }
+    ```
+    
+    **Response:**
+    ```json
+    {
+        "message": "Doctor updated successfully",
+        "updated_fields": {
+            "classification": "A",
+            "phone": "+919876543211",
+            "hospital": "New City Hospital"
+        }
+    }
+    ```
+    
+    **Updatable Fields (Admin):**
+    - name, phone, specialization, classification
+    - hospital, license_number, address
+    - is_active (activate/deactivate)
+    
+    **Updatable Fields (Doctor - own profile):**
+    - name, phone, specialization
+    - hospital, license_number, address
+    - Cannot update: email, is_active, classification
+    
+    **Classification Values:**
+    - **A**: High-value (2 visits/month)
+    - **B**: Medium-value (1 visit/month)
+    - **C**: Low-value (1 visit/2 months)
+    """
+    update_data = request.model_dump(exclude_unset=True)
+    return await update_doctor(doctor_id, update_data, current_user)
+
+
+@router.delete("/{doctor_id}", response_model=MessageResponse, summary="Deactivate Doctor")
+async def delete_doctor_endpoint(
+    doctor_id: str,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Deactivate a doctor (Admin only).
+    
+    **Access:** Company Admin only
+    
+    **Note:** This is a soft delete - doctor is marked as inactive (is_active = false).
+    The doctor account remains in the database but cannot login.
+    Admin can reactivate by updating is_active to true.
+    
+    **Usage:**
+    ```
+    DELETE /api/v1/doctors/507f1f77bcf86cd799439011
+    Headers: Authorization: Bearer <admin_token>
+    ```
+    
+    **Response:**
+    ```
+    {
+        "message": "Doctor deactivated successfully"
+    }
+    ```
+    
+    **To reactivate:**
+    ```
+    PUT /api/v1/doctors/507f1f77bcf86cd799439011
+    {
+        "is_active": true
+    }
+    ```
+    """
+    return await delete_doctor(doctor_id, current_user)
