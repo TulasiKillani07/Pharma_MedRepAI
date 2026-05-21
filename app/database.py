@@ -549,6 +549,10 @@ async def initialize_collections():
     if "sfe_config" not in existing_collections:
         await database.create_collection("sfe_config")
     
+    # Create sfe_settings collection (single document, no indexes needed)
+    if "sfe_settings" not in existing_collections:
+        await database.create_collection("sfe_settings")
+    
     # Create prescription_commitments collection
     try:
         # Index 1: Index on mr_id - Fast MR commitments lookup

@@ -88,15 +88,16 @@ async def create_mr(
         })
         
         if existing_assignment:
+            # Fetch all doctor names in ONE query for better error messages
+            doctor_ids = [ObjectId(doc_id) for doc_id in assigned_doctors if ObjectId.is_valid(doc_id)]
+            doctors_cursor = company_db.doctors.find({"_id": {"$in": doctor_ids}}, {"name": 1})
+            doctors = await doctors_cursor.to_list(length=None)
+            doctor_map = {str(doc["_id"]): doc["name"] for doc in doctors}
+            
             # Find which doctor is already assigned
             for doctor_id in assigned_doctors:
                 if doctor_id in existing_assignment.get("assigned_doctors", []):
-                    # Get doctor name for better error message
-                    doctor = await company_db.doctors.find_one(
-                        {"_id": ObjectId(doctor_id)},
-                        {"name": 1}
-                    )
-                    doctor_name = doctor["name"] if doctor else "Unknown"
+                    doctor_name = doctor_map.get(doctor_id, "Unknown")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Doctor {doctor_name} is already assigned to MR {existing_assignment.get('name')}"
@@ -176,6 +177,7 @@ async def get_all_mrs(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Get all MRs for a company.
     All roles can view MRs.
+    Optimized with batch queries for better performance.
     
     Args:
         current_user: Current authenticated user
@@ -190,60 +192,82 @@ async def get_all_mrs(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     mrs_cursor = company_db.mrs.find()
     mrs = await mrs_cursor.to_list(length=None)
     
-    # Convert ObjectId to string and remove password_hash
+    # Collect all unique doctor and drug IDs across all MRs
+    all_doctor_ids = set()
+    all_drug_ids = set()
+    
+    for mr in mrs:
+        if mr.get("assigned_doctors"):
+            all_doctor_ids.update([doc_id for doc_id in mr["assigned_doctors"] if ObjectId.is_valid(doc_id)])
+        if mr.get("assigned_drugs"):
+            all_drug_ids.update([drug_id for drug_id in mr["assigned_drugs"] if ObjectId.is_valid(drug_id)])
+    
+    # Fetch all doctors and drugs in TWO queries instead of N queries per MR
+    doctor_object_ids = [ObjectId(doc_id) for doc_id in all_doctor_ids]
+    drug_object_ids = [ObjectId(drug_id) for drug_id in all_drug_ids]
+    
+    # Parallel fetch doctors and drugs
+    import asyncio
+    doctors_cursor = company_db.doctors.find({"_id": {"$in": doctor_object_ids}}, {"name": 1})
+    drugs_cursor = company_db.drugs.find({"_id": {"$in": drug_object_ids}})
+    
+    doctors, drugs = await asyncio.gather(
+        doctors_cursor.to_list(length=None),
+        drugs_cursor.to_list(length=None)
+    )
+    
+    # Create lookup maps for O(1) access
+    doctor_map = {str(doc["_id"]): doc["name"] for doc in doctors}
+    
+    # Build drug map with name extraction
+    drug_map = {}
+    for drug in drugs:
+        drug_id = str(drug["_id"])
+        drug_name = "Unknown Drug"
+        
+        if drug.get("field_values"):
+            # Try to find name field - primary key is "drug_name"
+            for field in drug["field_values"]:
+                field_key = field.get("key", "")
+                if field_key == "drug_name":
+                    drug_name = field.get("value", "Unknown Drug")
+                    break
+                # Fallback to other name variations
+                elif field_key in ["name", "product_name", "brand_name"]:
+                    drug_name = field.get("value", "Unknown Drug")
+                    break
+        
+        drug_map[drug_id] = drug_name
+        
+        # Log for debugging if name not found
+        if drug_name == "Unknown Drug" and drug.get("field_values"):
+            logger.warning(f"Could not find drug_name field for drug {drug_id}. Available fields: {[f.get('key') for f in drug.get('field_values', [])]}")
+    
+    # Convert ObjectId to string and populate details using maps
     for mr in mrs:
         mr["id"] = str(mr.pop("_id"))
         mr.pop("password_hash", None)
         
-        # Fetch doctor details for assigned_doctors
+        # Build doctor details from map (no await needed!)
         doctor_details = []
         if mr.get("assigned_doctors"):
             for doctor_id in mr["assigned_doctors"]:
-                if ObjectId.is_valid(doctor_id):
-                    doctor = await company_db.doctors.find_one(
-                        {"_id": ObjectId(doctor_id)},
-                        {"name": 1}
-                    )
-                    if doctor:
-                        doctor_details.append({
-                            "id": doctor_id,
-                            "name": doctor["name"]
-                        })
-        
+                if doctor_id in doctor_map:
+                    doctor_details.append({
+                        "id": doctor_id,
+                        "name": doctor_map[doctor_id]
+                    })
         mr["assigned_doctors"] = doctor_details
         
-        # Fetch drug details for assigned_drugs
+        # Build drug details from map (no await needed!)
         drug_details = []
         if mr.get("assigned_drugs"):
             for drug_id in mr["assigned_drugs"]:
-                if ObjectId.is_valid(drug_id):
-                    drug = await company_db.drugs.find_one(
-                        {"_id": ObjectId(drug_id)}
-                    )
-                    if drug:
-                        # Extract drug name from field_values
-                        drug_name = "Unknown Drug"
-                        if drug.get("field_values"):
-                            # Try to find name field - primary key is "drug_name"
-                            for field in drug["field_values"]:
-                                field_key = field.get("key", "")
-                                if field_key == "drug_name":
-                                    drug_name = field.get("value", "Unknown Drug")
-                                    break
-                                # Fallback to other name variations
-                                elif field_key in ["name", "product_name", "brand_name"]:
-                                    drug_name = field.get("value", "Unknown Drug")
-                                    break
-                        
-                        drug_details.append({
-                            "id": drug_id,
-                            "name": drug_name
-                        })
-                        
-                        # Log for debugging if name not found
-                        if drug_name == "Unknown Drug" and drug.get("field_values"):
-                            logger.warning(f"Could not find drug_name field for drug {drug_id}. Available fields: {[f.get('key') for f in drug.get('field_values', [])]}")
-        
+                if drug_id in drug_map:
+                    drug_details.append({
+                        "id": drug_id,
+                        "name": drug_map[drug_id]
+                    })
         mr["assigned_drugs"] = drug_details
     
     return mrs
@@ -253,6 +277,7 @@ async def get_mr_by_id(mr_id: str, current_user: Dict[str, Any]) -> Dict[str, An
     """
     Get a single MR by ID.
     All roles can view MR details.
+    Optimized with batch queries for better performance.
     
     Args:
         mr_id: MR's ID
@@ -287,55 +312,67 @@ async def get_mr_by_id(mr_id: str, current_user: Dict[str, Any]) -> Dict[str, An
     mr["id"] = str(mr.pop("_id"))
     mr.pop("password_hash", None)
     
-    # Fetch doctor details for assigned_doctors
+    # Fetch all doctors and drugs in TWO queries instead of N sequential queries
+    doctor_ids = [ObjectId(doc_id) for doc_id in mr.get("assigned_doctors", []) if ObjectId.is_valid(doc_id)]
+    drug_ids = [ObjectId(drug_id) for drug_id in mr.get("assigned_drugs", []) if ObjectId.is_valid(drug_id)]
+    
+    # Parallel fetch doctors and drugs
+    import asyncio
+    doctors_cursor = company_db.doctors.find({"_id": {"$in": doctor_ids}}, {"name": 1})
+    drugs_cursor = company_db.drugs.find({"_id": {"$in": drug_ids}})
+    
+    doctors, drugs = await asyncio.gather(
+        doctors_cursor.to_list(length=None),
+        drugs_cursor.to_list(length=None)
+    )
+    
+    # Create lookup maps
+    doctor_map = {str(doc["_id"]): doc["name"] for doc in doctors}
+    
+    # Build drug map with name extraction
+    drug_map = {}
+    for drug in drugs:
+        drug_id = str(drug["_id"])
+        drug_name = "Unknown Drug"
+        
+        if drug.get("field_values"):
+            # Try to find name field - primary key is "drug_name"
+            for field in drug["field_values"]:
+                field_key = field.get("key", "")
+                if field_key == "drug_name":
+                    drug_name = field.get("value", "Unknown Drug")
+                    break
+                # Fallback to other name variations
+                elif field_key in ["name", "product_name", "brand_name"]:
+                    drug_name = field.get("value", "Unknown Drug")
+                    break
+        
+        drug_map[drug_id] = drug_name
+        
+        # Log for debugging if name not found
+        if drug_name == "Unknown Drug" and drug.get("field_values"):
+            logger.warning(f"Could not find drug_name field for drug {drug_id}. Available fields: {[f.get('key') for f in drug.get('field_values', [])]}")
+    
+    # Build doctor details from map (no await needed!)
     doctor_details = []
     if mr.get("assigned_doctors"):
         for doctor_id in mr["assigned_doctors"]:
-            if ObjectId.is_valid(doctor_id):
-                doctor = await company_db.doctors.find_one(
-                    {"_id": ObjectId(doctor_id)},
-                    {"name": 1}
-                )
-                if doctor:
-                    doctor_details.append({
-                        "id": doctor_id,
-                        "name": doctor["name"]
-                    })
-    
+            if doctor_id in doctor_map:
+                doctor_details.append({
+                    "id": doctor_id,
+                    "name": doctor_map[doctor_id]
+                })
     mr["assigned_doctors"] = doctor_details
     
-    # Fetch drug details for assigned_drugs
+    # Build drug details from map (no await needed!)
     drug_details = []
     if mr.get("assigned_drugs"):
         for drug_id in mr["assigned_drugs"]:
-            if ObjectId.is_valid(drug_id):
-                drug = await company_db.drugs.find_one(
-                    {"_id": ObjectId(drug_id)}
-                )
-                if drug:
-                    # Extract drug name from field_values
-                    drug_name = "Unknown Drug"
-                    if drug.get("field_values"):
-                        # Try to find name field - primary key is "drug_name"
-                        for field in drug["field_values"]:
-                            field_key = field.get("key", "")
-                            if field_key == "drug_name":
-                                drug_name = field.get("value", "Unknown Drug")
-                                break
-                            # Fallback to other name variations
-                            elif field_key in ["name", "product_name", "brand_name"]:
-                                drug_name = field.get("value", "Unknown Drug")
-                                break
-                    
-                    drug_details.append({
-                        "id": drug_id,
-                        "name": drug_name
-                    })
-                    
-                    # Log for debugging if name not found
-                    if drug_name == "Unknown Drug" and drug.get("field_values"):
-                        logger.warning(f"Could not find drug_name field for drug {drug_id}. Available fields: {[f.get('key') for f in drug.get('field_values', [])]}")
-    
+            if drug_id in drug_map:
+                drug_details.append({
+                    "id": drug_id,
+                    "name": drug_map[drug_id]
+                })
     mr["assigned_drugs"] = drug_details
     
     return mr
@@ -392,15 +429,16 @@ async def update_mr(
             })
             
             if existing_assignment:
+                # Fetch all doctor names in ONE query for better error messages
+                doctor_ids = [ObjectId(doc_id) for doc_id in new_doctor_ids if ObjectId.is_valid(doc_id)]
+                doctors_cursor = company_db.doctors.find({"_id": {"$in": doctor_ids}}, {"name": 1})
+                doctors = await doctors_cursor.to_list(length=None)
+                doctor_map = {str(doc["_id"]): doc["name"] for doc in doctors}
+                
                 # Find which doctor is already assigned
                 for doctor_id in new_doctor_ids:
                     if doctor_id in existing_assignment.get("assigned_doctors", []):
-                        # Get doctor name for better error message
-                        doctor = await company_db.doctors.find_one(
-                            {"_id": ObjectId(doctor_id)},
-                            {"name": 1}
-                        )
-                        doctor_name = doctor["name"] if doctor else "Unknown"
+                        doctor_name = doctor_map.get(doctor_id, "Unknown")
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Doctor {doctor_name} is already assigned to MR {existing_assignment.get('name')}"

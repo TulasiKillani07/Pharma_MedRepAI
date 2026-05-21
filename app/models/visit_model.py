@@ -12,6 +12,8 @@ from bson import ObjectId
 class VisitStatus(str, Enum):
     """Visit status constants"""
     SCHEDULED = "scheduled"
+    CHECKED_IN = "checked_in"
+    CHECKED_OUT = "checked_out"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -55,6 +57,19 @@ class VisitInDB(BaseModel):
         return v.strip()
     notes: Optional[str] = Field(None, max_length=1000, description="Additional notes")
     status: VisitStatus = Field(default=VisitStatus.SCHEDULED, description="Visit status")
+    
+    # Check-in/Check-out data
+    check_in: Optional[dict] = Field(None, description="Check-in data: {timestamp, latitude, longitude}")
+    check_out: Optional[dict] = Field(None, description="Check-out data: {timestamp, latitude, longitude}")
+    duration_minutes: Optional[int] = Field(None, description="Visit duration in minutes")
+    
+    # Check-in cancellation audit
+    check_in_cancelled: Optional[dict] = Field(None, description="Check-in cancellation data: {timestamp, reason, original_check_in}")
+    
+    # Visit report (DCR)
+    report: Optional[dict] = Field(None, description="Visit report data")
+    
+    # Legacy fields (for backward compatibility)
     outcome: Optional[str] = Field(None, max_length=1000, description="Visit outcome")
     feedback: Optional[str] = Field(None, max_length=1000, description="Visit feedback")
     completed_at: Optional[datetime] = Field(None, description="Completion timestamp")

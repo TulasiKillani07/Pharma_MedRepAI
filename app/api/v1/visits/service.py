@@ -162,10 +162,11 @@ async def get_visits(
     date_to: Optional[date] = None,
     doctor_id: Optional[str] = None,
     mr_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
     Get visits with filters.
     Admin sees all visits, MR sees only their own.
+    For MR users, also calculates visit targets for current month.
     
     Args:
         current_user: Current authenticated user
@@ -176,11 +177,11 @@ async def get_visits(
         mr_id: Filter by MR (admin only)
     
     Returns:
-        list: List of visit documents
+        dict: {total, visits, targets} - targets only for MR users
     """
     company_db = get_company_database()
     user_role = current_user.get("role")
-    user_id = current_user.get("_id")  # Changed from "sub" to "_id"
+    user_id = current_user.get("_id")
     
     # Build query
     query = {}
@@ -217,7 +218,94 @@ async def get_visits(
     for visit in visits:
         visit["id"] = str(visit.pop("_id"))
     
-    return visits
+    # Calculate targets for MR users only
+    targets = []
+    if user_role == "MR":
+        targets = await calculate_visit_targets(user_id, company_db)
+    
+    return {
+        "total": len(visits),
+        "visits": visits,
+        "targets": targets
+    }
+
+
+async def calculate_visit_targets(mr_id: str, db) -> List[Dict[str, Any]]:
+    """
+    Calculate visit targets for an MR's assigned doctors for current month.
+    Optimized with parallel database queries for better performance.
+    
+    Args:
+        mr_id: MR user ID
+        db: Database connection
+    
+    Returns:
+        list: List of target objects with doctor info, classification, required, and completed counts
+    """
+    import asyncio
+    from datetime import datetime
+    import calendar
+    
+    # Get current month date range
+    now = datetime.utcnow()
+    start_of_month = datetime(now.year, now.month, 1)
+    last_day = calendar.monthrange(now.year, now.month)[1]
+    end_of_month = datetime(now.year, now.month, last_day, 23, 59, 59)
+    
+    # Fetch MR and SFE settings in parallel
+    mr, sfe_settings = await asyncio.gather(
+        db.mrs.find_one({"_id": ObjectId(mr_id)}),
+        db.sfe_settings.find_one({"company_id": "default"})
+    )
+    
+    if not mr or not mr.get("assigned_doctors"):
+        return []
+    
+    assigned_doctor_ids = mr["assigned_doctors"]
+    classification_targets = sfe_settings.get("classification_targets", {"A": 2, "B": 1, "C": 1}) if sfe_settings else {"A": 2, "B": 1, "C": 1}
+    
+    # Fetch all doctors in ONE query using $in (much faster than loop)
+    doctor_object_ids = [ObjectId(doc_id) for doc_id in assigned_doctor_ids if ObjectId.is_valid(doc_id)]
+    doctors_cursor = db.doctors.find({"_id": {"$in": doctor_object_ids}})
+    doctors = await doctors_cursor.to_list(length=None)
+    
+    # Create doctor map for quick lookup
+    doctor_map = {str(doc["_id"]): doc for doc in doctors}
+    
+    # Count completed visits for all doctors in parallel
+    count_tasks = [
+        db.visits.count_documents({
+            "mr_id": mr_id,
+            "doctor_id": doctor_id,
+            "status": "completed",
+            "completed_at": {
+                "$gte": start_of_month,
+                "$lte": end_of_month
+            }
+        })
+        for doctor_id in assigned_doctor_ids
+    ]
+    completed_counts = await asyncio.gather(*count_tasks)
+    
+    # Build targets list
+    targets = []
+    for i, doctor_id in enumerate(assigned_doctor_ids):
+        doctor = doctor_map.get(doctor_id)
+        if not doctor:
+            continue
+        
+        classification = doctor.get("classification", "C")
+        required = classification_targets.get(classification, 1)
+        
+        targets.append({
+            "doctor_id": doctor_id,
+            "doctor_name": doctor.get("name", doctor.get("full_name", "Unknown")),
+            "classification": classification,
+            "required": required,
+            "completed": completed_counts[i]
+        })
+    
+    return targets
 
 
 async def get_visit_by_id(visit_id: str, current_user: Dict[str, Any]) -> Dict[str, Any]:
@@ -662,3 +750,542 @@ async def cancel_visit(
     )
     
     return {"message": "Visit cancelled successfully"}
+
+
+
+# ============================================================================
+# NEW FUNCTIONS FOR CHECK-IN/CHECK-OUT/REPORT FLOW
+# ============================================================================
+
+async def check_in_visit(
+    visit_id: str,
+    latitude: float,
+    longitude: float,
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
+) -> Dict[str, Any]:
+    """
+    Check in to a visit with GPS coordinates.
+    
+    Validations:
+    - Visit must be in scheduled status
+    - MR must not have another visit with status=checked_in
+    - MR must not have more than 2 pending reports (status=checked_out)
+    - Visit must belong to this MR
+    
+    Args:
+        visit_id: Visit's ID
+        latitude: GPS latitude
+        longitude: GPS longitude
+        current_user: Current authenticated MR
+        request: FastAPI request object
+    
+    Returns:
+        dict: Success message, visit_id, and check_in_time
+    
+    Raises:
+        HTTPException: If validation fails
+    """
+    company_db = get_company_database()
+    user_id = current_user.get("_id")
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(visit_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid visit ID"
+        )
+    
+    # Find visit
+    visit = await company_db.visits.find_one({"_id": ObjectId(visit_id)})
+    
+    if not visit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Visit not found"
+        )
+    
+    # Check authorization
+    if visit["mr_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only check in to your own visits"
+        )
+    
+    # Check status
+    if visit["status"] != "scheduled":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot check in to {visit['status']} visit. Only scheduled visits can be checked in."
+        )
+    
+    # Rule 1: Check if MR has another checked_in visit
+    existing_checkin = await company_db.visits.find_one({
+        "mr_id": user_id,
+        "status": "checked_in"
+    })
+    
+    if existing_checkin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Check out of your current visit first. Only one active check-in allowed at a time."
+        )
+    
+    # Rule 2: Check pending reports (max 2 checked_out visits)
+    pending_reports_count = await company_db.visits.count_documents({
+        "mr_id": user_id,
+        "status": "checked_out"
+    })
+    
+    if pending_reports_count >= 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Submit pending reports before checking in (max 2 allowed). You have 2 pending reports."
+        )
+    
+    # Perform check-in
+    check_in_time = datetime.utcnow()
+    
+    await company_db.visits.update_one(
+        {"_id": ObjectId(visit_id)},
+        {
+            "$set": {
+                "status": "checked_in",
+                "check_in": {
+                    "timestamp": check_in_time,
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Log activity
+    if request:
+        await log_activity(
+            action_type=ActivityLogAction.VISIT_SCHEDULED,  # Using existing action
+            actor=current_user,
+            target_type=TargetType.VISIT,
+            target_id=visit_id,
+            target_name=None,
+            details={
+                "action": "check_in",
+                "doctor_id": visit["doctor_id"],
+                "doctor_name": visit["doctor_name"],
+                "location": visit["location"],
+                "gps": f"{latitude},{longitude}"
+            },
+            severity=LogSeverity.INFO,
+            request=request
+        )
+    
+    return {
+        "message": "Checked in successfully",
+        "visit_id": visit_id,
+        "check_in_time": check_in_time
+    }
+
+
+async def check_out_visit(
+    visit_id: str,
+    latitude: float,
+    longitude: float,
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
+) -> Dict[str, Any]:
+    """
+    Check out from a visit with GPS coordinates.
+    
+    Validations:
+    - Visit must be in checked_in status
+    - Visit must belong to this MR
+    
+    Args:
+        visit_id: Visit's ID
+        latitude: GPS latitude
+        longitude: GPS longitude
+        current_user: Current authenticated MR
+        request: FastAPI request object
+    
+    Returns:
+        dict: Success message, visit_id, and duration_minutes
+    
+    Raises:
+        HTTPException: If validation fails
+    """
+    company_db = get_company_database()
+    user_id = current_user.get("_id")
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(visit_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid visit ID"
+        )
+    
+    # Find visit
+    visit = await company_db.visits.find_one({"_id": ObjectId(visit_id)})
+    
+    if not visit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Visit not found"
+        )
+    
+    # Check authorization
+    if visit["mr_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only check out from your own visits"
+        )
+    
+    # Check status
+    if visit["status"] != "checked_in":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot check out from {visit['status']} visit. Only checked-in visits can be checked out."
+        )
+    
+    # Calculate duration
+    check_in_time = visit.get("check_in", {}).get("timestamp")
+    if not check_in_time:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Check-in timestamp not found"
+        )
+    
+    check_out_time = datetime.utcnow()
+    duration_minutes = int((check_out_time - check_in_time).total_seconds() / 60)
+    
+    # Perform check-out
+    await company_db.visits.update_one(
+        {"_id": ObjectId(visit_id)},
+        {
+            "$set": {
+                "status": "checked_out",
+                "check_out": {
+                    "timestamp": check_out_time,
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "duration_minutes": duration_minutes,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Log activity
+    if request:
+        await log_activity(
+            action_type=ActivityLogAction.VISIT_SCHEDULED,  # Using existing action
+            actor=current_user,
+            target_type=TargetType.VISIT,
+            target_id=visit_id,
+            target_name=None,
+            details={
+                "action": "check_out",
+                "doctor_id": visit["doctor_id"],
+                "doctor_name": visit["doctor_name"],
+                "duration_minutes": duration_minutes,
+                "gps": f"{latitude},{longitude}"
+            },
+            severity=LogSeverity.INFO,
+            request=request
+        )
+    
+    return {
+        "message": "Checked out successfully",
+        "visit_id": visit_id,
+        "duration_minutes": duration_minutes
+    }
+
+
+async def submit_visit_report(
+    visit_id: str,
+    report_data: Dict[str, Any],
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
+) -> Dict[str, Any]:
+    """
+    Submit visit report (DCR - Daily Call Report).
+    This is when the visit counts toward monthly targets.
+    
+    Validations:
+    - Visit must be in checked_out status
+    - Visit must belong to this MR
+    - outcome is required
+    - doctor_mood must be valid (positive/neutral/negative)
+    - products_discussed must be from MR's assigned drugs
+    
+    Args:
+        visit_id: Visit's ID
+        report_data: Report data dictionary
+        current_user: Current authenticated MR
+        request: FastAPI request object
+    
+    Returns:
+        dict: Success message, visit_id, and status
+    
+    Raises:
+        HTTPException: If validation fails
+    """
+    company_db = get_company_database()
+    user_id = current_user.get("_id")
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(visit_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid visit ID"
+        )
+    
+    # Find visit
+    visit = await company_db.visits.find_one({"_id": ObjectId(visit_id)})
+    
+    if not visit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Visit not found"
+        )
+    
+    # Check authorization
+    if visit["mr_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only submit reports for your own visits"
+        )
+    
+    # Check status
+    if visit["status"] != "checked_out":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot submit report for {visit['status']} visit. Only checked-out visits can have reports submitted."
+        )
+    
+    # Validate products_discussed are from MR's assigned drugs
+    if report_data.get("products_discussed"):
+        mr = await company_db.mrs.find_one({"_id": ObjectId(user_id)})
+        if mr:
+            assigned_drugs = mr.get("assigned_drugs", [])
+            for product_id in report_data["products_discussed"]:
+                if product_id not in assigned_drugs:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Product {product_id} is not in your assigned drugs list"
+                    )
+    
+    # Convert product IDs to ObjectIds for storage
+    if report_data.get("products_discussed"):
+        report_data["products_discussed"] = [
+            ObjectId(pid) if ObjectId.is_valid(pid) else pid
+            for pid in report_data["products_discussed"]
+        ]
+    
+    # Perform report submission - THIS IS WHEN IT COUNTS!
+    completed_at = datetime.utcnow()
+    
+    await company_db.visits.update_one(
+        {"_id": ObjectId(visit_id)},
+        {
+            "$set": {
+                "status": "completed",  # NOW IT COUNTS TOWARD TARGET!
+                "report": report_data,
+                "completed_at": completed_at,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    # Send notification
+    await notify_visit_completed(
+        mr_id=user_id,
+        visit_id=visit_id,
+        doctor_name=visit["doctor_name"],
+        doctor_id=visit["doctor_id"],
+        completed_at=completed_at.strftime("%Y-%m-%d %H:%M")
+    )
+    
+    # Log activity
+    if request:
+        await log_activity(
+            action_type=ActivityLogAction.VISIT_COMPLETED,
+            actor=current_user,
+            target_type=TargetType.VISIT,
+            target_id=visit_id,
+            target_name=None,
+            details={
+                "doctor_id": visit["doctor_id"],
+                "doctor_name": visit["doctor_name"],
+                "doctor_mood": report_data.get("doctor_mood"),
+                "products_count": len(report_data.get("products_discussed", [])),
+                "samples_given": report_data.get("samples_given"),
+                "outcome": report_data.get("outcome", "")[:100]  # First 100 chars
+            },
+            severity=LogSeverity.INFO,
+            request=request
+        )
+    
+    return {
+        "message": "Report submitted successfully",
+        "visit_id": visit_id,
+        "status": "completed"
+    }
+
+
+async def get_active_visit(
+    current_user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Get current active (checked_in) visit and pending reports count.
+    
+    Args:
+        current_user: Current authenticated MR
+    
+    Returns:
+        dict: {active_visit: {...} or null, pending_reports: count}
+    """
+    company_db = get_company_database()
+    user_id = current_user.get("_id")
+    
+    # Find active checked_in visit
+    active_visit = await company_db.visits.find_one({
+        "mr_id": user_id,
+        "status": "checked_in"
+    })
+    
+    # Count pending reports (checked_out visits)
+    pending_reports_count = await company_db.visits.count_documents({
+        "mr_id": user_id,
+        "status": "checked_out"
+    })
+    
+    # Format active visit response
+    active_visit_data = None
+    if active_visit:
+        check_in_time = active_visit.get("check_in", {}).get("timestamp")
+        duration_so_far = 0
+        
+        if check_in_time:
+            duration_so_far = int((datetime.utcnow() - check_in_time).total_seconds() / 60)
+        
+        active_visit_data = {
+            "id": str(active_visit["_id"]),
+            "doctor_id": active_visit["doctor_id"],
+            "doctor_name": active_visit["doctor_name"],
+            "check_in_time": check_in_time,
+            "location": active_visit["location"],
+            "duration_so_far_minutes": duration_so_far
+        }
+    
+    return {
+        "active_visit": active_visit_data,
+        "pending_reports": pending_reports_count
+    }
+
+
+async def cancel_check_in(
+    visit_id: str,
+    reason: str,
+    current_user: Dict[str, Any],
+    request: Optional[Request] = None
+) -> Dict[str, Any]:
+    """
+    Cancel check-in and revert visit to scheduled status.
+    Saves audit trail of cancellation.
+    
+    Validations:
+    - Visit must be in checked_in status
+    - Visit must belong to this MR
+    - reason is required
+    
+    Args:
+        visit_id: Visit's ID
+        reason: Reason for cancelling check-in
+        current_user: Current authenticated MR
+        request: FastAPI request object
+    
+    Returns:
+        dict: Success message, visit_id, and status
+    
+    Raises:
+        HTTPException: If validation fails
+    """
+    company_db = get_company_database()
+    user_id = current_user.get("_id")
+    
+    # Validate ObjectId
+    if not ObjectId.is_valid(visit_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid visit ID"
+        )
+    
+    # Find visit
+    visit = await company_db.visits.find_one({"_id": ObjectId(visit_id)})
+    
+    if not visit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Visit not found"
+        )
+    
+    # Check authorization
+    if visit["mr_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only cancel check-in for your own visits"
+        )
+    
+    # Check status
+    if visit["status"] != "checked_in":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel check-in for {visit['status']} visit. Only checked-in visits can have check-in cancelled."
+        )
+    
+    # Save cancellation audit trail
+    cancellation_data = {
+        "timestamp": datetime.utcnow(),
+        "reason": reason,
+        "original_check_in": visit.get("check_in")
+    }
+    
+    # Revert to scheduled status
+    await company_db.visits.update_one(
+        {"_id": ObjectId(visit_id)},
+        {
+            "$set": {
+                "status": "scheduled",  # Back to scheduled!
+                "check_in_cancelled": cancellation_data,
+                "updated_at": datetime.utcnow()
+            },
+            "$unset": {
+                "check_in": ""  # Remove check_in data
+            }
+        }
+    )
+    
+    # Log activity
+    if request:
+        await log_activity(
+            action_type=ActivityLogAction.VISIT_CANCELLED,
+            actor=current_user,
+            target_type=TargetType.VISIT,
+            target_id=visit_id,
+            target_name=None,
+            details={
+                "action": "cancel_check_in",
+                "doctor_id": visit["doctor_id"],
+                "doctor_name": visit["doctor_name"],
+                "reason": reason
+            },
+            severity=LogSeverity.WARNING,
+            request=request
+        )
+    
+    return {
+        "message": "Check-in cancelled successfully",
+        "visit_id": visit_id,
+        "status": "scheduled"
+    }

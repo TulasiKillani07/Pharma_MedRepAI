@@ -897,9 +897,10 @@ async def create_doctor_request(
     admins_cursor = company_db.admins.find({"is_active": True}, {"_id": 1})
     admins = await admins_cursor.to_list(length=None)
     
-    # Send notification to all admins
-    for admin in admins:
-        await create_notification(
+    # Send notifications to all admins in parallel
+    import asyncio
+    notification_tasks = [
+        create_notification(
             user_id=str(admin["_id"]),
             notification_type=NotificationType.DOCTOR_REQUEST_PENDING,
             title="New Doctor Addition Request",
@@ -913,6 +914,9 @@ async def create_doctor_request(
                 "specialization": specialization
             }
         )
+        for admin in admins
+    ]
+    await asyncio.gather(*notification_tasks)
     
     # Log activity
     await log_activity(

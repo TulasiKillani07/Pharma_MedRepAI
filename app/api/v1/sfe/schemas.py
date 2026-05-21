@@ -189,6 +189,66 @@ class SFEConfigUpdateRequest(BaseModel):
 
 
 # ============================================================================
+# COMPANY SETTINGS (VISIT TARGETS)
+# ============================================================================
+
+class ClassificationTargetsResponse(BaseModel):
+    """Classification targets response"""
+    classification_targets: Dict[str, int] = Field(..., description="Visit targets per classification")
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[Dict[str, str]] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "classification_targets": {
+                    "A": 4,
+                    "B": 3,
+                    "C": 2
+                },
+                "updated_at": "2026-05-20T12:00:00",
+                "updated_by": {
+                    "name": "vamsi vakada"
+                }
+            }
+        }
+
+
+class ClassificationTargetsUpdateRequest(BaseModel):
+    """Request to update classification targets"""
+    classification_targets: Dict[str, int] = Field(..., description="Visit targets for A, B, C classifications")
+    
+    @field_validator('classification_targets')
+    @classmethod
+    def validate_targets(cls, v: Dict[str, int]) -> Dict[str, int]:
+        """Validate classification targets"""
+        # Check all required keys present
+        required_keys = {"A", "B", "C"}
+        if set(v.keys()) != required_keys:
+            raise ValueError('classification_targets must have exactly keys A, B, and C')
+        
+        # Validate each value
+        for key, value in v.items():
+            if not isinstance(value, int):
+                raise ValueError(f'Value for class {key} must be an integer')
+            if value < 1 or value > 30:
+                raise ValueError(f'Value for class {key} must be between 1 and 30')
+        
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "classification_targets": {
+                    "A": 4,
+                    "B": 3,
+                    "C": 2
+                }
+            }
+        }
+
+
+# ============================================================================
 # MCR (MONTHLY CALL REPORT)
 # ============================================================================
 

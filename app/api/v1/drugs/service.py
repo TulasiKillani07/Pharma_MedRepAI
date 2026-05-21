@@ -652,13 +652,23 @@ async def get_all_drugs(
         {"$set": {"is_active": True, "updated_at": datetime.utcnow()}}
     )
     
-    # Backfill any existing drugs that don't have flat fields yet
-    async for drug in db["drugs"].find({"drug_name": {"$exists": False}}):
-        flat_fields = build_flat_fields(drug.get("field_values", []))
-        await db["drugs"].update_one(
-            {"_id": drug["_id"]},
-            {"$set": {**flat_fields, "updated_at": datetime.utcnow()}}
-        )
+    # Backfill any existing drugs that don't have flat fields yet (optimized batch operation)
+    drugs_to_backfill = await db["drugs"].find(
+        {"drug_name": {"$exists": False}}
+    ).to_list(length=None)
+    
+    if drugs_to_backfill:
+        import asyncio
+        update_tasks = []
+        for drug in drugs_to_backfill:
+            flat_fields = build_flat_fields(drug.get("field_values", []))
+            update_tasks.append(
+                db["drugs"].update_one(
+                    {"_id": drug["_id"]},
+                    {"$set": {**flat_fields, "updated_at": datetime.utcnow()}}
+                )
+            )
+        await asyncio.gather(*update_tasks)
     
     query: Dict[str, Any] = {}
     

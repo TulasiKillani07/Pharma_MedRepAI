@@ -12,6 +12,8 @@ from app.core.validators import DateValidator, TimeValidator, TextValidator
 class VisitStatus(str, Enum):
     """Visit status enum"""
     SCHEDULED = "scheduled"
+    CHECKED_IN = "checked_in"
+    CHECKED_OUT = "checked_out"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -270,6 +272,57 @@ class VisitListResponse(BaseModel):
     visits: List[VisitResponse]
 
 
+class VisitTargetResponse(BaseModel):
+    """Schema for visit target per doctor"""
+    doctor_id: str = Field(..., description="Doctor ID")
+    doctor_name: str = Field(..., description="Doctor name")
+    classification: str = Field(..., description="Doctor classification (A/B/C)")
+    required: int = Field(..., description="Required visits this month")
+    completed: int = Field(..., description="Completed visits this month")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "doctor_id": "6a0d9fa2...",
+                "doctor_name": "Dr. Sneha",
+                "classification": "A",
+                "required": 4,
+                "completed": 1
+            }
+        }
+
+
+class VisitListWithTargetsResponse(BaseModel):
+    """Schema for list of visits with targets"""
+    total: int
+    visits: List[VisitResponse]
+    targets: List[VisitTargetResponse] = Field(default_factory=list, description="Visit targets per doctor (MR only)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "total": 10,
+                "visits": [],
+                "targets": [
+                    {
+                        "doctor_id": "6a0d9fa2...",
+                        "doctor_name": "Dr. Sneha",
+                        "classification": "A",
+                        "required": 4,
+                        "completed": 1
+                    },
+                    {
+                        "doctor_id": "6a0da18e...",
+                        "doctor_name": "Dr. Ashok",
+                        "classification": "C",
+                        "required": 2,
+                        "completed": 0
+                    }
+                ]
+            }
+        }
+
+
 class MessageResponse(BaseModel):
     """Generic message response"""
     message: str
@@ -279,3 +332,205 @@ class VisitCreateResponse(BaseModel):
     """Response for visit creation"""
     message: str
     visit_id: str
+
+
+# ============================================================================
+# NEW SCHEMAS FOR CHECK-IN/CHECK-OUT/REPORT FLOW
+# ============================================================================
+
+class VisitCheckInRequest(BaseModel):
+    """Schema for checking in to a visit"""
+    latitude: float = Field(..., ge=-90, le=90, description="GPS latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="GPS longitude")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "latitude": 17.4401,
+                "longitude": 78.3489
+            }
+        }
+
+
+class VisitCheckOutRequest(BaseModel):
+    """Schema for checking out from a visit"""
+    latitude: float = Field(..., ge=-90, le=90, description="GPS latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="GPS longitude")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "latitude": 17.4401,
+                "longitude": 78.3490
+            }
+        }
+
+
+class VisitReportRequest(BaseModel):
+    """Schema for submitting visit report (DCR)"""
+    doctor_mood: str = Field(..., description="Doctor's receptiveness: positive/neutral/negative")
+    products_discussed: List[str] = Field(..., description="List of product/drug IDs discussed")
+    samples_given: int = Field(..., ge=0, le=1000, description="Number of samples distributed")
+    outcome: str = Field(..., min_length=10, description="Visit outcome summary")
+    rx_commitment: Optional[bool] = Field(None, description="Did doctor commit to prescribing?")
+    expected_rx_per_month: Optional[int] = Field(None, ge=0, le=10000, description="Expected prescriptions per month")
+    competitor_info: Optional[str] = Field(None, max_length=500, description="Competitor information")
+    follow_up_date: Optional[date] = Field(None, description="Next follow-up date")
+    notes: Optional[str] = Field(None, max_length=1000, description="Additional notes")
+    
+    # Validators
+    @field_validator('doctor_mood')
+    @classmethod
+    def validate_doctor_mood(cls, v: str) -> str:
+        """Validate doctor mood is valid"""
+        if v not in ["positive", "neutral", "negative"]:
+            raise ValueError('Doctor mood must be: positive, neutral, or negative')
+        return v
+    
+    @field_validator('outcome')
+    @classmethod
+    def validate_outcome(cls, v: str) -> str:
+        result = TextValidator.validate(v, min_length=10, max_length=1000, strip_html=True)
+        if result is None:
+            raise ValueError('Outcome is required and must be at least 10 characters')
+        return result
+    
+    @field_validator('competitor_info', 'notes')
+    @classmethod
+    def validate_text_fields(cls, v: Optional[str]) -> Optional[str]:
+        return TextValidator.validate(v, max_length=1000, strip_html=True)
+    
+    @field_validator('follow_up_date')
+    @classmethod
+    def validate_followup_date(cls, v: Optional[date]) -> Optional[date]:
+        """Validate follow-up date is in the future"""
+        if v and v < date.today():
+            raise ValueError('Follow-up date must be in the future')
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "doctor_mood": "positive",
+                "products_discussed": ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"],
+                "samples_given": 3,
+                "outcome": "Positive — Doctor interested in Amlodipine 5mg. Discussed clinical trial data.",
+                "rx_commitment": True,
+                "expected_rx_per_month": 10,
+                "competitor_info": "Cipla — Amlokind 5mg",
+                "follow_up_date": "2026-06-01",
+                "notes": "Doctor wants clinical trial data"
+            }
+        }
+
+
+class VisitCancelCheckInRequest(BaseModel):
+    """Schema for cancelling check-in"""
+    reason: str = Field(..., min_length=5, description="Reason for cancelling check-in")
+    
+    # Validators
+    @field_validator('reason')
+    @classmethod
+    def validate_reason(cls, v: str) -> str:
+        result = TextValidator.validate(v, min_length=5, max_length=500, strip_html=True)
+        if result is None:
+            raise ValueError('Reason is required and must be at least 5 characters')
+        return result
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "reason": "Doctor was called for emergency surgery"
+            }
+        }
+
+
+class CheckInResponse(BaseModel):
+    """Response for check-in"""
+    message: str
+    visit_id: str
+    check_in_time: datetime
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Checked in successfully",
+                "visit_id": "507f1f77bcf86cd799439011",
+                "check_in_time": "2026-05-25T10:05:32"
+            }
+        }
+
+
+class CheckOutResponse(BaseModel):
+    """Response for check-out"""
+    message: str
+    visit_id: str
+    duration_minutes: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Checked out successfully",
+                "visit_id": "507f1f77bcf86cd799439011",
+                "duration_minutes": 28
+            }
+        }
+
+
+class ReportResponse(BaseModel):
+    """Response for report submission"""
+    message: str
+    visit_id: str
+    status: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Report submitted successfully",
+                "visit_id": "507f1f77bcf86cd799439011",
+                "status": "completed"
+            }
+        }
+
+
+class ActiveVisitData(BaseModel):
+    """Active visit data"""
+    id: str
+    doctor_id: str
+    doctor_name: str
+    check_in_time: datetime
+    location: str
+    duration_so_far_minutes: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "507f1f77bcf86cd799439011",
+                "doctor_id": "507f1f77bcf86cd799439013",
+                "doctor_name": "Dr. Sneha",
+                "check_in_time": "2026-05-25T10:05:32",
+                "location": "Apollo Hospital",
+                "duration_so_far_minutes": 15
+            }
+        }
+
+
+class ActiveVisitResponse(BaseModel):
+    """Response for active visit query"""
+    active_visit: Optional[ActiveVisitData] = None
+    pending_reports: int
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "active_visit": {
+                    "id": "507f1f77bcf86cd799439011",
+                    "doctor_id": "507f1f77bcf86cd799439013",
+                    "doctor_name": "Dr. Sneha",
+                    "check_in_time": "2026-05-25T10:05:32",
+                    "location": "Apollo Hospital",
+                    "duration_so_far_minutes": 15
+                },
+                "pending_reports": 1
+            }
+        }

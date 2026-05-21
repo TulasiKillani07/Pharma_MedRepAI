@@ -1247,3 +1247,164 @@ async def get_chemist_check_summary(
     )
     
     return result
+
+
+
+# ============================================================================
+# SFE SETTINGS (VISIT TARGETS)
+# ============================================================================
+
+@router.get(
+    "/settings",
+    response_model=schemas.ClassificationTargetsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get SFE Settings (Visit Targets)",
+    description="""
+    **Purpose:** Retrieve SFE visit target settings for doctor classifications.
+    
+    **Access:** All authenticated users (Admin, MR, Doctor)
+    
+    **Use Case:**
+    - MR checks required visit frequency for each doctor class
+    - System uses these targets for MVC (Monthly Visit Coverage) calculations
+    - Admin reviews current visit standards
+    - Frontend displays visit targets in UI
+    
+    **Example Request:**
+    ```
+    GET /api/v1/sfe/settings
+    Headers: Authorization: Bearer <token>
+    ```
+    
+    **Example Response:**
+    ```json
+    {
+      "classification_targets": {
+        "A": 4,
+        "B": 3,
+        "C": 2
+      },
+      "updated_at": "2026-05-20T12:00:00",
+      "updated_by": {
+        "name": "vamsi vakada"
+      }
+    }
+    ```
+    
+    **Default Values:**
+    If no settings exist in database, returns:
+    ```json
+    {
+      "classification_targets": {
+        "A": 2,
+        "B": 1,
+        "C": 1
+      }
+    }
+    ```
+    
+    **What It Tells You:**
+    - A-class doctors need X visits/month
+    - B-class doctors need Y visits/month
+    - C-class doctors need Z visits/month
+    - When settings were last updated and by whom
+    
+    **What Happens:**
+    1. System retrieves settings from sfe_settings collection
+    2. If no settings exist, returns default values (A=2, B=1, C=1)
+    3. Returns visit targets with metadata
+    
+    **Note:** This is a single company-wide setting, not per-user or per-doctor.
+    """
+)
+async def get_sfe_settings(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    result = await service.get_sfe_settings()
+    return result
+
+
+@router.put(
+    "/settings",
+    response_model=schemas.MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update SFE Settings (Visit Targets)",
+    description="""
+    **Purpose:** Update SFE visit target requirements for each doctor classification.
+    
+    **Access:** Admin only
+    
+    **Use Case:**
+    - Admin adjusts visit frequency standards based on company strategy
+    - Change targets when market conditions change
+    - Align visit frequency with business goals
+    
+    **Example Request:**
+    ```json
+    PUT /api/v1/sfe/settings
+    Headers: Authorization: Bearer <admin_token>
+    Body:
+    {
+      "classification_targets": {
+        "A": 4,
+        "B": 3,
+        "C": 2
+      }
+    }
+    ```
+    
+    **Example Response:**
+    ```json
+    {
+      "message": "Settings updated successfully",
+      "classification_targets": {
+        "A": 4,
+        "B": 3,
+        "C": 2
+      }
+    }
+    ```
+    
+    **Validation:**
+    - All three keys (A, B, C) must be present
+    - Values must be integers between 1 and 30
+    - Typically A ≥ B ≥ C (but not enforced)
+    
+    **What Happens:**
+    1. System validates request body
+    2. Upserts settings in sfe_settings collection (single document)
+    3. Records timestamp and admin info
+    4. All future MVC calculations use new targets
+    5. Existing doctor classifications remain unchanged
+    
+    **Impact:**
+    - **MVC Calculations**: Immediately use new targets
+    - **MR Targets**: MRs see updated visit requirements
+    - **Historical Data**: Past compliance metrics unchanged
+    - **Doctor Assignments**: Classifications stay same, only frequency changes
+    
+    **Example Scenario:**
+    - Current: A=2, B=1, C=1
+    - Admin changes to: A=4, B=3, C=2
+    - Result: All A-class doctors now need 4 visits/month instead of 2
+    - MVC % will likely drop initially as MRs adjust to new targets
+    
+    **Business Value:**
+    - Flexible visit frequency without code changes
+    - Align field force activity with business priorities
+    - Respond quickly to market changes
+    - No deployment needed to change targets
+    """
+)
+async def update_sfe_settings(
+    request_data: schemas.ClassificationTargetsUpdateRequest,
+    current_user: Dict[str, Any] = Depends(require_admin)
+):
+    logger.info(f"Admin {current_user['_id']} updating SFE settings")
+    
+    result = await service.update_sfe_settings(
+        classification_targets=request_data.classification_targets,
+        current_user=current_user
+    )
+    
+    return result

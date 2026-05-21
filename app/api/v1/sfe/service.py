@@ -227,6 +227,93 @@ async def update_sfe_config(
     }
 
 
+# ============================================================================
+# SFE SETTINGS (VISIT TARGETS)
+# ============================================================================
+
+async def get_sfe_settings() -> Dict[str, Any]:
+    """
+    Get SFE settings (visit targets).
+    Returns defaults if no settings exist.
+    
+    Returns:
+        dict: SFE settings with classification targets
+    """
+    db = get_company_database()
+    
+    # Get settings (single document)
+    settings = await db.sfe_settings.find_one({"company_id": "default"})
+    
+    if not settings:
+        # Return defaults if no settings exist
+        return {
+            "classification_targets": {
+                "A": 2,
+                "B": 1,
+                "C": 1
+            }
+        }
+    
+    # Format response
+    response = {
+        "classification_targets": settings.get("classification_targets", {"A": 2, "B": 1, "C": 1})
+    }
+    
+    if "updated_at" in settings:
+        response["updated_at"] = settings["updated_at"]
+    
+    if "updated_by" in settings:
+        response["updated_by"] = {
+            "name": settings["updated_by"].get("name", "Unknown")
+        }
+    
+    return response
+
+
+async def update_sfe_settings(
+    classification_targets: Dict[str, int],
+    current_user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Update SFE settings (Admin only).
+    
+    Args:
+        classification_targets: New visit targets for A, B, C
+        current_user: Current authenticated admin
+    
+    Returns:
+        dict: Success message and updated targets
+    """
+    db = get_company_database()
+    admin_id = current_user["_id"]
+    admin_name = current_user.get("full_name", current_user.get("name", "Unknown"))
+    
+    # Prepare update data
+    update_data = {
+        "company_id": "default",
+        "classification_targets": classification_targets,
+        "updated_at": datetime.utcnow(),
+        "updated_by": {
+            "id": admin_id,
+            "name": admin_name
+        }
+    }
+    
+    # Upsert settings
+    await db.sfe_settings.update_one(
+        {"company_id": "default"},
+        {"$set": update_data},
+        upsert=True
+    )
+    
+    logger.info(f"Admin {admin_id} updated SFE settings: {classification_targets}")
+    
+    return {
+        "message": "Settings updated successfully",
+        "classification_targets": classification_targets
+    }
+
+
 async def get_mcr_report(
     month: int,
     year: int,
