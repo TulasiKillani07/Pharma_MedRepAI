@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from fastapi import HTTPException, status
 from bson import ObjectId
 from app.database import get_database
-from app.models.sfe_models import DoctorClass, DoctorAssignment, SFEConfig
+from app.models.sfe_models import DoctorClass, DoctorAssignment
 from app.utils.logger import get_medrep_logger
 
 # Initialize logger
@@ -57,9 +57,10 @@ async def classify_doctor(
             detail="Doctor not found"
         )
     
-    # Get SFE config to determine visit frequency
-    config = await get_sfe_config()
-    visit_frequency = config["visit_frequency_config"].get(classification, 1)
+    # Get SFE settings to determine visit frequency
+    settings = await get_sfe_settings()
+    classification_targets = settings.get("classification_targets", {"A": 2, "B": 1, "C": 1})
+    visit_frequency = classification_targets.get(classification, 1)
     
     # Find which MR this doctor is assigned to
     # Check in MRs' assigned_doctors array
@@ -160,75 +161,9 @@ async def get_doctor_classification(
     return assignment
 
 
-async def get_sfe_config() -> Dict[str, Any]:
-    """
-    Get SFE configuration.
-    
-    Returns:
-        dict: SFE config
-    """
-    db = get_company_database()
-    
-    # Get config (single document)
-    config = await db.sfe_config.find_one({"company_id": "default"})
-    
-    if not config:
-        # Create default config if not exists
-        default_config = SFEConfig()
-        await db.sfe_config.insert_one(default_config.model_dump())
-        logger.info("Created default SFE config")
-        return default_config.model_dump()
-    
-    return config
-
-
-async def update_sfe_config(
-    config_data: Dict[str, int],
-    current_user: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    Update SFE configuration (Admin only).
-    
-    Args:
-        config_data: New visit frequency config (A, B, C)
-        current_user: Current authenticated admin
-    
-    Returns:
-        dict: Success message and updated config
-    """
-    db = get_company_database()
-    admin_id = current_user["_id"]
-    
-    # Prepare update data
-    visit_frequency_config = {
-        "A": config_data["A"],
-        "B": config_data["B"],
-        "C": config_data["C"]
-    }
-    
-    # Update or create config
-    result = await db.sfe_config.update_one(
-        {"company_id": "default"},
-        {
-            "$set": {
-                "visit_frequency_config": visit_frequency_config,
-                "updated_by": admin_id,
-                "updated_at": datetime.utcnow()
-            }
-        },
-        upsert=True
-    )
-    
-    logger.info(f"Updated SFE config: {visit_frequency_config}")
-    
-    return {
-        "message": "SFE configuration updated successfully",
-        "visit_frequency_config": visit_frequency_config
-    }
-
 
 # ============================================================================
-# SFE SETTINGS (VISIT TARGETS)
+# SFE SETTINGS (VISIT TARGETS) - Single source of truth
 # ============================================================================
 
 async def get_sfe_settings() -> Dict[str, Any]:
@@ -324,18 +259,6 @@ async def get_mcr_report(
     Get MCR (Monthly Call Report) - Doctor coverage percentage.
     
     Formula: MCR % = (Unique doctors with ≥1 completed visit this month / Total assigned doctors) × 100
-    
-    Args:
-        month: Month (1-12)
-        year: Year (e.g., 2026)
-        mr_id: MR ID (optional, admin can query any MR)
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: MCR report with visited/not-visited doctors
-    
-    Raises:
-        HTTPException: If validation fails
     """
     db = get_company_database()
     user_role = current_user.get("role")
@@ -343,7 +266,6 @@ async def get_mcr_report(
     
     # Determine which MR to query
     if mr_id:
-        # Admin querying specific MR
         if user_role != "ADMIN":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -351,7 +273,6 @@ async def get_mcr_report(
             )
         target_mr_id = mr_id
     else:
-        # MR querying own data
         if user_role != "MR":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -366,7 +287,7 @@ async def get_mcr_report(
             detail="Invalid MR ID"
         )
     
-    # Get MR details
+    # Get MR details (assigned_doctors is on the MR document)
     mr = await db.mrs.find_one({"_id": ObjectId(target_mr_id)})
     if not mr:
         raise HTTPException(
@@ -374,12 +295,8 @@ async def get_mcr_report(
             detail="MR not found"
         )
     
-    # Get all assigned doctors for this MR
-    assigned_doctors = await db.doctor_assignments.find({
-        "mr_id": target_mr_id
-    }).to_list(length=None)
-    
-    total_assigned = len(assigned_doctors)
+    assigned_doctor_ids = mr.get("assigned_doctors", [])
+    total_assigned = len(assigned_doctor_ids)
     
     if total_assigned == 0:
         logger.info(f"MR {target_mr_id} has no assigned doctors")
@@ -396,13 +313,19 @@ async def get_mcr_report(
             "not_visited": []
         }
     
-    # Create date range for the month
-    from datetime import datetime as dt
-    import calendar
+    # Fetch all assigned doctors in one query
+    doctor_object_ids = [ObjectId(doc_id) for doc_id in assigned_doctor_ids if ObjectId.is_valid(doc_id)]
+    doctors = await db.doctors.find(
+        {"_id": {"$in": doctor_object_ids}},
+        {"name": 1, "classification": 1}
+    ).to_list(length=None)
+    doctor_map = {str(doc["_id"]): doc for doc in doctors}
     
-    start_date = dt(year, month, 1)
+    # Create date range for the month
+    import calendar
+    start_date = datetime(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
-    end_date = dt(year, month, last_day, 23, 59, 59)
+    end_date = datetime(year, month, last_day, 23, 59, 59)
     
     # Get all completed visits for this MR in the given month
     visits = await db.visits.find({
@@ -414,51 +337,130 @@ async def get_mcr_report(
         }
     }).to_list(length=None)
     
-    # Count visits per doctor
+    # Collect all product IDs from visits to fetch names in one query
+    all_product_ids = set()
+    for visit in visits:
+        report = visit.get("report")
+        if report and report.get("products_discussed"):
+            for pid in report["products_discussed"]:
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                if ObjectId.is_valid(pid_str):
+                    all_product_ids.add(pid_str)
+        # Legacy visits
+        if visit.get("products_promoted"):
+            for pid in visit["products_promoted"]:
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                if ObjectId.is_valid(pid_str):
+                    all_product_ids.add(pid_str)
+    
+    # Fetch all products in one batch query
+    drug_map = {}
+    if all_product_ids:
+        product_object_ids = [ObjectId(pid) for pid in all_product_ids]
+        products = await db.drugs.find({"_id": {"$in": product_object_ids}}).to_list(length=None)
+        for product in products:
+            pid = str(product["_id"])
+            drug_name = product.get("drug_name", "")
+            if not drug_name and product.get("field_values"):
+                for field in product["field_values"]:
+                    if field.get("key") == "drug_name":
+                        drug_name = field.get("value", "Unknown Drug")
+                        break
+                    elif field.get("key") in ["name", "product_name", "brand_name"]:
+                        drug_name = field.get("value", "Unknown Drug")
+                        break
+            drug_map[pid] = drug_name or "Unknown Drug"
+    
+    # Count visits per doctor and group visit details
     doctor_visit_count = {}
     doctor_last_visit = {}
+    doctor_visits_detail = {}  # Store full visit details per doctor
     
     for visit in visits:
         doc_id = visit["doctor_id"]
         doctor_visit_count[doc_id] = doctor_visit_count.get(doc_id, 0) + 1
-        
-        # Track last visit date
         if doc_id not in doctor_last_visit or visit["completed_at"] > doctor_last_visit[doc_id]:
             doctor_last_visit[doc_id] = visit["completed_at"]
+        
+        # Collect visit details for this doctor
+        if doc_id not in doctor_visits_detail:
+            doctor_visits_detail[doc_id] = []
+        
+        visit_info = {
+            "visit_id": str(visit["_id"]),
+            "scheduled_date": visit.get("scheduled_date"),
+            "completed_at": visit.get("completed_at"),
+            "duration_minutes": visit.get("duration_minutes"),
+            "location": visit.get("location"),
+            "purpose": visit.get("purpose"),
+        }
+        
+        # Add report data if available
+        report = visit.get("report")
+        if report:
+            # Resolve product IDs to names
+            products_discussed = []
+            for pid in report.get("products_discussed", []):
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                products_discussed.append({
+                    "id": pid_str,
+                    "name": drug_map.get(pid_str, "Unknown Drug")
+                })
+            
+            visit_info["doctor_mood"] = report.get("doctor_mood")
+            visit_info["products_discussed"] = products_discussed
+            visit_info["samples_given"] = report.get("samples_given")
+            visit_info["outcome"] = report.get("outcome")
+            visit_info["rx_commitment"] = report.get("rx_commitment")
+            visit_info["expected_rx_per_month"] = report.get("expected_rx_per_month")
+            visit_info["competitor_info"] = report.get("competitor_info")
+            visit_info["follow_up_date"] = report.get("follow_up_date")
+            visit_info["notes"] = report.get("notes")
+        else:
+            # Legacy visits (completed via old endpoint)
+            products_discussed = []
+            for pid in visit.get("products_promoted", []):
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                products_discussed.append({
+                    "id": pid_str,
+                    "name": drug_map.get(pid_str, "Unknown Drug")
+                })
+            
+            visit_info["outcome"] = visit.get("outcome")
+            visit_info["feedback"] = visit.get("feedback")
+            visit_info["doctor_mood"] = visit.get("doctor_mood")
+            visit_info["products_discussed"] = products_discussed
+            visit_info["samples_given"] = visit.get("samples_given")
+        
+        doctor_visits_detail[doc_id].append(visit_info)
     
     # Categorize doctors
     visited_doctors = []
     not_visited_doctors = []
     
-    for assignment in assigned_doctors:
-        doc_id = assignment["doctor_id"]
+    for doc_id in assigned_doctor_ids:
+        doctor = doctor_map.get(doc_id)
+        if not doctor:
+            continue
+        
+        doctor_name = doctor.get("name", "Unknown")
+        classification = doctor.get("classification", "C")
         
         if doc_id in doctor_visit_count:
-            # Doctor was visited
             visited_doctors.append({
                 "doctor_id": doc_id,
-                "doctor_name": assignment["doctor_name"],
-                "classification": assignment.get("classification"),
+                "doctor_name": doctor_name,
+                "classification": classification,
                 "visits_count": doctor_visit_count[doc_id],
-                "last_visit_date": doctor_last_visit[doc_id]
+                "last_visit_date": doctor_last_visit[doc_id],
+                "visits": doctor_visits_detail.get(doc_id, [])
             })
         else:
-            # Doctor was not visited this month
-            # Check if doctor was ever visited (get last visit from all time)
-            last_visit_ever = await db.visits.find_one(
-                {
-                    "mr_id": target_mr_id,
-                    "doctor_id": doc_id,
-                    "status": "completed"
-                },
-                sort=[("completed_at", -1)]
-            )
-            
             not_visited_doctors.append({
                 "doctor_id": doc_id,
-                "doctor_name": assignment["doctor_name"],
-                "classification": assignment.get("classification"),
-                "last_visited": last_visit_ever["completed_at"] if last_visit_ever else None
+                "doctor_name": doctor_name,
+                "classification": classification,
+                "last_visited": None
             })
     
     # Calculate MCR percentage
@@ -492,18 +494,6 @@ async def get_mvc_report(
     Get MVC (Monthly Visit Coverage) - Visit frequency compliance.
     
     Formula: MVC % = (Doctors who received ≥ required visits / Total assigned doctors) × 100
-    
-    Args:
-        month: Month (1-12)
-        year: Year (e.g., 2026)
-        mr_id: MR ID (optional, admin can query any MR)
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: MVC report with per-doctor compliance
-    
-    Raises:
-        HTTPException: If validation fails
     """
     db = get_company_database()
     user_role = current_user.get("role")
@@ -511,7 +501,6 @@ async def get_mvc_report(
     
     # Determine which MR to query
     if mr_id:
-        # Admin querying specific MR
         if user_role != "ADMIN":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -519,7 +508,6 @@ async def get_mvc_report(
             )
         target_mr_id = mr_id
     else:
-        # MR querying own data
         if user_role != "MR":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -534,7 +522,7 @@ async def get_mvc_report(
             detail="Invalid MR ID"
         )
     
-    # Get MR details
+    # Get MR details (assigned_doctors is on the MR document)
     mr = await db.mrs.find_one({"_id": ObjectId(target_mr_id)})
     if not mr:
         raise HTTPException(
@@ -542,12 +530,8 @@ async def get_mvc_report(
             detail="MR not found"
         )
     
-    # Get all assigned doctors for this MR
-    assigned_doctors = await db.doctor_assignments.find({
-        "mr_id": target_mr_id
-    }).to_list(length=None)
-    
-    total_assigned = len(assigned_doctors)
+    assigned_doctor_ids = mr.get("assigned_doctors", [])
+    total_assigned = len(assigned_doctor_ids)
     
     if total_assigned == 0:
         logger.info(f"MR {target_mr_id} has no assigned doctors")
@@ -565,13 +549,23 @@ async def get_mvc_report(
             "doctors": []
         }
     
-    # Create date range for the month
-    from datetime import datetime as dt
-    import calendar
+    # Fetch all assigned doctors in one query
+    doctor_object_ids = [ObjectId(doc_id) for doc_id in assigned_doctor_ids if ObjectId.is_valid(doc_id)]
+    doctors = await db.doctors.find(
+        {"_id": {"$in": doctor_object_ids}},
+        {"name": 1, "classification": 1}
+    ).to_list(length=None)
+    doctor_map = {str(doc["_id"]): doc for doc in doctors}
     
-    start_date = dt(year, month, 1)
+    # Get SFE settings for required visits per classification
+    sfe_settings = await get_sfe_settings()
+    classification_targets = sfe_settings.get("classification_targets", {"A": 2, "B": 1, "C": 1})
+    
+    # Create date range for the month
+    import calendar
+    start_date = datetime(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
-    end_date = dt(year, month, last_day, 23, 59, 59)
+    end_date = datetime(year, month, last_day, 23, 59, 59)
     
     # Get all completed visits for this MR in the given month
     visits = await db.visits.find({
@@ -596,10 +590,14 @@ async def get_mvc_report(
     not_visited_count = 0
     total_compliance = 0.0
     
-    for assignment in assigned_doctors:
-        doc_id = assignment["doctor_id"]
-        classification = assignment.get("classification", "C")
-        required_visits = assignment.get("visit_frequency", 1)
+    for doc_id in assigned_doctor_ids:
+        doctor = doctor_map.get(doc_id)
+        if not doctor:
+            continue
+        
+        doctor_name = doctor.get("name", "Unknown")
+        classification = doctor.get("classification", "C")
+        required_visits = classification_targets.get(classification, 1)
         actual_visits = doctor_visit_count.get(doc_id, 0)
         
         # Calculate compliance percentage
@@ -608,31 +606,49 @@ async def get_mvc_report(
         
         # Determine status
         if actual_visits >= required_visits:
-            status = "covered"
+            doc_status = "covered"
             fully_covered_count += 1
         elif actual_visits > 0:
-            status = "under"
+            doc_status = "under"
             under_covered_count += 1
         else:
-            status = "missed"
+            doc_status = "missed"
             not_visited_count += 1
         
         doctors_detail.append({
             "doctor_id": doc_id,
-            "doctor_name": assignment["doctor_name"],
+            "doctor_name": doctor_name,
             "classification": classification,
             "required_visits": required_visits,
             "actual_visits": actual_visits,
-            "status": status,
+            "status": doc_status,
             "compliance_percentage": compliance_pct
         })
     
-    # Calculate MVC percentage (doctors who met their requirement)
-    mvc_percentage = round((fully_covered_count / total_assigned) * 100, 2) if total_assigned > 0 else 0.0
+    # Calculate MVC percentage
+    total_doctors_counted = len(doctors_detail)
+    mvc_percentage = round((fully_covered_count / total_doctors_counted) * 100, 2) if total_doctors_counted > 0 else 0.0
+    avg_compliance = round(total_compliance / total_doctors_counted, 2) if total_doctors_counted > 0 else 0.0
     
-    # Calculate average compliance across all doctors
-    avg_compliance = round(total_compliance / total_assigned, 2) if total_assigned > 0 else 0.0
+    # Sort: covered first, then under, then missed
+    status_order = {"covered": 0, "under": 1, "missed": 2}
+    doctors_detail.sort(key=lambda x: status_order.get(x["status"], 3))
     
+    logger.info(f"MVC for MR {target_mr_id} ({month}/{year}): {mvc_percentage}% (covered: {fully_covered_count}/{total_doctors_counted})")
+    
+    return {
+        "mr_id": target_mr_id,
+        "mr_name": mr["name"],
+        "month": month,
+        "year": year,
+        "total_assigned": total_doctors_counted,
+        "fully_covered": fully_covered_count,
+        "under_covered": under_covered_count,
+        "not_visited": not_visited_count,
+        "mvc_percentage": mvc_percentage,
+        "avg_compliance": avg_compliance,
+        "doctors": doctors_detail
+    }
     # Sort doctors by status (covered first, then under, then missed)
     status_order = {"covered": 0, "under": 1, "missed": 2}
     doctors_detail.sort(key=lambda x: (status_order[x["status"]], -x["compliance_percentage"]))
@@ -710,6 +726,20 @@ async def create_rcpa_commitment(
             detail="Product not found"
         )
     
+    # Extract product name (stored in field_values or as flat field)
+    product_name = product.get("drug_name", "")
+    if not product_name and product.get("field_values"):
+        for field in product["field_values"]:
+            field_key = field.get("key", "")
+            if field_key == "drug_name":
+                product_name = field.get("value", "Unknown Drug")
+                break
+            elif field_key in ["name", "product_name", "brand_name"]:
+                product_name = field.get("value", "Unknown Drug")
+                break
+    if not product_name:
+        product_name = "Unknown Drug"
+    
     # Get MR details
     mr = await db.mrs.find_one({"_id": ObjectId(mr_id)})
     
@@ -720,7 +750,7 @@ async def create_rcpa_commitment(
         doctor_id=doctor_id,
         doctor_name=doctor["name"],
         product_id=product_id,
-        product_name=product["name"],
+        product_name=product_name,
         rx_per_week=commitment_data["rx_per_week"],
         confidence=commitment_data.get("confidence", "medium"),
         visit_id=commitment_data.get("visit_id"),
@@ -1050,8 +1080,8 @@ async def get_sfe_dashboard(
             detail="Only admins can access SFE dashboard"
         )
     
-    # Get all MRs
-    mrs = await db.mrs.find({"role": "MR"}).to_list(length=None)
+    # Get all MRs (MRs are in the mrs collection, no role field needed)
+    mrs = await db.mrs.find({"is_active": True}).to_list(length=None)
     total_mrs = len(mrs)
     
     if total_mrs == 0:
@@ -1068,7 +1098,7 @@ async def get_sfe_dashboard(
             "total_rx_per_week": 0,
             "leaderboard": [],
             "underperformers": [],
-            "by_territory": {},
+            "by_territory": [],
             "alerts": []
         }
     

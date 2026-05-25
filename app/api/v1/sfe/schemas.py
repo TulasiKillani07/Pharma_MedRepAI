@@ -252,13 +252,34 @@ class ClassificationTargetsUpdateRequest(BaseModel):
 # MCR (MONTHLY CALL REPORT)
 # ============================================================================
 
+class MCRVisitDetail(BaseModel):
+    """Individual visit detail within MCR"""
+    visit_id: str
+    scheduled_date: Optional[Any] = None
+    completed_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    location: Optional[str] = None
+    purpose: Optional[str] = None
+    doctor_mood: Optional[str] = None
+    products_discussed: Optional[List[Any]] = None
+    samples_given: Optional[int] = None
+    outcome: Optional[str] = None
+    feedback: Optional[str] = None
+    rx_commitment: Optional[bool] = None
+    expected_rx_per_month: Optional[int] = None
+    competitor_info: Optional[str] = None
+    follow_up_date: Optional[Any] = None
+    notes: Optional[str] = None
+
+
 class MCRDoctorVisited(BaseModel):
-    """Doctor who was visited"""
+    """Doctor who was visited - includes full visit details"""
     doctor_id: str
     doctor_name: str
     classification: Optional[str] = None
     visits_count: int
     last_visit_date: datetime
+    visits: Optional[List[MCRVisitDetail]] = None
     
     class Config:
         json_schema_extra = {
@@ -267,7 +288,25 @@ class MCRDoctorVisited(BaseModel):
                 "doctor_name": "Dr. Arjun Sharma",
                 "classification": "A",
                 "visits_count": 3,
-                "last_visit_date": "2026-05-15T14:30:00"
+                "last_visit_date": "2026-05-15T14:30:00",
+                "visits": [
+                    {
+                        "visit_id": "6a0edec2...",
+                        "completed_at": "2026-05-15T14:30:00",
+                        "duration_minutes": 28,
+                        "location": "Apollo Hospital",
+                        "purpose": "Drug Promotion",
+                        "doctor_mood": "positive",
+                        "products_discussed": [{"id": "drug_id_1", "name": "Amlodipine 5mg"}],
+                        "samples_given": 3,
+                        "outcome": "Doctor interested in product",
+                        "rx_commitment": True,
+                        "expected_rx_per_month": 10,
+                        "competitor_info": "Cipla — Amlokind 5mg",
+                        "follow_up_date": "2026-06-01",
+                        "notes": "Doctor wants clinical trial data"
+                    }
+                ]
             }
         }
 

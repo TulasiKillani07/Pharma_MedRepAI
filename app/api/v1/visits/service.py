@@ -1082,6 +1082,14 @@ async def submit_visit_report(
             for pid in report_data["products_discussed"]
         ]
     
+    # Convert date objects to datetime for MongoDB (MongoDB doesn't support date type)
+    if report_data.get("follow_up_date"):
+        from datetime import date as date_type
+        if isinstance(report_data["follow_up_date"], date_type):
+            report_data["follow_up_date"] = datetime.combine(
+                report_data["follow_up_date"], datetime.min.time()
+            )
+    
     # Perform report submission - THIS IS WHEN IT COUNTS!
     completed_at = datetime.utcnow()
     
@@ -1145,43 +1153,68 @@ async def get_active_visit(
     Returns:
         dict: {active_visit: {...} or null, pending_reports: count}
     """
+    from app.utils.logger import get_medrep_logger
+    logger = get_medrep_logger(__name__)
+    
     company_db = get_company_database()
     user_id = current_user.get("_id")
     
-    # Find active checked_in visit
-    active_visit = await company_db.visits.find_one({
-        "mr_id": user_id,
-        "status": "checked_in"
-    })
+    # Validate user_id exists
+    if not user_id:
+        logger.error(f"User ID not found in current_user: {current_user}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User ID not found in token"
+        )
     
-    # Count pending reports (checked_out visits)
-    pending_reports_count = await company_db.visits.count_documents({
-        "mr_id": user_id,
-        "status": "checked_out"
-    })
+    logger.info(f"Getting active visit for user_id: {user_id}")
     
-    # Format active visit response
-    active_visit_data = None
-    if active_visit:
-        check_in_time = active_visit.get("check_in", {}).get("timestamp")
-        duration_so_far = 0
+    try:
+        # Find active checked_in visit
+        active_visit = await company_db.visits.find_one({
+            "mr_id": user_id,
+            "status": "checked_in"
+        })
         
-        if check_in_time:
-            duration_so_far = int((datetime.utcnow() - check_in_time).total_seconds() / 60)
+        logger.info(f"Active visit found: {active_visit is not None}")
         
-        active_visit_data = {
-            "id": str(active_visit["_id"]),
-            "doctor_id": active_visit["doctor_id"],
-            "doctor_name": active_visit["doctor_name"],
-            "check_in_time": check_in_time,
-            "location": active_visit["location"],
-            "duration_so_far_minutes": duration_so_far
+        # Count pending reports (checked_out visits)
+        pending_reports_count = await company_db.visits.count_documents({
+            "mr_id": user_id,
+            "status": "checked_out"
+        })
+        
+        logger.info(f"Pending reports count: {pending_reports_count}")
+        
+        # Format active visit response
+        active_visit_data = None
+        if active_visit:
+            check_in_time = active_visit.get("check_in", {}).get("timestamp")
+            duration_so_far = 0
+            
+            if check_in_time:
+                duration_so_far = int((datetime.utcnow() - check_in_time).total_seconds() / 60)
+            
+            active_visit_data = {
+                "id": str(active_visit["_id"]),
+                "doctor_id": active_visit["doctor_id"],
+                "doctor_name": active_visit["doctor_name"],
+                "check_in_time": check_in_time,
+                "location": active_visit["location"],
+                "duration_so_far_minutes": duration_so_far
+            }
+        
+        return {
+            "active_visit": active_visit_data,
+            "pending_reports": pending_reports_count
         }
     
-    return {
-        "active_visit": active_visit_data,
-        "pending_reports": pending_reports_count
-    }
+    except Exception as e:
+        logger.error(f"Error in get_active_visit: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get active visit: {str(e)}"
+        )
 
 
 async def cancel_check_in(

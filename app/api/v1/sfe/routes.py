@@ -10,138 +10,7 @@ from app.utils.logger import get_medrep_logger
 
 # Initialize logger
 logger = get_medrep_logger(__name__)
-
 router = APIRouter(prefix="/sfe", tags=["SFE - Sales Force Effectiveness"])
-
-
-# ============================================================================
-# SFE CONFIGURATION
-# ============================================================================
-
-@router.get(
-    "/config",
-    response_model=schemas.SFEConfigResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Get SFE Configuration",
-    description="""
-    **Purpose:** Retrieve system-wide SFE configuration that defines required visit frequency for each doctor class.
-    
-    **Configuration Meaning:**
-    - **A**: Required visits per month for A-class doctors (high prescribers)
-    - **B**: Required visits per month for B-class doctors (medium prescribers)
-    - **C**: Required visits per month for C-class doctors (low prescribers)
-    
-    **Required Role:** All authenticated users (MR, Admin, Doctor)
-    
-    **Use Case:** 
-    - MR checks how many times they should visit doctors of each class
-    - System uses this for MVC (Monthly Visit Coverage) calculations
-    - Admin reviews current visit frequency standards
-    
-    **Example Request:**
-    ```
-    GET /api/v1/sfe/config
-    Headers: Authorization: Bearer <token>
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "A": 4,
-      "B": 2,
-      "C": 1,
-      "updated_at": "2026-05-01T10:00:00Z",
-      "updated_by": "Admin Name"
-    }
-    ```
-    
-    **What It Tells You:**
-    - A-class doctors need 4 visits/month
-    - B-class doctors need 2 visits/month
-    - C-class doctors need 1 visit/month
-    - When config was last updated and by whom
-    
-    **What Happens:**
-    1. System retrieves current SFE configuration from database
-    2. Returns visit frequency requirements for all classes
-    3. If no config exists, returns default values (A=4, B=2, C=1)
-    """
-)
-async def get_sfe_config(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    
-    config = await service.get_sfe_config()
-    
-    return config
-
-
-@router.put(
-    "/config",
-    response_model=schemas.MessageResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Update SFE Configuration",
-    description="""
-    **Purpose:** Update system-wide visit frequency requirements for each doctor class (A/B/C).
-    
-    **Required Role:** Admin only
-    
-    **Use Case:** Admin adjusts visit frequency standards based on company strategy or market conditions.
-    
-    **Example Request:**
-    ```json
-    PUT /api/v1/sfe/config
-    Headers: Authorization: Bearer <admin_token>
-    Body:
-    {
-      "A": 4,
-      "B": 3,
-      "C": 1
-    }
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "message": "SFE configuration updated successfully"
-    }
-    ```
-    
-    **What Happens:**
-    1. System validates that all three classes (A, B, C) have positive integer values
-    2. Configuration is updated in sfe_config collection
-    3. Timestamp and admin info are recorded
-    4. All future MVC calculations will use new frequency requirements
-    5. Existing doctor classifications remain unchanged (only frequency requirements change)
-    
-    **Impact:**
-    - MVC (Monthly Visit Coverage) calculations will use new frequencies
-    - MRs will see updated visit targets for each doctor class
-    - Does NOT retroactively change past compliance metrics
-    
-    **Validation:**
-    - All values must be positive integers (1-31)
-    - Typically: A ≥ B ≥ C (but not enforced)
-    """
-)
-async def update_sfe_config(
-    request_data: schemas.SFEConfigUpdateRequest,
-    current_user: Dict[str, Any] = Depends(require_admin)
-):
-    logger.info(f"Admin {current_user['_id']} updating SFE config")
-    
-    config_data = {
-        "A": request_data.A,
-        "B": request_data.B,
-        "C": request_data.C
-    }
-    
-    result = await service.update_sfe_config(
-        config_data=config_data,
-        current_user=current_user
-    )
-    
-    return {"message": result["message"]}
 
 
 # ============================================================================
@@ -154,7 +23,7 @@ async def update_sfe_config(
     status_code=status.HTTP_200_OK,
     summary="Get MCR (Monthly Call Report)",
     description="""
-    **Purpose:** Calculate Monthly Call Report - measures what percentage of assigned doctors were visited at least once in a given month.
+    **Purpose:** Calculate Monthly Call Report - measures what percentage of assigned doctors were visited at least once in a given month. Includes full visit details with report data (products discussed, doctor mood, outcome, etc.).
     
     **Formula:** MCR % = (Unique doctors with ≥1 completed visit this month / Total assigned doctors) × 100
     
@@ -165,6 +34,7 @@ async def update_sfe_config(
     **Use Case:**
     - MR checks their monthly doctor coverage performance
     - Admin monitors MR performance and identifies underperformers
+    - View full visit details: products discussed, doctor feedback, outcomes
     - Company tracks overall field force effectiveness
     
     **Example Request (MR):**
@@ -186,43 +56,98 @@ async def update_sfe_config(
       "mr_name": "Rajesh Kumar",
       "month": 5,
       "year": 2026,
-      "total_assigned": 50,
-      "doctors_visited": 42,
-      "doctors_not_visited": 8,
-      "mcr_percentage": 84.0,
+      "total_assigned": 10,
+      "doctors_visited": 7,
+      "doctors_not_visited": 3,
+      "mcr_percentage": 70.0,
       "visited": [
         {
-          "doctor_id": "507f1f77bcf86cd799439011",
-          "doctor_name": "Dr. Arjun Sharma",
+          "doctor_id": "6a0d9fa2...",
+          "doctor_name": "Dr. Sneha Sharma",
           "classification": "A",
           "visits_count": 3,
-          "last_visit_date": "2026-05-15T14:30:00"
+          "last_visit_date": "2026-05-20T14:30:00",
+          "visits": [
+            {
+              "visit_id": "6a0edec2...",
+              "scheduled_date": "2026-05-20",
+              "completed_at": "2026-05-20T14:30:00",
+              "duration_minutes": 28,
+              "location": "Apollo Hospital",
+              "purpose": "Drug Promotion",
+              "doctor_mood": "positive",
+              "products_discussed": [{"id": "drug_id_1", "name": "Amlodipine 5mg"}, {"id": "drug_id_2", "name": "Metformin 500mg"}],
+              "samples_given": 3,
+              "outcome": "Positive — Doctor interested in Amlodipine 5mg",
+              "rx_commitment": true,
+              "expected_rx_per_month": 10,
+              "competitor_info": "Cipla — Amlokind 5mg",
+              "follow_up_date": "2026-06-01",
+              "notes": "Doctor wants clinical trial data"
+            },
+            {
+              "visit_id": "6a0edf12...",
+              "scheduled_date": "2026-05-10",
+              "completed_at": "2026-05-10T11:00:00",
+              "duration_minutes": 22,
+              "location": "Apollo Hospital",
+              "purpose": "Follow-up",
+              "doctor_mood": "neutral",
+              "products_discussed": [{"id": "drug_id_1", "name": "Amlodipine 5mg"}],
+              "samples_given": 2,
+              "outcome": "Doctor asked for more data before committing",
+              "rx_commitment": false,
+              "expected_rx_per_month": null,
+              "competitor_info": null,
+              "follow_up_date": "2026-05-20",
+              "notes": null
+            }
+          ]
         }
       ],
       "not_visited": [
         {
-          "doctor_id": "507f1f77bcf86cd799439012",
+          "doctor_id": "6a0da18e...",
           "doctor_name": "Dr. Priya Reddy",
           "classification": "B",
-          "last_visited": "2026-04-20T10:15:00"
+          "last_visited": null
         }
       ]
     }
     ```
     
     **What It Tells You:**
-    - Overall coverage percentage (MCR %)
-    - How many doctors were visited vs not visited
-    - Detailed list of visited doctors with visit counts
-    - List of missed doctors with their last visit date
-    - Doctor classifications for prioritization
+    - **MCR %**: Overall coverage percentage
+    - **visited[]**: Doctors who were visited with full visit details:
+      - How many times visited
+      - Each visit's duration, location, purpose
+      - Doctor's mood during each visit
+      - Products discussed and samples given
+      - Outcome and feedback
+      - Prescription commitments
+      - Competitor information
+      - Follow-up dates
+    - **not_visited[]**: Doctors who were NOT visited this month
+    
+    **Visit Details Fields:**
+    - `doctor_mood`: positive / neutral / negative
+    - `products_discussed`: Array of objects with drug id and name (e.g., `[{"id": "...", "name": "Amlodipine 5mg"}]`)
+    - `samples_given`: Number of samples distributed
+    - `outcome`: Visit outcome summary
+    - `rx_commitment`: Did doctor commit to prescribing? (true/false)
+    - `expected_rx_per_month`: Expected prescriptions per month
+    - `competitor_info`: Competitor information observed
+    - `follow_up_date`: Next follow-up date
+    - `notes`: Additional notes
+    - `duration_minutes`: How long the visit lasted
     
     **What Happens:**
-    1. System retrieves all doctors assigned to the MR
-    2. Queries all completed visits for the specified month
-    3. Counts unique doctors visited
-    4. Calculates MCR percentage
-    5. Returns detailed breakdown with doctor lists
+    1. System retrieves all doctors assigned to the MR (from mrs.assigned_doctors)
+    2. Fetches doctor details (name, classification) from doctors collection
+    3. Queries all completed visits for the specified month
+    4. Groups visits by doctor with full report data
+    5. Calculates MCR percentage
+    6. Returns detailed breakdown with visit reports
     
     **Performance Benchmarks:**
     - Excellent: MCR ≥ 90%
@@ -952,295 +877,6 @@ async def get_mr_drilldown(
     
     result = await service.get_mr_drilldown(
         mr_id=mr_id,
-        month=month,
-        year=year,
-        current_user=current_user
-    )
-    
-    return result
-
-
-
-# ============================================================================
-# CHEMIST CHECK
-# ============================================================================
-
-@router.post(
-    "/chemist-check",
-    response_model=schemas.ChemistCheckResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create Chemist Check",
-    description="""
-    **Purpose:** Log chemist/pharmacy stock observation to validate RCPA commitments and identify supply chain issues.
-    
-    **Required Role:** MR only
-    
-    **Use Case:**
-    - MR visits chemist near doctor's clinic
-    - Checks if company's products are in stock
-    - Records stock levels and sales
-    - Validates that doctor prescriptions are being filled
-    - Identifies stockout risks
-    
-    **Example Request:**
-    ```json
-    POST /api/v1/sfe/chemist-check
-    Headers: Authorization: Bearer <mr_token>
-    Body:
-    {
-      "chemist_name": "Apollo Pharmacy",
-      "chemist_location": "Near Dr. Arjun's clinic, MG Road",
-      "product_id": "507f1f77bcf86cd799439021",
-      "stock_available": 30,
-      "sold_this_week": 20,
-      "notes": "High demand, restock needed soon",
-      "gps_lat": 17.3850,
-      "gps_lng": 78.4867
-    }
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "id": "507f1f77bcf86cd799439051",
-      "mr_id": "507f1f77bcf86cd799439013",
-      "mr_name": "Rajesh Kumar",
-      "chemist_name": "Apollo Pharmacy",
-      "chemist_location": "Near Dr. Arjun's clinic, MG Road",
-      "product_id": "507f1f77bcf86cd799439021",
-      "product_name": "Amlovas 5mg",
-      "stock_available": 30,
-      "sold_this_week": 20,
-      "notes": "High demand, restock needed soon",
-      "territory": "Visakhapatnam",
-      "date": "2026-05-19T00:00:00",
-      "created_at": "2026-05-19T16:30:00"
-    }
-    ```
-    
-    **What Happens:**
-    1. System validates product exists
-    2. Creates chemist check record with MR and territory info
-    3. Records stock and sales data
-    4. Data is used for supply chain analysis
-    
-    **Business Value:**
-    - Validates RCPA commitments (are doctors actually prescribing?)
-    - Identifies stockout risks before they happen
-    - Optimizes inventory distribution
-    - Measures product availability at point of sale
-    """
-)
-async def create_chemist_check(
-    request_data: schemas.ChemistCheckCreateRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    # Only MR can create checks
-    if current_user.get("role") != "MR":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only MRs can create chemist checks"
-        )
-    
-    logger.info(f"MR {current_user['_id']} creating chemist check")
-    
-    result = await service.create_chemist_check(
-        check_data=request_data.model_dump(),
-        current_user=current_user
-    )
-    
-    return result
-
-
-@router.get(
-    "/chemist-check",
-    response_model=schemas.ChemistCheckListResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Get Chemist Checks",
-    description="""
-    **Purpose:** Retrieve chemist check observations with optional filters.
-    
-    **Required Role:**
-    - MR: Can view own checks
-    - Admin: Can view all checks or filter by MR
-    
-    **Use Case:**
-    - MR reviews their chemist observations
-    - Admin monitors product availability across territories
-    - Filter by month/year to see recent checks
-    - Filter by product to see specific drug availability
-    - Filter by territory for regional analysis
-    
-    **Example Request (MR - own checks):**
-    ```
-    GET /api/v1/sfe/chemist-check?month=5&year=2026
-    Headers: Authorization: Bearer <mr_token>
-    ```
-    
-    **Example Request (Admin - specific MR):**
-    ```
-    GET /api/v1/sfe/chemist-check?month=5&year=2026&mr_id=507f1f77bcf86cd799439013
-    Headers: Authorization: Bearer <admin_token>
-    ```
-    
-    **Example Request (Filter by product and territory):**
-    ```
-    GET /api/v1/sfe/chemist-check?product_id=507f1f77bcf86cd799439021&territory=Visakhapatnam
-    Headers: Authorization: Bearer <token>
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "total": 15,
-      "checks": [
-        {
-          "id": "507f1f77bcf86cd799439051",
-          "mr_id": "507f1f77bcf86cd799439013",
-          "mr_name": "Rajesh Kumar",
-          "chemist_name": "Apollo Pharmacy",
-          "chemist_location": "Near Dr. Arjun's clinic",
-          "product_id": "507f1f77bcf86cd799439021",
-          "product_name": "Amlovas 5mg",
-          "stock_available": 30,
-          "sold_this_week": 20,
-          "territory": "Visakhapatnam",
-          "date": "2026-05-19T00:00:00",
-          "created_at": "2026-05-19T16:30:00"
-        }
-      ]
-    }
-    ```
-    
-    **Query Parameters:**
-    - `month`: Filter by month (1-12)
-    - `year`: Filter by year
-    - `mr_id`: Filter by MR (admin only)
-    - `product_id`: Filter by product
-    - `territory`: Filter by territory
-    
-    **What It Tells You:**
-    - All chemist observations matching filters
-    - Stock levels at each chemist
-    - Sales velocity (sold this week)
-    - Geographic distribution
-    """
-)
-async def get_chemist_checks(
-    month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
-    year: Optional[int] = Query(None, ge=2020, le=2030, description="Year"),
-    mr_id: Optional[str] = Query(None, description="MR ID (admin only)"),
-    product_id: Optional[str] = Query(None, description="Product ID"),
-    territory: Optional[str] = Query(None, description="Territory"),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    
-    result = await service.get_chemist_checks(
-        month=month,
-        year=year,
-        mr_id=mr_id,
-        product_id=product_id,
-        territory=territory,
-        current_user=current_user
-    )
-    
-    return result
-
-
-@router.get(
-    "/chemist-check/summary",
-    response_model=schemas.ChemistCheckSummaryResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Get Chemist Check Summary (Admin Only)",
-    description="""
-    **Purpose:** Get aggregated chemist check data for supply chain analysis and inventory planning.
-    
-    **Required Role:** Admin only
-    
-    **Use Case:**
-    - Company monitors product availability at retail level
-    - Identifies stockout risks before they impact sales
-    - Validates RCPA commitments (prescriptions → sales)
-    - Optimizes inventory distribution by territory
-    - Measures product velocity (sales rate)
-    
-    **Example Request:**
-    ```
-    GET /api/v1/sfe/chemist-check/summary?month=5&year=2026
-    Headers: Authorization: Bearer <admin_token>
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "total_checks": 85,
-      "total_chemists": 45,
-      "total_stock": 2500,
-      "total_sold_this_week": 1800,
-      "by_product": [
-        {
-          "product_id": "507f1f77bcf86cd799439021",
-          "product_name": "Amlovas 5mg",
-          "total_stock": 450,
-          "total_sold_this_week": 280,
-          "chemists_count": 15,
-          "avg_stock_per_chemist": 30.0
-        }
-      ],
-      "by_territory": [
-        {
-          "territory": "Visakhapatnam",
-          "total_stock": 600,
-          "total_sold": 350,
-          "chemists_count": 20,
-          "products_count": 8
-        }
-      ],
-      "low_stock_alerts": [
-        {
-          "chemist_name": "Apollo Pharmacy",
-          "product_name": "Amlovas 5mg",
-          "stock_available": 5,
-          "territory": "Visakhapatnam",
-          "mr_name": "Rajesh Kumar"
-        }
-      ]
-    }
-    ```
-    
-    **What It Tells You:**
-    - **Total Metrics**: Checks, chemists, stock, sales
-    - **By Product**: Which products are selling fast, stock levels
-    - **By Territory**: Regional stock distribution and sales
-    - **Low Stock Alerts**: Chemists with stock < 10 units (urgent restock)
-    
-    **What Happens:**
-    1. System aggregates all chemist checks
-    2. Groups by product (sorted by sales)
-    3. Groups by territory (sorted by sales)
-    4. Identifies low stock situations (< 10 units)
-    5. Returns supply chain intelligence
-    
-    **Business Value:**
-    - **Prevent Stockouts**: Proactive alerts for low stock
-    - **Validate RCPA**: Compare commitments vs actual sales
-    - **Optimize Distribution**: Send stock where it's selling
-    - **Measure Velocity**: Identify fast-moving products
-    - **Territory Planning**: Understand regional demand patterns
-    
-    **RCPA Validation Example:**
-    - RCPA: Dr. Arjun committed to 15 rx/week of Amlovas
-    - Chemist Check: Nearby chemist sold 20 units this week
-    - Insight: ✓ Commitment is being fulfilled (or exceeded)
-    """
-)
-async def get_chemist_check_summary(
-    month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
-    year: Optional[int] = Query(None, ge=2020, le=2030, description="Year"),
-    current_user: Dict[str, Any] = Depends(require_admin)
-):
-    
-    result = await service.get_chemist_check_summary(
         month=month,
         year=year,
         current_user=current_user

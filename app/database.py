@@ -545,10 +545,6 @@ async def initialize_collections():
     except Exception as e:
         logger.warning(f"Index creation issue: {e}")
     
-    # Create sfe_config collection (single document, no indexes needed)
-    if "sfe_config" not in existing_collections:
-        await database.create_collection("sfe_config")
-    
     # Create sfe_settings collection (single document, no indexes needed)
     if "sfe_settings" not in existing_collections:
         await database.create_collection("sfe_settings")

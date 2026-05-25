@@ -14,7 +14,16 @@ from app.api.v1.visits.schemas import (
     VisitListResponse,
     VisitListWithTargetsResponse,
     MessageResponse,
-    VisitCreateResponse
+    VisitCreateResponse,
+    # New schemas for check-in/check-out/report flow
+    VisitCheckInRequest,
+    VisitCheckOutRequest,
+    VisitReportRequest,
+    VisitCancelCheckInRequest,
+    CheckInResponse,
+    CheckOutResponse,
+    ReportResponse,
+    ActiveVisitResponse
 )
 from app.api.v1.visits.service import (
     schedule_visit,
@@ -22,7 +31,13 @@ from app.api.v1.visits.service import (
     get_visit_by_id,
     reschedule_visit,
     complete_visit,
-    cancel_visit
+    cancel_visit,
+    # New service functions for check-in/check-out/report flow
+    check_in_visit,
+    check_out_visit,
+    submit_visit_report,
+    get_active_visit,
+    cancel_check_in
 )
 from app.core.auth import get_current_user, require_admin
 from app.core.roles import UserRole
@@ -244,6 +259,68 @@ async def list_visits(
     return result
 
 
+@router.get("/active", response_model=ActiveVisitResponse, summary="Get Active Visit")
+async def get_active_visit_endpoint(
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Get current active (checked_in) visit and pending reports count (MR only).
+    
+    **Access:** MR only
+    
+    **Purpose:** 
+    - Check if you have an active checked-in visit
+    - See how many pending reports you have
+    - Frontend uses this to show active visit timer and disable other check-ins
+    
+    **What You Get:**
+    - **active_visit**: Visit details if you're checked in, otherwise null
+    - **pending_reports**: Count of visits waiting for reports (checked_out status)
+    
+    **Usage:**
+    ```
+    GET /api/v1/visits/active
+    Headers: Authorization: Bearer <mr_token>
+    ```
+    
+    **Response (with active visit):**
+    ```json
+    {
+        "active_visit": {
+            "id": "507f1f77bcf86cd799439011",
+            "doctor_id": "507f1f77bcf86cd799439013",
+            "doctor_name": "Dr. Sneha",
+            "check_in_time": "2026-05-25T10:05:32",
+            "location": "Apollo Hospital",
+            "duration_so_far_minutes": 15
+        },
+        "pending_reports": 1
+    }
+    ```
+    
+    **Response (no active visit):**
+    ```json
+    {
+        "active_visit": null,
+        "pending_reports": 2
+    }
+    ```
+    
+    **Frontend Usage:**
+    - If active_visit exists: Show timer, disable other check-in buttons, show "Check Out" button
+    - If pending_reports > 0: Show banner "⚠️ {count} pending report(s) — submit now"
+    - If pending_reports >= 2: Disable all check-in buttons until reports submitted
+    """
+    # Check if user is MR
+    if current_user.get("role") != UserRole.MR.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only MRs can access active visit information"
+        )
+    
+    return await get_active_visit(current_user=current_user)
+
+
 @router.get("/{visit_id}", response_model=VisitResponse, summary="Get Visit Details")
 async def get_visit(
     visit_id: str,
@@ -419,24 +496,6 @@ async def cancel_visit_endpoint(
 # ============================================================================
 # NEW ENDPOINTS FOR CHECK-IN/CHECK-OUT/REPORT FLOW
 # ============================================================================
-
-from app.api.v1.visits.schemas import (
-    VisitCheckInRequest,
-    VisitCheckOutRequest,
-    VisitReportRequest,
-    VisitCancelCheckInRequest,
-    CheckInResponse,
-    CheckOutResponse,
-    ReportResponse,
-    ActiveVisitResponse
-)
-from app.api.v1.visits.service import (
-    check_in_visit,
-    check_out_visit,
-    submit_visit_report,
-    get_active_visit,
-    cancel_check_in
-)
 
 
 @router.put("/{visit_id}/check-in", response_model=CheckInResponse, summary="Check In to Visit")
@@ -663,68 +722,6 @@ async def submit_report_endpoint(
         current_user=current_user,
         request=request
     )
-
-
-@router.get("/active", response_model=ActiveVisitResponse, summary="Get Active Visit")
-async def get_active_visit_endpoint(
-    current_user: Dict = Depends(get_current_user)
-):
-    """
-    Get current active (checked_in) visit and pending reports count (MR only).
-    
-    **Access:** MR only
-    
-    **Purpose:** 
-    - Check if you have an active checked-in visit
-    - See how many pending reports you have
-    - Frontend uses this to show active visit timer and disable other check-ins
-    
-    **What You Get:**
-    - **active_visit**: Visit details if you're checked in, otherwise null
-    - **pending_reports**: Count of visits waiting for reports (checked_out status)
-    
-    **Usage:**
-    ```
-    GET /api/v1/visits/active
-    Headers: Authorization: Bearer <mr_token>
-    ```
-    
-    **Response (with active visit):**
-    ```json
-    {
-        "active_visit": {
-            "id": "507f1f77bcf86cd799439011",
-            "doctor_id": "507f1f77bcf86cd799439013",
-            "doctor_name": "Dr. Sneha",
-            "check_in_time": "2026-05-25T10:05:32",
-            "location": "Apollo Hospital",
-            "duration_so_far_minutes": 15
-        },
-        "pending_reports": 1
-    }
-    ```
-    
-    **Response (no active visit):**
-    ```json
-    {
-        "active_visit": null,
-        "pending_reports": 2
-    }
-    ```
-    
-    **Frontend Usage:**
-    - If active_visit exists: Show timer, disable other check-in buttons, show "Check Out" button
-    - If pending_reports > 0: Show banner "⚠️ {count} pending report(s) — submit now"
-    - If pending_reports >= 2: Disable all check-in buttons until reports submitted
-    """
-    # Check if user is MR
-    if current_user.get("role") != UserRole.MR.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only MRs can access active visit information"
-        )
-    
-    return await get_active_visit(current_user=current_user)
 
 
 @router.put("/{visit_id}/cancel-checkin", response_model=MessageResponse, summary="Cancel Check-In")
