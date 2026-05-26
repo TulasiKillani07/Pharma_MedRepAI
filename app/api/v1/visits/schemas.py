@@ -3,7 +3,7 @@ Visit request/response schemas.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime, date
 from enum import Enum
 from app.core.validators import DateValidator, TimeValidator, TextValidator
@@ -221,6 +221,26 @@ class RescheduleHistoryResponse(BaseModel):
     reason: Optional[str] = None
 
 
+class VisitReportResponse(BaseModel):
+    """Schema for visit report data in response"""
+    doctor_mood: Optional[str] = None
+    products_discussed: Optional[List[Any]] = None
+    samples_given: Optional[int] = None
+    outcome: Optional[str] = None
+    rx_commitment: Optional[bool] = None
+    expected_rx_per_month: Optional[int] = None
+    competitor_info: Optional[str] = None
+    follow_up_date: Optional[Any] = None
+    notes: Optional[str] = None
+
+
+class VisitCheckInResponse(BaseModel):
+    """Schema for check-in data in response"""
+    timestamp: Optional[datetime] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
 class VisitResponse(BaseModel):
     """Schema for visit response"""
     id: str
@@ -235,9 +255,18 @@ class VisitResponse(BaseModel):
     notes: Optional[str] = None
     status: VisitStatus
     
-    # Conditional fields
+    # Check-in / Check-out data
+    check_in: Optional[VisitCheckInResponse] = None
+    check_out: Optional[VisitCheckInResponse] = None
+    duration_minutes: Optional[int] = None
+    
+    # Report data (new flow)
+    report: Optional[VisitReportResponse] = None
+    
+    # Legacy fields (old complete flow)
     outcome: Optional[str] = None
     feedback: Optional[str] = None
+    
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
@@ -253,15 +282,37 @@ class VisitResponse(BaseModel):
                 "mr_id": "507f1f77bcf86cd799439012",
                 "mr_name": "Rajesh Kumar",
                 "doctor_id": "507f1f77bcf86cd799439013",
-                "doctor_name": "Dr. Sarah Sharma",
-                "scheduled_date": "2024-04-15",
-                "scheduled_time": "10:30",
-                "purpose": "Product presentation",
-                "location": "City Hospital",
-                "notes": "Bring samples",
-                "status": "scheduled",
-                "created_at": "2024-03-30T10:00:00",
-                "updated_at": "2024-03-30T10:00:00"
+                "doctor_name": "Dr. Sneha Sharma",
+                "scheduled_date": "2026-05-25",
+                "scheduled_time": "10:00",
+                "purpose": "Drug Promotion",
+                "location": "Apollo Hospital",
+                "status": "completed",
+                "check_in": {
+                    "timestamp": "2026-05-25T10:05:32",
+                    "latitude": 17.4401,
+                    "longitude": 78.3489
+                },
+                "check_out": {
+                    "timestamp": "2026-05-25T10:33:12",
+                    "latitude": 17.4401,
+                    "longitude": 78.3490
+                },
+                "duration_minutes": 28,
+                "report": {
+                    "doctor_mood": "positive",
+                    "products_discussed": [{"id": "drug_id_1", "name": "Amlodipine 5mg"}],
+                    "samples_given": 3,
+                    "outcome": "Doctor interested in product",
+                    "rx_commitment": True,
+                    "expected_rx_per_month": 10,
+                    "competitor_info": "Cipla — Amlokind 5mg",
+                    "follow_up_date": "2026-06-01",
+                    "notes": "Doctor wants clinical trial data"
+                },
+                "completed_at": "2026-05-25T10:33:12",
+                "created_at": "2026-05-25T09:00:00",
+                "updated_at": "2026-05-25T10:33:12"
             }
         }
 

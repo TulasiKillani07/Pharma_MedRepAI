@@ -214,9 +214,51 @@ async def get_visits(
     visits_cursor = company_db.visits.find(query).sort("scheduled_date", -1)
     visits = await visits_cursor.to_list(length=None)
     
-    # Convert ObjectId to string
+    # Collect all product IDs from reports to resolve names in one batch query
+    all_product_ids = set()
+    for visit in visits:
+        report = visit.get("report")
+        if report and report.get("products_discussed"):
+            for pid in report["products_discussed"]:
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                if ObjectId.is_valid(pid_str):
+                    all_product_ids.add(pid_str)
+        if visit.get("products_promoted"):
+            for pid in visit["products_promoted"]:
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                if ObjectId.is_valid(pid_str):
+                    all_product_ids.add(pid_str)
+    
+    # Fetch all products in one query
+    drug_map = {}
+    if all_product_ids:
+        product_object_ids = [ObjectId(pid) for pid in all_product_ids]
+        products = await company_db.drugs.find({"_id": {"$in": product_object_ids}}).to_list(length=None)
+        for product in products:
+            pid = str(product["_id"])
+            drug_name = product.get("drug_name", "")
+            if not drug_name and product.get("field_values"):
+                for field in product["field_values"]:
+                    if field.get("key") == "drug_name":
+                        drug_name = field.get("value", "Unknown Drug")
+                        break
+                    elif field.get("key") in ["name", "product_name", "brand_name"]:
+                        drug_name = field.get("value", "Unknown Drug")
+                        break
+            drug_map[pid] = drug_name or "Unknown Drug"
+    
+    # Convert ObjectId to string and resolve product names
     for visit in visits:
         visit["id"] = str(visit.pop("_id"))
+        
+        # Resolve products in report
+        report = visit.get("report")
+        if report and report.get("products_discussed"):
+            resolved = []
+            for pid in report["products_discussed"]:
+                pid_str = str(pid) if not isinstance(pid, str) else pid
+                resolved.append({"id": pid_str, "name": drug_map.get(pid_str, "Unknown Drug")})
+            report["products_discussed"] = resolved
     
     # Calculate targets for MR users only
     targets = []

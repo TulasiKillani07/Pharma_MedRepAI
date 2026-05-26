@@ -19,17 +19,17 @@ bcrypt==4.0.1
 # Utilities
 python-multipart==0.0.9
 python-dotenv==1.0.1
-httpx==0.27.0  # For NER API integration
-aiosmtplib==3.0.1  # For async email sending
-jinja2==3.1.3  # For email templates
+httpx==0.27.0
+aiosmtplib==3.0.1
+jinja2==3.1.3
 
 # File Processing (for bulk upload)
 pandas==2.1.4
 openpyxl==3.1.2
 
 # PDF Processing and AI
-pymupdf==1.24.3  # For PDF text extraction
-groq>=1.2.0  # For AI report analysis
+pymupdf==1.24.3
+groq>=1.2.0
 
 # Cloudinary (for file storage)
 cloudinary==1.36.0
