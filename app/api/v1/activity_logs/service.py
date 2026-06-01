@@ -118,6 +118,12 @@ async def get_activity_stats() -> Dict[str, Any]:
     # Total logs
     total_logs = await db.activity_logs.count_documents({})
     
+    # Today's logs
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_logs = await db.activity_logs.count_documents({
+        "created_at": {"$gte": today_start}
+    })
+    
     # Group by action_type
     action_type_pipeline = [
         {"$group": {"_id": "$action_type", "count": {"$sum": 1}}},
@@ -141,6 +147,28 @@ async def get_activity_stats() -> Dict[str, Any]:
     target_type_results = await db.activity_logs.aggregate(target_type_pipeline).to_list(None)
     by_target_type = {item["_id"]: item["count"] for item in target_type_results}
     
+    # Top actors (most active users)
+    actor_pipeline = [
+        {"$group": {
+            "_id": "$actor_id",
+            "actor_name": {"$first": "$actor_name"},
+            "actor_role": {"$first": "$actor_role"},
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    actor_results = await db.activity_logs.aggregate(actor_pipeline).to_list(None)
+    by_actor = [
+        {
+            "actor_id": item["_id"],
+            "actor_name": item["actor_name"],
+            "actor_role": item["actor_role"],
+            "count": item["count"]
+        }
+        for item in actor_results
+    ]
+    
     # Recent critical logs (last 24 hours)
     yesterday = datetime.utcnow() - timedelta(days=1)
     recent_critical = await db.activity_logs.count_documents({
@@ -150,9 +178,11 @@ async def get_activity_stats() -> Dict[str, Any]:
     
     return {
         "total_logs": total_logs,
+        "today_logs": today_logs,
         "by_action_type": by_action_type,
         "by_severity": by_severity,
         "by_target_type": by_target_type,
+        "by_actor": by_actor,
         "recent_critical": recent_critical
     }
 

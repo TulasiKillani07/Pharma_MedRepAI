@@ -5,38 +5,14 @@ This is where the FastAPI application is created and configured.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
 from app.api.v1.router import api_router
 from app.utils.logger import get_medrep_logger
-from datetime import datetime
-import json
+from app.utils.json_response import CustomJSONResponse
 
 # Initialize logger
 logger = get_medrep_logger(__name__)
-
-
-# Custom JSON encoder for datetime serialization
-class CustomJSONResponse(JSONResponse):
-    """Custom JSON response that handles datetime serialization"""
-    
-    def render(self, content) -> bytes:
-        return json.dumps(
-            content,
-            ensure_ascii=False,
-            allow_nan=False,
-            indent=None,
-            separators=(",", ":"),
-            default=self.json_encoder_default
-        ).encode("utf-8")
-    
-    @staticmethod
-    def json_encoder_default(obj):
-        """Custom JSON encoder for datetime objects"""
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 # Create FastAPI application instance

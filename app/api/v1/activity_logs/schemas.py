@@ -69,18 +69,23 @@ class ActivityLogListResponse(BaseModel):
 class ActivityStatsResponse(BaseModel):
     """Response schema for activity statistics"""
     total_logs: int
+    today_logs: int = 0
     by_action_type: Dict[str, int]
     by_severity: Dict[str, int]
     by_target_type: Dict[str, int]
+    by_actor: List[Dict[str, Any]] = []
     recent_critical: int
     
     class Config:
         json_schema_extra = {
             "example": {
                 "total_logs": 1500,
+                "today_logs": 45,
                 "by_action_type": {
+                    "visit_completed": 320,
+                    "visit_scheduled": 280,
                     "user_created": 50,
-                    "post_deleted": 25,
+                    "drug_created": 30,
                     "failed_login": 10
                 },
                 "by_severity": {
@@ -89,10 +94,25 @@ class ActivityStatsResponse(BaseModel):
                     "critical": 20
                 },
                 "by_target_type": {
+                    "visit": 600,
                     "doctor": 100,
                     "mr": 80,
-                    "post": 50
+                    "drug": 60
                 },
+                "by_actor": [
+                    {
+                        "actor_id": "6a0d9eb8...",
+                        "actor_name": "Rajesh Kumar",
+                        "actor_role": "MR",
+                        "count": 120
+                    },
+                    {
+                        "actor_id": "6a0d9fa2...",
+                        "actor_name": "Admin",
+                        "actor_role": "ADMIN",
+                        "count": 85
+                    }
+                ],
                 "recent_critical": 5
             }
         }
