@@ -142,12 +142,15 @@ router = APIRouter(prefix="/sfe", tags=["SFE - Sales Force Effectiveness"])
     - `duration_minutes`: How long the visit lasted
     
     **What Happens:**
-    1. System retrieves all doctors assigned to the MR (from mrs.assigned_doctors)
-    2. Fetches doctor details (name, classification) from doctors collection
-    3. Queries all completed visits for the specified month
-    4. Groups visits by doctor with full report data
-    5. Calculates MCR percentage
-    6. Returns detailed breakdown with visit reports
+    1. System retrieves all doctors assigned to the MR (from `mrs.assigned_doctors`)
+    2. Fetches doctor details (name, classification) from `doctors` collection
+    3. Reads required visits per classification from `sfe_settings` collection
+    4. Queries all completed visits for the specified month from `visits` collection
+    5. Groups visits by doctor with full report data
+    6. Calculates MCR percentage
+    7. Returns detailed breakdown with visit reports
+    
+    **Not stored in DB** — calculated on-the-fly from existing visit data every time.
     
     **Performance Benchmarks:**
     - Excellent: MCR ≥ 90%
@@ -268,13 +271,16 @@ async def get_mcr_report(
     - **missed**: Actual visits = 0 (no visits)
     
     **What Happens:**
-    1. System retrieves all doctors assigned to the MR with their classifications
-    2. Gets required visit frequency from doctor_assignments (based on SFE config)
-    3. Counts actual completed visits per doctor for the month
-    4. Calculates compliance percentage for each doctor
-    5. Categorizes doctors as covered/under/missed
-    6. Calculates overall MVC % and average compliance
-    7. Returns sorted list (covered first, then under, then missed)
+    1. System retrieves all doctors assigned to the MR (from `mrs.assigned_doctors`)
+    2. Fetches doctor details (name, classification) from `doctors` collection
+    3. Gets required visit frequency from `sfe_settings` based on doctor classification (A/B/C)
+    4. Counts actual completed visits per doctor from `visits` collection for the month
+    5. Calculates compliance percentage for each doctor
+    6. Categorizes doctors as covered/under/missed
+    7. Calculates overall MVC % and average compliance
+    8. Returns sorted list (covered first, then under, then missed)
+    
+    **Not stored in DB** — calculated on-the-fly from existing visit and settings data every time.
     
     **Performance Benchmarks:**
     - Excellent: MVC ≥ 85%
@@ -749,14 +755,17 @@ async def get_rcpa_summary(
     - `declining_trend`: Performance declining over 3+ months (future)
     
     **What Happens:**
-    1. System fetches all MRs in the company
-    2. Calculates MCR, MVC, and RCPA for each MR
-    3. Aggregates company-wide metrics
-    4. Generates leaderboard (top 10 by avg performance)
-    5. Identifies underperformers (below thresholds)
-    6. Groups by territory with averages
-    7. Creates alerts for critical issues
-    8. Returns comprehensive dashboard
+    1. Fetches all active MRs from `mrs` collection
+    2. For each MR, calculates MCR and MVC for the given month
+    3. Fetches RCPA commitments from `prescription_commitments` collection
+    4. Aggregates company-wide totals (visits, doctors, commitments, rx/week)
+    5. Generates leaderboard (top 10 by avg MCR+MVC score)
+    6. Identifies underperformers (MCR < 60% or MVC < 55%)
+    7. Groups metrics by territory
+    8. Creates alerts for critical issues
+    9. Returns comprehensive dashboard
+    
+    **Not stored in DB** — aggregated on-the-fly every time.
     
     **Business Value:**
     - Identify coaching opportunities (underperformers)
@@ -849,11 +858,14 @@ async def get_sfe_dashboard(
     - **Territory Context**: Zone, state, territory information
     
     **What Happens:**
-    1. System validates MR exists
-    2. Fetches current month MCR, MVC, RCPA data
-    3. Retrieves historical data for last 6 months
-    4. Calculates trend (improving/declining)
-    5. Returns comprehensive drill-down
+    1. Validates MR exists in `mrs` collection
+    2. Calculates current month MCR from `visits` + `mrs` + `doctors`
+    3. Calculates current month MVC from `visits` + `mrs` + `doctors` + `sfe_settings`
+    4. Fetches RCPA commitments count from `prescription_commitments`
+    5. Loops back 6 months and calculates MCR/MVC for each month (trend)
+    6. Returns comprehensive drill-down
+    
+    **Not stored in DB** — all metrics calculated on-the-fly every time.
     
     **Use Cases:**
     - **Improving Trend**: Recognize and reward
@@ -946,10 +958,11 @@ async def get_mr_drilldown(
     - When settings were last updated and by whom
     
     **What Happens:**
-    1. System retrieves settings from sfe_settings collection
-    2. If no settings exist, returns default values (A=2, B=1, C=1)
-    3. Returns visit targets with metadata
+    1. Reads single document from `sfe_settings` collection (`company_id: "default"`)
+    2. If no document exists, returns defaults (A=2, B=1, C=1)
+    3. Returns visit targets with metadata (updated_at, updated_by)
     
+    **Stored in DB:** `sfe_settings` collection (single document per company).
     **Note:** This is a single company-wide setting, not per-user or per-doctor.
     """
 )
@@ -1007,11 +1020,13 @@ async def get_sfe_settings(
     - Typically A ≥ B ≥ C (but not enforced)
     
     **What Happens:**
-    1. System validates request body
-    2. Upserts settings in sfe_settings collection (single document)
-    3. Records timestamp and admin info
-    4. All future MVC calculations use new targets
-    5. Existing doctor classifications remain unchanged
+    1. Validates all three classifications (A, B, C) are present and valid
+    2. Upserts single document in `sfe_settings` collection (`company_id: "default"`)
+    3. Records timestamp and admin name for audit trail
+    4. All future MVC calculations immediately use new targets
+    5. Existing doctor classifications remain unchanged (only frequency changes)
+    
+    **Stored in DB:** `sfe_settings` collection.
     
     **Impact:**
     - **MVC Calculations**: Immediately use new targets
