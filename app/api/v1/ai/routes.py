@@ -6,6 +6,7 @@ Endpoints for analyzing medical reports (PDFs and images) using AI
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List
 from app.api.v1.ai.service import extract_text_from_pdf, summarize_text, summarize_images
+import traceback
 
 
 router = APIRouter()
@@ -60,7 +61,6 @@ async def summarize_pdf(file: UploadFile = File(...)):
         raise
     except Exception as e:
         # Log the full error for debugging
-        import traceback
         error_details = traceback.format_exc()
         print(f"Error in summarize_pdf: {error_details}")
         raise HTTPException(

@@ -1,6 +1,7 @@
 """
 Doctor service - Business logic for doctor operations.
 """
+import asyncio
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -898,7 +899,6 @@ async def create_doctor_request(
     admins = await admins_cursor.to_list(length=None)
     
     # Send notifications to all admins in parallel
-    import asyncio
     notification_tasks = [
         create_notification(
             user_id=str(admin["_id"]),

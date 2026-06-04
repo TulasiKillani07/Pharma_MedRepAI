@@ -144,7 +144,7 @@ class PrescriptionCommitment(BaseModel):
     doctor_name: str = Field(..., description="Doctor name")
     product_id: str = Field(..., description="Product/Drug ID")
     product_name: str = Field(..., description="Product/Drug name")
-    rx_per_week: int = Field(..., ge=1, description="Expected prescriptions per week")
+    rx_per_month: int = Field(..., ge=1, description="Expected prescriptions per month")
     confidence: CommitmentConfidence = Field(default=CommitmentConfidence.MEDIUM, description="Confidence level")
     status: CommitmentStatus = Field(default=CommitmentStatus.ACTIVE, description="Commitment status")
     visit_id: Optional[str] = Field(None, description="Visit ID where commitment was made")
@@ -182,49 +182,6 @@ class PrescriptionCommitment(BaseModel):
 
 
 # ============================================================================
-# CHEMIST CHECK (OPTIONAL)
-# ============================================================================
-
-class ChemistCheck(BaseModel):
-    """
-    MR's observation of chemist stock and sales.
-    
-    Collection: chemist_checks
-    Indexes:
-    - mr_id
-    - product_id
-    - territory
-    - date
-    """
-    mr_id: str = Field(..., description="MR user ID")
-    mr_name: str = Field(..., description="MR name")
-    chemist_name: str = Field(..., min_length=2, max_length=200, description="Chemist/Pharmacy name")
-    chemist_location: str = Field(..., min_length=2, max_length=300, description="Chemist location")
-    product_id: str = Field(..., description="Product/Drug ID")
-    product_name: str = Field(..., description="Product/Drug name")
-    stock_available: int = Field(..., ge=0, description="Stock quantity available")
-    sold_this_week: int = Field(..., ge=0, description="Quantity sold this week")
-    territory: Optional[str] = Field(None, description="Territory")
-    zone: Optional[str] = Field(None, description="Zone")
-    state: Optional[str] = Field(None, description="State")
-    notes: Optional[str] = Field(None, max_length=500, description="Additional observations")
-    date: datetime = Field(default_factory=datetime.utcnow, description="Check date")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
-    
-    @field_validator('mr_id', 'product_id')
-    @classmethod
-    def validate_object_id(cls, v: str) -> str:
-        """Validate IDs are valid ObjectId format"""
-        try:
-            ObjectId(v)
-            return v
-        except Exception:
-            raise ValueError(f'Invalid ObjectId format: {v}')
-    
-    class Config:
-        extra = "forbid"
-
-
 # ============================================================================
 # EXTENDED VISIT DATA (for visit completion)
 # ============================================================================
@@ -233,7 +190,7 @@ class RxCommitmentData(BaseModel):
     """Prescription commitment data captured during visit"""
     product_id: str = Field(..., description="Product/Drug ID")
     product_name: str = Field(..., description="Product/Drug name")
-    rx_per_week: int = Field(..., ge=1, description="Expected prescriptions per week")
+    rx_per_month: int = Field(..., ge=1, description="Expected prescriptions per month")
     confidence: CommitmentConfidence = Field(default=CommitmentConfidence.MEDIUM, description="Confidence level")
 
 

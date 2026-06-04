@@ -1,6 +1,9 @@
 """
 Visit service - Business logic for visit operations.
 """
+from datetime import datetime, date
+import calendar
+import asyncio
 
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
@@ -284,9 +287,6 @@ async def calculate_visit_targets(mr_id: str, db) -> List[Dict[str, Any]]:
     Returns:
         list: List of target objects with doctor info, classification, required, and completed counts
     """
-    import asyncio
-    from datetime import datetime
-    import calendar
     
     # Get current month date range
     now = datetime.utcnow()
@@ -650,7 +650,7 @@ async def complete_visit(
                 doctor_name=visit["doctor_name"],
                 product_id=rx_commitment["product_id"],
                 product_name=product["name"],
-                rx_per_week=rx_commitment["rx_per_week"],
+                rx_per_month=rx_commitment["rx_per_month"],
                 confidence=CommitmentConfidence(rx_commitment.get("confidence", "medium")),
                 visit_id=visit_id,
                 territory=mr.get("territory") if mr else None,
@@ -1126,8 +1126,7 @@ async def submit_visit_report(
     
     # Convert date objects to datetime for MongoDB (MongoDB doesn't support date type)
     if report_data.get("follow_up_date"):
-        from datetime import date as date_type
-        if isinstance(report_data["follow_up_date"], date_type):
+        if isinstance(report_data["follow_up_date"], date):
             report_data["follow_up_date"] = datetime.combine(
                 report_data["follow_up_date"], datetime.min.time()
             )

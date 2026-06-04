@@ -1,6 +1,7 @@
 """
 Drug and Drug Field Template Business Logic
 """
+import asyncio
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -658,7 +659,6 @@ async def get_all_drugs(
     ).to_list(length=None)
     
     if drugs_to_backfill:
-        import asyncio
         update_tasks = []
         for drug in drugs_to_backfill:
             flat_fields = build_flat_fields(drug.get("field_values", []))

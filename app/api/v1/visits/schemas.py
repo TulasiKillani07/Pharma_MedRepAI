@@ -119,7 +119,7 @@ class VisitRescheduleRequest(BaseModel):
 class RxCommitmentRequest(BaseModel):
     """Prescription commitment data"""
     product_id: str = Field(..., description="Product/Drug ID")
-    rx_per_week: int = Field(..., ge=1, le=1000, description="Expected prescriptions per week")
+    rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
     confidence: str = Field(default="medium", description="Confidence level: high/medium/low")
 
 
@@ -181,7 +181,7 @@ class VisitCompleteRequest(BaseModel):
                 "followup_date": "2026-06-15",
                 "rx_commitment": {
                     "product_id": "507f1f77bcf86cd799439011",
-                    "rx_per_week": 15,
+                    "rx_per_month": 15,
                     "confidence": "high"
                 },
                 "gps_lat": 17.3850,

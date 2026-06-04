@@ -9,6 +9,7 @@ import fitz  # PyMuPDF
 from groq import Groq
 from typing import List, Tuple
 from app.config import settings
+import json
 
 
 # Initialize Groq client

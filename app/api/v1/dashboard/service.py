@@ -1,6 +1,8 @@
 """
 Dashboard Business Logic
 """
+from datetime import date
+from bson import ObjectId
 
 from datetime import datetime
 from typing import Dict, Any, List
@@ -111,7 +113,6 @@ async def get_admin_dashboard() -> Dict[str, Any]:
     
     # Fetch recent visits (last 5) - if visits collection exists
     try:
-        from bson import ObjectId
         recent_visits = await db["visits"].find().sort("created_at", -1).limit(5).to_list(5)
         
         # Collect all mr_ids and doctor_ids for batch lookup
@@ -190,8 +191,6 @@ async def get_mr_dashboard(mr_id: str) -> Dict[str, Any]:
     """
     db = get_database()
     
-    from bson import ObjectId
-    from datetime import date
     
     # Get MR information
     mr = await db["mrs"].find_one({"_id": ObjectId(mr_id)})
@@ -313,7 +312,6 @@ async def get_doctor_dashboard(doctor_id: str) -> Dict[str, Any]:
     """
     db = get_database()
     
-    from bson import ObjectId
     
     # ============ STATISTICS ============
     

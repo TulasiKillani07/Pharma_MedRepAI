@@ -2,6 +2,7 @@
 Authentication dependencies for FastAPI routes.
 These functions are used to protect routes and get the current user.
 """
+from bson import ObjectId
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -82,7 +83,6 @@ async def get_current_user(
     db = get_database()
     collection = db[collection_name]
     
-    from bson import ObjectId
     user = await collection.find_one({"_id": ObjectId(user_id)})
     
     if user is None:

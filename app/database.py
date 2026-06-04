@@ -2,6 +2,7 @@
 MongoDB database connection management using Motor (async driver).
 This file creates a connection to MongoDB and provides access to the database.
 """
+from datetime import datetime, date
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import settings
@@ -248,7 +249,6 @@ async def initialize_collections():
             await database.create_collection("company")        
         # Check if company document exists, if not create default
         # Use upsert with unique constraint to prevent race condition
-        from datetime import datetime
         result = await database["company"].update_one(
             {},  # Match any document
             {
@@ -432,7 +432,6 @@ async def initialize_collections():
         # Seed initial departments if collection is empty
         dept_count = await database["departments"].count_documents({})
         if dept_count == 0:
-            from datetime import datetime
             initial_departments = [
                 {
                     "code": "hr",
@@ -580,31 +579,6 @@ async def initialize_collections():
         await database["prescription_commitments"].create_index(
             "created_at",
             name="commitment_created_idx"
-        )
-    except Exception as e:
-        logger.warning(f"Index creation issue: {e}")
-    
-    # Create chemist_checks collection (optional)
-    try:
-        # Index 1: Index on mr_id - Fast MR checks lookup
-        await database["chemist_checks"].create_index(
-            "mr_id",
-            name="chemist_mr_idx"
-        )        
-        # Index 2: Index on product_id - Fast product checks lookup
-        await database["chemist_checks"].create_index(
-            "product_id",
-            name="chemist_product_idx"
-        )        
-        # Index 3: Index on territory - Fast territory-wise aggregation
-        await database["chemist_checks"].create_index(
-            "territory",
-            name="chemist_territory_idx"
-        )        
-        # Index 4: Index on date - Fast date-based queries
-        await database["chemist_checks"].create_index(
-            "date",
-            name="chemist_date_idx"
         )
     except Exception as e:
         logger.warning(f"Index creation issue: {e}")

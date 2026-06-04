@@ -338,7 +338,7 @@ async def get_mvc_report(
     {
       "doctor_id": "507f1f77bcf86cd799439011",
       "product_id": "507f1f77bcf86cd799439021",
-      "rx_per_week": 15,
+      "rx_per_month": 15,
       "confidence": "high",
       "visit_id": "507f1f77bcf86cd799439031"
     }
@@ -354,7 +354,7 @@ async def get_mvc_report(
       "doctor_name": "Dr. Arjun Sharma",
       "product_id": "507f1f77bcf86cd799439021",
       "product_name": "Amlovas 5mg",
-      "rx_per_week": 15,
+      "rx_per_month": 15,
       "confidence": "high",
       "status": "active",
       "visit_id": "507f1f77bcf86cd799439031",
@@ -442,7 +442,7 @@ async def create_rcpa_commitment(
           "doctor_name": "Dr. Arjun Sharma",
           "product_id": "507f1f77bcf86cd799439021",
           "product_name": "Amlovas 5mg",
-          "rx_per_week": 15,
+          "rx_per_month": 15,
           "confidence": "high",
           "status": "active",
           "territory": "Visakhapatnam",
@@ -462,7 +462,7 @@ async def create_rcpa_commitment(
     **What It Tells You:**
     - All commitments matching filters
     - Doctor and product details
-    - Expected prescription volume per week
+    - Expected prescription volume per month
     - Confidence level and status
     """
 )
@@ -511,7 +511,7 @@ async def get_rcpa_commitments(
     Headers: Authorization: Bearer <mr_token>
     Body:
     {
-      "rx_per_week": 20,
+      "rx_per_month": 20,
       "confidence": "high"
     }
     ```
@@ -524,7 +524,7 @@ async def get_rcpa_commitments(
     ```
     
     **Updatable Fields:**
-    - `rx_per_week`: New prescription volume
+    - `rx_per_month`: New prescription volume
     - `confidence`: Updated confidence level (high/medium/low)
     - `status`: Change status (active/fulfilled/cancelled)
     
@@ -577,7 +577,7 @@ async def update_rcpa_commitment(
     **Example Response:**
     ```json
     {
-      "total_rx_per_week": 1200,
+      "total_rx_per_month": 1200,
       "total_commitments": 85,
       "total_doctors": 65,
       "total_products": 8,
@@ -585,26 +585,26 @@ async def update_rcpa_commitment(
         {
           "product_id": "507f1f77bcf86cd799439021",
           "product_name": "Amlovas 5mg",
-          "rx_per_week": 450,
+          "rx_per_month": 450,
           "doctors_count": 25
         },
         {
           "product_id": "507f1f77bcf86cd799439022",
           "product_name": "Metformin 500mg",
-          "rx_per_week": 350,
+          "rx_per_month": 350,
           "doctors_count": 20
         }
       ],
       "by_territory": [
         {
           "territory": "Visakhapatnam",
-          "rx_per_week": 350,
+          "rx_per_month": 350,
           "doctors_count": 20,
           "products_count": 6
         },
         {
           "territory": "Hyderabad",
-          "rx_per_week": 500,
+          "rx_per_month": 500,
           "doctors_count": 30,
           "products_count": 7
         }
@@ -613,7 +613,7 @@ async def update_rcpa_commitment(
     ```
     
     **What It Tells You:**
-    - **Total Demand**: Expected prescriptions per week across all products
+    - **Total Demand**: Expected prescriptions per month across all products
     - **By Product**: Which products have highest demand
     - **By Territory**: Which territories need more inventory
     - **Doctor Engagement**: How many doctors are committing to prescribe
@@ -686,7 +686,7 @@ async def get_rcpa_summary(
       "total_doctors": 750,
       "total_visits": 2500,
       "total_commitments": 450,
-      "total_rx_per_week": 3500,
+      "total_rx_per_month": 3500,
       "leaderboard": [
         {
           "mr_id": "507f1f77bcf86cd799439013",
@@ -698,7 +698,7 @@ async def get_rcpa_summary(
           "total_assigned": 50,
           "doctors_visited": 48,
           "rcpa_commitments": 30,
-          "rx_per_week": 250
+          "rx_per_month": 250
         }
       ],
       "underperformers": [
@@ -712,7 +712,7 @@ async def get_rcpa_summary(
           "total_assigned": 60,
           "doctors_visited": 27,
           "rcpa_commitments": 5,
-          "rx_per_week": 50
+          "rx_per_month": 50
         }
       ],
       "by_territory": [
@@ -724,7 +724,7 @@ async def get_rcpa_summary(
           "total_doctors": 250,
           "total_visits": 900,
           "total_commitments": 150,
-          "rx_per_week": 1200
+          "rx_per_month": 1200
         }
       ],
       "alerts": [
@@ -758,7 +758,7 @@ async def get_rcpa_summary(
     1. Fetches all active MRs from `mrs` collection
     2. For each MR, calculates MCR and MVC for the given month
     3. Fetches RCPA commitments from `prescription_commitments` collection
-    4. Aggregates company-wide totals (visits, doctors, commitments, rx/week)
+    4. Aggregates company-wide totals (visits, doctors, commitments, rx/month)
     5. Generates leaderboard (top 10 by avg MCR+MVC score)
     6. Identifies underperformers (MCR < 60% or MVC < 55%)
     7. Groups metrics by territory
@@ -838,7 +838,7 @@ async def get_sfe_dashboard(
       },
       "rcpa_summary": {
         "total_commitments": 25,
-        "rx_per_week": 180
+        "rx_per_month": 180
       },
       "performance_trend": [
         {"month": 12, "year": 2025, "mcr": 80.0, "mvc": 70.0, "avg_compliance": 82.0},

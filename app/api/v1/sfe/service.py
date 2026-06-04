@@ -1,8 +1,8 @@
 """
 SFE (Sales Force Effectiveness) service - Business logic.
 """
-
 from datetime import datetime, date
+import calendar
 from typing import Dict, Any, Optional
 from fastapi import HTTPException, status
 from bson import ObjectId
@@ -322,7 +322,6 @@ async def get_mcr_report(
     doctor_map = {str(doc["_id"]): doc for doc in doctors}
     
     # Create date range for the month
-    import calendar
     start_date = datetime(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     end_date = datetime(year, month, last_day, 23, 59, 59)
@@ -562,7 +561,6 @@ async def get_mvc_report(
     classification_targets = sfe_settings.get("classification_targets", {"A": 2, "B": 1, "C": 1})
     
     # Create date range for the month
-    import calendar
     start_date = datetime(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     end_date = datetime(year, month, last_day, 23, 59, 59)
@@ -751,7 +749,7 @@ async def create_rcpa_commitment(
         doctor_name=doctor["name"],
         product_id=product_id,
         product_name=product_name,
-        rx_per_week=commitment_data["rx_per_week"],
+        rx_per_month=commitment_data["rx_per_month"],
         confidence=commitment_data.get("confidence", "medium"),
         visit_id=commitment_data.get("visit_id"),
         territory=mr.get("territory"),
@@ -761,7 +759,7 @@ async def create_rcpa_commitment(
     
     result = await db.prescription_commitments.insert_one(commitment.model_dump())
     
-    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {product_id} ({commitment_data['rx_per_week']}/week)")
+    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {product_id} ({commitment_data['rx_per_month']}/month)")
     
     commitment_dict = commitment.model_dump()
     commitment_dict["id"] = str(result.inserted_id)
@@ -818,12 +816,9 @@ async def get_rcpa_commitments(
     
     # Date filter
     if month and year:
-        from datetime import datetime as dt
-        import calendar
-        
-        start_date = dt(year, month, 1)
+        start_date = datetime(year, month, 1)
         last_day = calendar.monthrange(year, month)[1]
-        end_date = dt(year, month, last_day, 23, 59, 59)
+        end_date = datetime(year, month, last_day, 23, 59, 59)
         
         query["created_at"] = {
             "$gte": start_date,
@@ -905,8 +900,8 @@ async def update_rcpa_commitment(
     
     # Prepare update
     update_fields = {}
-    if "rx_per_week" in update_data and update_data["rx_per_week"] is not None:
-        update_fields["rx_per_week"] = update_data["rx_per_week"]
+    if "rx_per_month" in update_data and update_data["rx_per_month"] is not None:
+        update_fields["rx_per_month"] = update_data["rx_per_month"]
     if "confidence" in update_data and update_data["confidence"] is not None:
         update_fields["confidence"] = update_data["confidence"]
     if "status" in update_data and update_data["status"] is not None:
@@ -966,12 +961,9 @@ async def get_rcpa_summary(
     
     # Date filter
     if month and year:
-        from datetime import datetime as dt
-        import calendar
-        
-        start_date = dt(year, month, 1)
+        start_date = datetime(year, month, 1)
         last_day = calendar.monthrange(year, month)[1]
-        end_date = dt(year, month, last_day, 23, 59, 59)
+        end_date = datetime(year, month, last_day, 23, 59, 59)
         
         query["created_at"] = {
             "$gte": start_date,
@@ -982,7 +974,7 @@ async def get_rcpa_summary(
     commitments = await db.prescription_commitments.find(query).to_list(length=None)
     
     # Calculate totals
-    total_rx_per_week = sum(c["rx_per_week"] for c in commitments)
+    total_rx_per_month = sum(c.get("rx_per_month", 0) for c in commitments)
     total_commitments = len(commitments)
     unique_doctors = len(set(c["doctor_id"] for c in commitments))
     unique_products = len(set(c["product_id"] for c in commitments))
@@ -995,10 +987,10 @@ async def get_rcpa_summary(
             product_summary[prod_id] = {
                 "product_id": prod_id,
                 "product_name": c["product_name"],
-                "rx_per_week": 0,
+                "rx_per_month": 0,
                 "doctors_count": set()
             }
-        product_summary[prod_id]["rx_per_week"] += c["rx_per_week"]
+        product_summary[prod_id]["rx_per_month"] += c.get("rx_per_month", 0)
         product_summary[prod_id]["doctors_count"].add(c["doctor_id"])
     
     # Convert to list
@@ -1006,12 +998,12 @@ async def get_rcpa_summary(
         {
             "product_id": v["product_id"],
             "product_name": v["product_name"],
-            "rx_per_week": v["rx_per_week"],
+            "rx_per_month": v["rx_per_month"],
             "doctors_count": len(v["doctors_count"])
         }
         for v in product_summary.values()
     ]
-    by_product.sort(key=lambda x: x["rx_per_week"], reverse=True)
+    by_product.sort(key=lambda x: x["rx_per_month"], reverse=True)
     
     # Group by territory
     territory_summary = {}
@@ -1020,11 +1012,11 @@ async def get_rcpa_summary(
         if terr not in territory_summary:
             territory_summary[terr] = {
                 "territory": terr,
-                "rx_per_week": 0,
+                "rx_per_month": 0,
                 "doctors_count": set(),
                 "products_count": set()
             }
-        territory_summary[terr]["rx_per_week"] += c["rx_per_week"]
+        territory_summary[terr]["rx_per_month"] += c.get("rx_per_month", 0)
         territory_summary[terr]["doctors_count"].add(c["doctor_id"])
         territory_summary[terr]["products_count"].add(c["product_id"])
     
@@ -1032,18 +1024,18 @@ async def get_rcpa_summary(
     by_territory = [
         {
             "territory": v["territory"],
-            "rx_per_week": v["rx_per_week"],
+            "rx_per_month": v["rx_per_month"],
             "doctors_count": len(v["doctors_count"]),
             "products_count": len(v["products_count"])
         }
         for v in territory_summary.values()
     ]
-    by_territory.sort(key=lambda x: x["rx_per_week"], reverse=True)
+    by_territory.sort(key=lambda x: x["rx_per_month"], reverse=True)
     
-    logger.info(f"Admin fetched RCPA summary: {total_rx_per_week} rx/week from {total_commitments} commitments")
+    logger.info(f"Admin fetched RCPA summary: {total_rx_per_month} rx/month from {total_commitments} commitments")
     
     return {
-        "total_rx_per_week": total_rx_per_week,
+        "total_rx_per_month": total_rx_per_month,
         "total_commitments": total_commitments,
         "total_doctors": unique_doctors,
         "total_products": unique_products,
@@ -1095,7 +1087,7 @@ async def get_sfe_dashboard(
             "total_doctors": 0,
             "total_visits": 0,
             "total_commitments": 0,
-            "total_rx_per_week": 0,
+            "total_rx_per_month": 0,
             "leaderboard": [],
             "underperformers": [],
             "by_territory": [],
@@ -1138,18 +1130,15 @@ async def get_sfe_dashboard(
         }
         
         # Date filter for RCPA
-        from datetime import datetime as dt
-        import calendar
-        
-        start_date = dt(year, month, 1)
+        start_date = datetime(year, month, 1)
         last_day = calendar.monthrange(year, month)[1]
-        end_date = dt(year, month, last_day, 23, 59, 59)
+        end_date = datetime(year, month, last_day, 23, 59, 59)
         
         rcpa_query["created_at"] = {"$gte": start_date, "$lte": end_date}
         
         rcpa_commitments = await db.prescription_commitments.find(rcpa_query).to_list(length=None)
         rcpa_count = len(rcpa_commitments)
-        rx_per_week = sum(c["rx_per_week"] for c in rcpa_commitments)
+        rx_per_month = sum(c.get("rx_per_month", 0) for c in rcpa_commitments)
         
         # Aggregate
         total_mcr += mcr_data["mcr_percentage"]
@@ -1169,7 +1158,7 @@ async def get_sfe_dashboard(
             "total_assigned": mcr_data["total_assigned"],
             "doctors_visited": mcr_data["doctors_visited"],
             "rcpa_commitments": rcpa_count,
-            "rx_per_week": rx_per_week
+            "rx_per_month": rx_per_month
         })
     
     # Calculate averages
@@ -1183,7 +1172,7 @@ async def get_sfe_dashboard(
     }
     all_commitments = await db.prescription_commitments.find(total_commitments_query).to_list(length=None)
     total_commitments = len(all_commitments)
-    total_rx_per_week = sum(c["rx_per_week"] for c in all_commitments)
+    total_rx_per_month = sum(c.get("rx_per_month", 0) for c in all_commitments)
     
     # Sort for leaderboard (top 10)
     leaderboard = sorted(mr_performances, key=lambda x: (x["mcr_percentage"] + x["mvc_percentage"]) / 2, reverse=True)[:10]
@@ -1208,7 +1197,7 @@ async def get_sfe_dashboard(
                 "total_doctors": 0,
                 "total_visits": 0,
                 "total_commitments": 0,
-                "rx_per_week": 0
+                "rx_per_month": 0
             }
         
         territory_data[terr]["mrs_count"] += 1
@@ -1217,7 +1206,7 @@ async def get_sfe_dashboard(
         territory_data[terr]["total_doctors"] += mr_perf["total_assigned"]
         territory_data[terr]["total_visits"] += mr_perf["doctors_visited"]
         territory_data[terr]["total_commitments"] += mr_perf["rcpa_commitments"]
-        territory_data[terr]["rx_per_week"] += mr_perf["rx_per_week"]
+        territory_data[terr]["rx_per_month"] += mr_perf["rx_per_month"]
     
     # Convert to list with averages
     by_territory = []
@@ -1231,10 +1220,10 @@ async def get_sfe_dashboard(
             "total_doctors": terr_data["total_doctors"],
             "total_visits": terr_data["total_visits"],
             "total_commitments": terr_data["total_commitments"],
-            "rx_per_week": terr_data["rx_per_week"]
+            "rx_per_month": terr_data["rx_per_month"]
         })
     
-    by_territory.sort(key=lambda x: x["rx_per_week"], reverse=True)
+    by_territory.sort(key=lambda x: x["rx_per_month"], reverse=True)
     
     # Generate alerts
     alerts = []
@@ -1286,7 +1275,7 @@ async def get_sfe_dashboard(
         "total_doctors": total_doctors_count,
         "total_visits": total_visits_count,
         "total_commitments": total_commitments,
-        "total_rx_per_week": total_rx_per_week,
+        "total_rx_per_month": total_rx_per_month,
         "leaderboard": leaderboard,
         "underperformers": underperformers,
         "by_territory": by_territory,
@@ -1346,12 +1335,9 @@ async def get_mr_drilldown(
     mvc_data = await get_mvc_report(month, year, mr_id, {"_id": current_user["_id"], "role": "ADMIN"})
     
     # Get RCPA summary
-    from datetime import datetime as dt
-    import calendar
-    
-    start_date = dt(year, month, 1)
+    start_date = datetime(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
-    end_date = dt(year, month, last_day, 23, 59, 59)
+    end_date = datetime(year, month, last_day, 23, 59, 59)
     
     rcpa_query = {
         "mr_id": mr_id,
@@ -1362,7 +1348,7 @@ async def get_mr_drilldown(
     rcpa_commitments = await db.prescription_commitments.find(rcpa_query).to_list(length=None)
     rcpa_summary = {
         "total_commitments": len(rcpa_commitments),
-        "rx_per_week": sum(c["rx_per_week"] for c in rcpa_commitments)
+        "rx_per_month": sum(c.get("rx_per_month", 0) for c in rcpa_commitments)
     }
     
     # Get performance trend (last 6 months)
@@ -1420,303 +1406,4 @@ async def get_mr_drilldown(
         },
         "rcpa_summary": rcpa_summary,
         "performance_trend": performance_trend
-    }
-
-
-async def create_chemist_check(
-    check_data: Dict[str, Any],
-    current_user: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    Create chemist check observation (MR only).
-    
-    Args:
-        check_data: Check details
-        current_user: Current authenticated MR
-    
-    Returns:
-        dict: Created check
-    
-    Raises:
-        HTTPException: If validation fails
-    """
-    from app.models.sfe_models import ChemistCheck
-    
-    db = get_company_database()
-    mr_id = current_user["_id"]
-    
-    # Validate product ID
-    product_id = check_data["product_id"]
-    if not ObjectId.is_valid(product_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid product ID"
-        )
-    
-    # Get product details
-    product = await db.drugs.find_one({"_id": ObjectId(product_id)})
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
-        )
-    
-    # Get MR details
-    mr = await db.mrs.find_one({"_id": ObjectId(mr_id)})
-    
-    # Create check
-    check = ChemistCheck(
-        mr_id=mr_id,
-        mr_name=mr["name"],
-        chemist_name=check_data["chemist_name"],
-        chemist_location=check_data["chemist_location"],
-        product_id=product_id,
-        product_name=product["name"],
-        stock_available=check_data["stock_available"],
-        sold_this_week=check_data["sold_this_week"],
-        notes=check_data.get("notes"),
-        territory=mr.get("territory"),
-        zone=mr.get("zone"),
-        state=mr.get("state"),
-        gps_lat=check_data.get("gps_lat"),
-        gps_lng=check_data.get("gps_lng"),
-        date=datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    )
-    
-    result = await db.chemist_checks.insert_one(check.model_dump())
-    
-    logger.info(f"MR {mr_id} created chemist check: {check_data['chemist_name']} - {product_id}")
-    
-    check_dict = check.model_dump()
-    check_dict["id"] = str(result.inserted_id)
-    
-    return check_dict
-
-
-async def get_chemist_checks(
-    month: Optional[int],
-    year: Optional[int],
-    mr_id: Optional[str],
-    product_id: Optional[str],
-    territory: Optional[str],
-    current_user: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    Get chemist checks with filters.
-    
-    Args:
-        month: Filter by month (optional)
-        year: Filter by year (optional)
-        mr_id: Filter by MR (admin only, optional)
-        product_id: Filter by product (optional)
-        territory: Filter by territory (optional)
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: List of checks
-    
-    Raises:
-        HTTPException: If validation fails
-    """
-    db = get_company_database()
-    user_role = current_user.get("role")
-    user_id = current_user["_id"]
-    
-    # Build query
-    query = {}
-    
-    # Determine which MR to query
-    if mr_id:
-        # Admin querying specific MR
-        if user_role != "ADMIN":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admins can query other MRs' data"
-            )
-        query["mr_id"] = mr_id
-    else:
-        # MR querying own data
-        if user_role == "MR":
-            query["mr_id"] = user_id
-        # Admin without mr_id gets all
-    
-    # Date filter
-    if month and year:
-        from datetime import datetime as dt
-        import calendar
-        
-        start_date = dt(year, month, 1)
-        last_day = calendar.monthrange(year, month)[1]
-        end_date = dt(year, month, last_day, 23, 59, 59)
-        
-        query["date"] = {
-            "$gte": start_date,
-            "$lte": end_date
-        }
-    
-    # Product filter
-    if product_id:
-        if not ObjectId.is_valid(product_id):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid product ID"
-            )
-        query["product_id"] = product_id
-    
-    # Territory filter
-    if territory:
-        query["territory"] = territory
-    
-    # Get checks
-    checks = await db.chemist_checks.find(query).sort("date", -1).to_list(length=None)
-    
-    # Convert ObjectId to string
-    for check in checks:
-        check["id"] = str(check.pop("_id"))
-    
-    logger.info(f"User {user_id} fetched {len(checks)} chemist checks")
-    
-    return {
-        "total": len(checks),
-        "checks": checks
-    }
-
-
-async def get_chemist_check_summary(
-    month: Optional[int],
-    year: Optional[int],
-    current_user: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    Get chemist check summary for admin.
-    
-    Args:
-        month: Filter by month (optional)
-        year: Filter by year (optional)
-        current_user: Current authenticated admin
-    
-    Returns:
-        dict: Chemist check summary
-    
-    Raises:
-        HTTPException: If not admin
-    """
-    db = get_company_database()
-    user_role = current_user.get("role")
-    
-    if user_role != "ADMIN":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can access chemist check summary"
-        )
-    
-    # Build query
-    query = {}
-    
-    # Date filter
-    if month and year:
-        from datetime import datetime as dt
-        import calendar
-        
-        start_date = dt(year, month, 1)
-        last_day = calendar.monthrange(year, month)[1]
-        end_date = dt(year, month, last_day, 23, 59, 59)
-        
-        query["date"] = {
-            "$gte": start_date,
-            "$lte": end_date
-        }
-    
-    # Get all checks
-    checks = await db.chemist_checks.find(query).to_list(length=None)
-    
-    total_checks = len(checks)
-    unique_chemists = len(set(c["chemist_name"] for c in checks))
-    total_stock = sum(c["stock_available"] for c in checks)
-    total_sold = sum(c["sold_this_week"] for c in checks)
-    
-    # Group by product
-    product_summary = {}
-    for c in checks:
-        prod_id = c["product_id"]
-        if prod_id not in product_summary:
-            product_summary[prod_id] = {
-                "product_id": prod_id,
-                "product_name": c["product_name"],
-                "total_stock": 0,
-                "total_sold_this_week": 0,
-                "chemists": set()
-            }
-        product_summary[prod_id]["total_stock"] += c["stock_available"]
-        product_summary[prod_id]["total_sold_this_week"] += c["sold_this_week"]
-        product_summary[prod_id]["chemists"].add(c["chemist_name"])
-    
-    # Convert to list
-    by_product = [
-        {
-            "product_id": v["product_id"],
-            "product_name": v["product_name"],
-            "total_stock": v["total_stock"],
-            "total_sold_this_week": v["total_sold_this_week"],
-            "chemists_count": len(v["chemists"]),
-            "avg_stock_per_chemist": round(v["total_stock"] / len(v["chemists"]), 2) if len(v["chemists"]) > 0 else 0.0
-        }
-        for v in product_summary.values()
-    ]
-    by_product.sort(key=lambda x: x["total_sold_this_week"], reverse=True)
-    
-    # Group by territory
-    territory_summary = {}
-    for c in checks:
-        terr = c.get("territory", "Unknown")
-        if terr not in territory_summary:
-            territory_summary[terr] = {
-                "territory": terr,
-                "total_stock": 0,
-                "total_sold": 0,
-                "chemists": set(),
-                "products": set()
-            }
-        territory_summary[terr]["total_stock"] += c["stock_available"]
-        territory_summary[terr]["total_sold"] += c["sold_this_week"]
-        territory_summary[terr]["chemists"].add(c["chemist_name"])
-        territory_summary[terr]["products"].add(c["product_id"])
-    
-    # Convert to list
-    by_territory = [
-        {
-            "territory": v["territory"],
-            "total_stock": v["total_stock"],
-            "total_sold": v["total_sold"],
-            "chemists_count": len(v["chemists"]),
-            "products_count": len(v["products"])
-        }
-        for v in territory_summary.values()
-    ]
-    by_territory.sort(key=lambda x: x["total_sold"], reverse=True)
-    
-    # Low stock alerts (stock < 10)
-    low_stock_alerts = [
-        {
-            "chemist_name": c["chemist_name"],
-            "product_name": c["product_name"],
-            "stock_available": c["stock_available"],
-            "territory": c.get("territory", "Unknown"),
-            "mr_name": c["mr_name"]
-        }
-        for c in checks
-        if c["stock_available"] < 10
-    ]
-    low_stock_alerts.sort(key=lambda x: x["stock_available"])
-    
-    logger.info(f"Admin fetched chemist check summary: {total_checks} checks, {unique_chemists} chemists")
-    
-    return {
-        "total_checks": total_checks,
-        "total_chemists": unique_chemists,
-        "total_stock": total_stock,
-        "total_sold_this_week": total_sold,
-        "by_product": by_product,
-        "by_territory": by_territory,
-        "low_stock_alerts": low_stock_alerts
     }

@@ -42,14 +42,14 @@ class CommitmentConfidenceEnum(str, Enum):
 class RxCommitmentRequest(BaseModel):
     """Prescription commitment data"""
     product_id: str = Field(..., description="Product/Drug ID")
-    rx_per_week: int = Field(..., ge=1, le=1000, description="Expected prescriptions per week")
+    rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
     confidence: CommitmentConfidenceEnum = Field(default=CommitmentConfidenceEnum.MEDIUM, description="Confidence level")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "product_id": "507f1f77bcf86cd799439011",
-                "rx_per_week": 15,
+                "rx_per_month": 15,
                 "confidence": "high"
             }
         }
@@ -91,7 +91,7 @@ class VisitCompleteExtendedRequest(BaseModel):
                 "followup_date": "2026-06-15",
                 "rx_commitment": {
                     "product_id": "507f1f77bcf86cd799439011",
-                    "rx_per_week": 15,
+                    "rx_per_month": 15,
                     "confidence": "high"
                 },
                 "gps_lat": 17.3850,
@@ -470,7 +470,7 @@ class RCPACreateRequest(BaseModel):
     """Manual RCPA commitment creation"""
     doctor_id: str = Field(..., description="Doctor ID")
     product_id: str = Field(..., description="Product/Drug ID")
-    rx_per_week: int = Field(..., ge=1, le=1000, description="Expected prescriptions per week")
+    rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
     confidence: CommitmentConfidenceEnum = Field(default=CommitmentConfidenceEnum.MEDIUM, description="Confidence level")
     visit_id: Optional[str] = Field(None, description="Associated visit ID (if from visit)")
     
@@ -479,7 +479,7 @@ class RCPACreateRequest(BaseModel):
             "example": {
                 "doctor_id": "507f1f77bcf86cd799439011",
                 "product_id": "507f1f77bcf86cd799439021",
-                "rx_per_week": 15,
+                "rx_per_month": 15,
                 "confidence": "high",
                 "visit_id": "507f1f77bcf86cd799439031"
             }
@@ -488,14 +488,14 @@ class RCPACreateRequest(BaseModel):
 
 class RCPAUpdateRequest(BaseModel):
     """Update existing RCPA commitment"""
-    rx_per_week: Optional[int] = Field(None, ge=1, le=1000, description="Updated prescriptions per week")
+    rx_per_month: Optional[int] = Field(None, ge=1, le=1000, description="Updated prescriptions per month")
     confidence: Optional[CommitmentConfidenceEnum] = Field(None, description="Updated confidence level")
     status: Optional[str] = Field(None, description="Status: active, fulfilled, cancelled")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "rx_per_week": 20,
+                "rx_per_month": 20,
                 "confidence": "high",
                 "status": "active"
             }
@@ -511,7 +511,7 @@ class RCPACommitmentResponse(BaseModel):
     doctor_name: str
     product_id: str
     product_name: str
-    rx_per_week: int
+    rx_per_month: int
     confidence: str
     status: str
     visit_id: Optional[str] = None
@@ -531,7 +531,7 @@ class RCPACommitmentResponse(BaseModel):
                 "doctor_name": "Dr. Arjun Sharma",
                 "product_id": "507f1f77bcf86cd799439021",
                 "product_name": "Amlovas 5mg",
-                "rx_per_week": 15,
+                "rx_per_month": 15,
                 "confidence": "high",
                 "status": "active",
                 "visit_id": "507f1f77bcf86cd799439031",
@@ -562,7 +562,7 @@ class RCPAListResponse(BaseModel):
                         "doctor_name": "Dr. Arjun Sharma",
                         "product_id": "507f1f77bcf86cd799439021",
                         "product_name": "Amlovas 5mg",
-                        "rx_per_week": 15,
+                        "rx_per_month": 15,
                         "confidence": "high",
                         "status": "active",
                         "territory": "Visakhapatnam",
@@ -577,7 +577,7 @@ class RCPAProductSummary(BaseModel):
     """RCPA summary by product"""
     product_id: str
     product_name: str
-    rx_per_week: int
+    rx_per_month: int
     doctors_count: int
     
     class Config:
@@ -585,7 +585,7 @@ class RCPAProductSummary(BaseModel):
             "example": {
                 "product_id": "507f1f77bcf86cd799439021",
                 "product_name": "Amlovas 5mg",
-                "rx_per_week": 200,
+                "rx_per_month": 200,
                 "doctors_count": 12
             }
         }
@@ -594,7 +594,7 @@ class RCPAProductSummary(BaseModel):
 class RCPATerritorySummary(BaseModel):
     """RCPA summary by territory"""
     territory: str
-    rx_per_week: int
+    rx_per_month: int
     doctors_count: int
     products_count: int
     
@@ -602,7 +602,7 @@ class RCPATerritorySummary(BaseModel):
         json_schema_extra = {
             "example": {
                 "territory": "Visakhapatnam",
-                "rx_per_week": 180,
+                "rx_per_month": 180,
                 "doctors_count": 15,
                 "products_count": 5
             }
@@ -611,7 +611,7 @@ class RCPATerritorySummary(BaseModel):
 
 class RCPASummaryResponse(BaseModel):
     """RCPA summary for admin"""
-    total_rx_per_week: int
+    total_rx_per_month: int
     total_commitments: int
     total_doctors: int
     total_products: int
@@ -621,7 +621,7 @@ class RCPASummaryResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "total_rx_per_week": 1200,
+                "total_rx_per_month": 1200,
                 "total_commitments": 85,
                 "total_doctors": 65,
                 "total_products": 8,
@@ -629,14 +629,14 @@ class RCPASummaryResponse(BaseModel):
                     {
                         "product_id": "507f1f77bcf86cd799439021",
                         "product_name": "Amlovas 5mg",
-                        "rx_per_week": 450,
+                        "rx_per_month": 450,
                         "doctors_count": 25
                     }
                 ],
                 "by_territory": [
                     {
                         "territory": "Visakhapatnam",
-                        "rx_per_week": 350,
+                        "rx_per_month": 350,
                         "doctors_count": 20,
                         "products_count": 6
                     }
@@ -662,7 +662,7 @@ class MRPerformance(BaseModel):
     total_assigned: int
     doctors_visited: int
     rcpa_commitments: int
-    rx_per_week: int
+    rx_per_month: int
     
     class Config:
         json_schema_extra = {
@@ -678,7 +678,7 @@ class MRPerformance(BaseModel):
                 "total_assigned": 50,
                 "doctors_visited": 42,
                 "rcpa_commitments": 25,
-                "rx_per_week": 180
+                "rx_per_month": 180
             }
         }
 
@@ -692,7 +692,7 @@ class TerritoryPerformance(BaseModel):
     total_doctors: int
     total_visits: int
     total_commitments: int
-    rx_per_week: int
+    rx_per_month: int
     
     class Config:
         json_schema_extra = {
@@ -704,7 +704,7 @@ class TerritoryPerformance(BaseModel):
                 "total_doctors": 250,
                 "total_visits": 850,
                 "total_commitments": 120,
-                "rx_per_week": 900
+                "rx_per_month": 900
             }
         }
 
@@ -743,7 +743,7 @@ class SFEDashboardResponse(BaseModel):
     total_doctors: int
     total_visits: int
     total_commitments: int
-    total_rx_per_week: int
+    total_rx_per_month: int
     leaderboard: List[MRPerformance]
     underperformers: List[MRPerformance]
     by_territory: List[TerritoryPerformance]
@@ -760,7 +760,7 @@ class SFEDashboardResponse(BaseModel):
                 "total_doctors": 750,
                 "total_visits": 2500,
                 "total_commitments": 450,
-                "total_rx_per_week": 3500,
+                "total_rx_per_month": 3500,
                 "leaderboard": [
                     {
                         "mr_id": "507f1f77bcf86cd799439013",
@@ -772,7 +772,7 @@ class SFEDashboardResponse(BaseModel):
                         "total_assigned": 50,
                         "doctors_visited": 48,
                         "rcpa_commitments": 30,
-                        "rx_per_week": 250
+                        "rx_per_month": 250
                     }
                 ],
                 "underperformers": [
@@ -786,7 +786,7 @@ class SFEDashboardResponse(BaseModel):
                         "total_assigned": 60,
                         "doctors_visited": 27,
                         "rcpa_commitments": 5,
-                        "rx_per_week": 50
+                        "rx_per_month": 50
                     }
                 ],
                 "by_territory": [
@@ -798,7 +798,7 @@ class SFEDashboardResponse(BaseModel):
                         "total_doctors": 250,
                         "total_visits": 900,
                         "total_commitments": 150,
-                        "rx_per_week": 1200
+                        "rx_per_month": 1200
                     }
                 ],
                 "alerts": [
@@ -852,205 +852,12 @@ class MRDrillDownResponse(BaseModel):
                 },
                 "rcpa_summary": {
                     "total_commitments": 25,
-                    "rx_per_week": 180
+                    "rx_per_month": 180
                 },
                 "performance_trend": [
                     {"month": 1, "mcr": 80.0, "mvc": 70.0},
                     {"month": 2, "mcr": 82.0, "mvc": 71.0},
                     {"month": 3, "mcr": 83.0, "mvc": 72.0}
-                ]
-            }
-        }
-
-
-# ============================================================================
-# CHEMIST CHECK
-# ============================================================================
-
-class ChemistCheckCreateRequest(BaseModel):
-    """Create chemist check observation"""
-    chemist_name: str = Field(..., min_length=2, max_length=200, description="Chemist/Pharmacy name")
-    chemist_location: str = Field(..., min_length=2, max_length=500, description="Location/Address")
-    product_id: str = Field(..., description="Product/Drug ID")
-    stock_available: int = Field(..., ge=0, le=10000, description="Stock quantity available")
-    sold_this_week: int = Field(..., ge=0, le=1000, description="Units sold this week")
-    notes: Optional[str] = Field(None, max_length=500, description="Additional observations")
-    gps_lat: Optional[float] = Field(None, ge=-90, le=90, description="GPS latitude")
-    gps_lng: Optional[float] = Field(None, ge=-180, le=180, description="GPS longitude")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "chemist_name": "Apollo Pharmacy",
-                "chemist_location": "Near Dr. Arjun's clinic, MG Road",
-                "product_id": "507f1f77bcf86cd799439021",
-                "stock_available": 30,
-                "sold_this_week": 20,
-                "notes": "High demand, restock needed soon",
-                "gps_lat": 17.3850,
-                "gps_lng": 78.4867
-            }
-        }
-
-
-class ChemistCheckResponse(BaseModel):
-    """Single chemist check observation"""
-    id: str
-    mr_id: str
-    mr_name: str
-    chemist_name: str
-    chemist_location: str
-    product_id: str
-    product_name: str
-    stock_available: int
-    sold_this_week: int
-    notes: Optional[str] = None
-    territory: Optional[str] = None
-    zone: Optional[str] = None
-    state: Optional[str] = None
-    gps_lat: Optional[float] = None
-    gps_lng: Optional[float] = None
-    date: datetime
-    created_at: datetime
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "507f1f77bcf86cd799439051",
-                "mr_id": "507f1f77bcf86cd799439013",
-                "mr_name": "Rajesh Kumar",
-                "chemist_name": "Apollo Pharmacy",
-                "chemist_location": "Near Dr. Arjun's clinic, MG Road",
-                "product_id": "507f1f77bcf86cd799439021",
-                "product_name": "Amlovas 5mg",
-                "stock_available": 30,
-                "sold_this_week": 20,
-                "notes": "High demand, restock needed soon",
-                "territory": "Visakhapatnam",
-                "zone": "South",
-                "state": "Andhra Pradesh",
-                "gps_lat": 17.3850,
-                "gps_lng": 78.4867,
-                "date": "2026-05-19T00:00:00",
-                "created_at": "2026-05-19T16:30:00"
-            }
-        }
-
-
-class ChemistCheckListResponse(BaseModel):
-    """List of chemist checks"""
-    total: int
-    checks: List[ChemistCheckResponse]
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "total": 15,
-                "checks": [
-                    {
-                        "id": "507f1f77bcf86cd799439051",
-                        "mr_id": "507f1f77bcf86cd799439013",
-                        "mr_name": "Rajesh Kumar",
-                        "chemist_name": "Apollo Pharmacy",
-                        "chemist_location": "Near Dr. Arjun's clinic",
-                        "product_id": "507f1f77bcf86cd799439021",
-                        "product_name": "Amlovas 5mg",
-                        "stock_available": 30,
-                        "sold_this_week": 20,
-                        "territory": "Visakhapatnam",
-                        "date": "2026-05-19T00:00:00",
-                        "created_at": "2026-05-19T16:30:00"
-                    }
-                ]
-            }
-        }
-
-
-class ChemistProductSummary(BaseModel):
-    """Product availability summary"""
-    product_id: str
-    product_name: str
-    total_stock: int
-    total_sold_this_week: int
-    chemists_count: int
-    avg_stock_per_chemist: float
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "product_id": "507f1f77bcf86cd799439021",
-                "product_name": "Amlovas 5mg",
-                "total_stock": 450,
-                "total_sold_this_week": 280,
-                "chemists_count": 15,
-                "avg_stock_per_chemist": 30.0
-            }
-        }
-
-
-class ChemistTerritorySummary(BaseModel):
-    """Territory-wise chemist summary"""
-    territory: str
-    total_stock: int
-    total_sold: int
-    chemists_count: int
-    products_count: int
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "territory": "Visakhapatnam",
-                "total_stock": 600,
-                "total_sold": 350,
-                "chemists_count": 20,
-                "products_count": 8
-            }
-        }
-
-
-class ChemistCheckSummaryResponse(BaseModel):
-    """Chemist check summary for admin"""
-    total_checks: int
-    total_chemists: int
-    total_stock: int
-    total_sold_this_week: int
-    by_product: List[ChemistProductSummary]
-    by_territory: List[ChemistTerritorySummary]
-    low_stock_alerts: List[Dict[str, Any]]
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "total_checks": 85,
-                "total_chemists": 45,
-                "total_stock": 2500,
-                "total_sold_this_week": 1800,
-                "by_product": [
-                    {
-                        "product_id": "507f1f77bcf86cd799439021",
-                        "product_name": "Amlovas 5mg",
-                        "total_stock": 450,
-                        "total_sold_this_week": 280,
-                        "chemists_count": 15,
-                        "avg_stock_per_chemist": 30.0
-                    }
-                ],
-                "by_territory": [
-                    {
-                        "territory": "Visakhapatnam",
-                        "total_stock": 600,
-                        "total_sold": 350,
-                        "chemists_count": 20,
-                        "products_count": 8
-                    }
-                ],
-                "low_stock_alerts": [
-                    {
-                        "chemist_name": "Apollo Pharmacy",
-                        "product_name": "Amlovas 5mg",
-                        "stock_available": 5,
-                        "territory": "Visakhapatnam"
-                    }
                 ]
             }
         }

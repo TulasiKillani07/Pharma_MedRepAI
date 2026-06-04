@@ -1,6 +1,7 @@
 """
 MR service - Business logic for MR operations.
 """
+import asyncio
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -207,7 +208,6 @@ async def get_all_mrs(current_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     drug_object_ids = [ObjectId(drug_id) for drug_id in all_drug_ids]
     
     # Parallel fetch doctors and drugs
-    import asyncio
     doctors_cursor = company_db.doctors.find({"_id": {"$in": doctor_object_ids}}, {"name": 1})
     drugs_cursor = company_db.drugs.find({"_id": {"$in": drug_object_ids}})
     
@@ -317,7 +317,6 @@ async def get_mr_by_id(mr_id: str, current_user: Dict[str, Any]) -> Dict[str, An
     drug_ids = [ObjectId(drug_id) for drug_id in mr.get("assigned_drugs", []) if ObjectId.is_valid(drug_id)]
     
     # Parallel fetch doctors and drugs
-    import asyncio
     doctors_cursor = company_db.doctors.find({"_id": {"$in": doctor_ids}}, {"name": 1})
     drugs_cursor = company_db.drugs.find({"_id": {"$in": drug_ids}})
     

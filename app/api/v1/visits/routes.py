@@ -407,7 +407,7 @@ async def complete_visit_endpoint(
     - doctor_mood: Doctor's receptiveness (positive/neutral/negative)
     - competitor_info: Competitor information observed
     - followup_date: Next follow-up date (auto-creates next visit)
-    - rx_commitment: Prescription commitment (product_id, rx_per_week, confidence)
+    - rx_commitment: Prescription commitment (product_id, rx_per_month, confidence)
     - gps_lat, gps_lng: GPS coordinates for location proof
     
     **Usage:**
@@ -423,7 +423,7 @@ async def complete_visit_endpoint(
         "followup_date": "2026-06-15",
         "rx_commitment": {
             "product_id": "prod_id_1",
-            "rx_per_week": 15,
+            "rx_per_month": 15,
             "confidence": "high"
         },
         "gps_lat": 17.3850,
