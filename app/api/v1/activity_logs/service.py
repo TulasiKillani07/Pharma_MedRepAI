@@ -8,6 +8,137 @@ from app.database import get_database
 from fastapi import HTTPException
 
 
+def generate_log_message(action_type: str, actor_name: str, target_name: Optional[str], details: Dict[str, Any]) -> str:
+    """
+    Generate a human-readable message from log data.
+    
+    Examples:
+      "Rajesh Kumar scheduled a visit with Dr. Sneha"
+      "Admin created MR Suresh Patel"
+      "Rajesh Kumar completed a visit with Dr. Ashok"
+    """
+    actor = actor_name or "Unknown"
+    target = target_name or ""
+    
+    # Visit actions
+    if action_type == "visit_scheduled":
+        doctor = details.get("doctor_name", target or "a doctor")
+        return f"{actor} scheduled a visit with {doctor}"
+    
+    if action_type == "visit_completed":
+        doctor = details.get("doctor_name", target or "a doctor")
+        return f"{actor} completed a visit with {doctor}"
+    
+    if action_type == "visit_cancelled":
+        doctor = details.get("doctor_name", target or "a doctor")
+        return f"{actor} cancelled a visit with {doctor}"
+    
+    # User management
+    if action_type == "user_created":
+        name = target or details.get("email", "a user")
+        return f"{actor} created {name}"
+    
+    if action_type == "user_updated":
+        name = target or "a user"
+        return f"{actor} updated {name}"
+    
+    if action_type == "user_activated":
+        name = target or "a user"
+        return f"{actor} activated {name}"
+    
+    if action_type == "user_deactivated":
+        name = target or "a user"
+        return f"{actor} deactivated {name}"
+    
+    if action_type == "user_deleted":
+        name = target or "a user"
+        return f"{actor} deleted {name}"
+    
+    # Drug management
+    if action_type == "drug_created":
+        name = target or "a drug"
+        return f"{actor} added drug {name}"
+    
+    if action_type == "drug_updated":
+        name = target or "a drug"
+        return f"{actor} updated drug {name}"
+    
+    if action_type == "drug_deleted":
+        name = target or "a drug"
+        return f"{actor} deleted drug {name}"
+    
+    if action_type == "drug_bulk_upload":
+        count = details.get("successful", "")
+        return f"{actor} bulk uploaded {count} drugs" if count else f"{actor} bulk uploaded drugs"
+    
+    # CME
+    if action_type == "cme_created":
+        name = target or "a CME event"
+        return f"{actor} created CME event: {name}"
+    
+    if action_type == "cme_updated":
+        name = target or "a CME event"
+        return f"{actor} updated CME event: {name}"
+    
+    if action_type == "cme_deleted":
+        name = target or "a CME event"
+        return f"{actor} deleted CME event: {name}"
+    
+    if action_type == "cme_registered":
+        name = target or "a CME event"
+        return f"{actor} registered for CME event: {name}"
+    
+    if action_type == "cme_registration_cancelled":
+        name = target or "a CME event"
+        return f"{actor} cancelled registration for CME: {name}"
+    
+    # Content moderation
+    if action_type == "post_deleted":
+        return f"{actor} deleted a post"
+    
+    if action_type == "comment_deleted":
+        return f"{actor} deleted a comment"
+    
+    if action_type == "user_reported":
+        name = target or "a user"
+        return f"{actor} reported {name}"
+    
+    if action_type == "content_flagged":
+        return f"{actor} flagged content"
+    
+    # Bulk operations
+    if action_type == "bulk_upload_doctors":
+        count = details.get("successful", "")
+        return f"{actor} bulk uploaded {count} doctors" if count else f"{actor} bulk uploaded doctors"
+    
+    if action_type == "bulk_upload_mrs":
+        count = details.get("successful", "")
+        return f"{actor} bulk uploaded {count} MRs" if count else f"{actor} bulk uploaded MRs"
+    
+    # Authentication
+    if action_type == "user_login":
+        return f"{actor} logged in"
+    
+    if action_type == "user_logout":
+        return f"{actor} logged out"
+    
+    if action_type == "admin_login":
+        return f"{actor} (admin) logged in"
+    
+    if action_type == "admin_logout":
+        return f"{actor} (admin) logged out"
+    
+    if action_type == "password_changed":
+        return f"{actor} changed their password"
+    
+    if action_type == "failed_login":
+        return f"Failed login attempt for {actor}"
+    
+    # Fallback
+    readable = action_type.replace("_", " ").title()
+    return f"{actor}: {readable}" + (f" — {target}" if target else "")
+
+
 async def get_activity_logs(
     page: int = 1,
     limit: int = 20,
@@ -81,16 +212,23 @@ async def get_activity_logs(
     # Format logs
     logs = []
     for log in logs_list:
+        action_details = log.get("action_details", {})
         logs.append({
             "log_id": str(log["_id"]),
             "action_type": log["action_type"],
+            "message": generate_log_message(
+                action_type=log["action_type"],
+                actor_name=log.get("actor_name", ""),
+                target_name=log.get("target_name"),
+                details=action_details
+            ),
             "actor_id": log["actor_id"],
             "actor_name": log["actor_name"],
             "actor_role": log["actor_role"],
             "target_type": log["target_type"],
             "target_id": log.get("target_id"),
             "target_name": log.get("target_name"),
-            "action_details": log.get("action_details", {}),
+            "action_details": action_details,
             "severity": log["severity"],
             "ip_address": log.get("ip_address"),
             "user_agent": log.get("user_agent"),

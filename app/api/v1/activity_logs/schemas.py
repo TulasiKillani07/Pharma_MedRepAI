@@ -11,6 +11,7 @@ class ActivityLogResponse(BaseModel):
     """Response schema for a single activity log"""
     log_id: str
     action_type: str
+    message: str = Field(..., description="Human-readable description of what happened")
     actor_id: str
     actor_name: str
     actor_role: str
@@ -27,21 +28,25 @@ class ActivityLogResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "log_id": "507f1f77bcf86cd799439011",
-                "action_type": "user_created",
+                "action_type": "visit_scheduled",
+                "message": "Rajesh Kumar scheduled a visit with Dr. Sneha Sharma",
                 "actor_id": "507f1f77bcf86cd799439012",
-                "actor_name": "Admin User",
-                "actor_role": "ADMIN",
-                "target_type": "doctor",
+                "actor_name": "Rajesh Kumar",
+                "actor_role": "MR",
+                "target_type": "visit",
                 "target_id": "507f1f77bcf86cd799439013",
-                "target_name": "Dr. John Doe",
+                "target_name": None,
                 "action_details": {
-                    "email": "doctor@example.com",
-                    "specialization": "Cardiology"
+                    "doctor_id": "507f1f77bcf86cd799439014",
+                    "doctor_name": "Dr. Sneha Sharma",
+                    "scheduled_date": "2026-05-25",
+                    "scheduled_time": "10:00",
+                    "purpose": "Drug Promotion"
                 },
                 "severity": "info",
-                "ip_address": "192.168.1.1",
+                "ip_address": "183.82.41.52",
                 "user_agent": "Mozilla/5.0...",
-                "created_at": "2024-05-15T10:30:00Z"
+                "created_at": "2026-05-25T10:05:45"
             }
         }
 

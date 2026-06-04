@@ -111,27 +111,53 @@ async def get_admin_dashboard() -> Dict[str, Any]:
     
     # Fetch recent visits (last 5) - if visits collection exists
     try:
+        from bson import ObjectId
         recent_visits = await db["visits"].find().sort("created_at", -1).limit(5).to_list(5)
+        
+        # Collect all mr_ids and doctor_ids for batch lookup
+        mr_ids = set()
+        doctor_ids = set()
         for visit in recent_visits:
-            # Get MR and Doctor names
-            mr_name = "MR"
-            doctor_name = "Doctor"
+            if visit.get("mr_id") and ObjectId.is_valid(str(visit["mr_id"])):
+                mr_ids.add(str(visit["mr_id"]))
+            if visit.get("doctor_id") and ObjectId.is_valid(str(visit["doctor_id"])):
+                doctor_ids.add(str(visit["doctor_id"]))
+        
+        # Batch fetch MRs and Doctors
+        mr_map = {}
+        if mr_ids:
+            mrs_cursor = db["mrs"].find({"_id": {"$in": [ObjectId(i) for i in mr_ids]}}, {"name": 1})
+            mrs_list = await mrs_cursor.to_list(length=None)
+            mr_map = {str(m["_id"]): m.get("name", "MR") for m in mrs_list}
+        
+        doctor_map = {}
+        if doctor_ids:
+            doctors_cursor = db["doctors"].find({"_id": {"$in": [ObjectId(i) for i in doctor_ids]}}, {"name": 1})
+            doctors_list = await doctors_cursor.to_list(length=None)
+            doctor_map = {str(d["_id"]): d.get("name", "Doctor") for d in doctors_list}
+        
+        for visit in recent_visits:
+            mr_name = mr_map.get(str(visit.get("mr_id", "")), visit.get("mr_name", "MR"))
+            doctor_name = doctor_map.get(str(visit.get("doctor_id", "")), visit.get("doctor_name", "Doctor"))
             
-            if visit.get("mr_id"):
-                mr = await db["mrs"].find_one({"_id": visit["mr_id"]})
-                if mr:
-                    mr_name = mr.get("name", "MR")
-            
-            if visit.get("doctor_id"):
-                doctor = await db["doctors"].find_one({"_id": visit["doctor_id"]})
-                if doctor:
-                    doctor_name = doctor.get("name", "Doctor")
+            # Use status for better description
+            visit_status = visit.get("status", "scheduled")
+            if visit_status == "completed":
+                action = "completed a visit with"
+            elif visit_status == "cancelled":
+                action = "cancelled a visit with"
+            elif visit_status == "checked_in":
+                action = "checked in to visit"
+            elif visit_status == "checked_out":
+                action = "checked out from visit with"
+            else:
+                action = "scheduled a visit with"
             
             recent_activity.append({
                 "id": f"visit_{str(visit['_id'])}",
-                "type": "visit_scheduled",
-                "title": "Visit Scheduled",
-                "description": f"{mr_name} scheduled visit with {doctor_name}",
+                "type": f"visit_{visit_status}",
+                "title": f"Visit {visit_status.replace('_', ' ').title()}",
+                "description": f"{mr_name} {action} {doctor_name}",
                 "timestamp": visit.get("created_at", datetime.utcnow()),
                 "user": mr_name
             })

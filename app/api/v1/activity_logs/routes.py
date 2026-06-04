@@ -55,6 +55,7 @@ router = APIRouter()
         {
           "log_id": "6a0d...",
           "action_type": "visit_completed",
+          "message": "Rajesh Kumar completed a visit with Dr. Sneha",
           "actor_id": "6a0d9eb8...",
           "actor_name": "Rajesh Kumar",
           "actor_role": "MR",
@@ -72,6 +73,47 @@ router = APIRouter()
           "ip_address": "183.82.41.52",
           "user_agent": "Mozilla/5.0...",
           "created_at": "2026-05-25T10:08:07"
+        },
+        {
+          "log_id": "6a0d...",
+          "action_type": "visit_scheduled",
+          "message": "Vamsi scheduled a visit with Dr. Sneha Sharma",
+          "actor_id": "6a141e8d...",
+          "actor_name": "Vamsi",
+          "actor_role": "MR",
+          "target_type": "visit",
+          "target_id": "6a141ef9...",
+          "target_name": null,
+          "action_details": {
+            "doctor_id": "6a0edbdd...",
+            "doctor_name": "Dr. Sneha Sharma",
+            "scheduled_date": "2026-06-26",
+            "scheduled_time": "15:36",
+            "purpose": "Drug Promotion"
+          },
+          "severity": "info",
+          "ip_address": "183.82.41.52",
+          "user_agent": "Mozilla/5.0...",
+          "created_at": "2026-05-25T10:05:45"
+        },
+        {
+          "log_id": "6a0d...",
+          "action_type": "user_created",
+          "message": "Admin created Suresh Patel",
+          "actor_id": "6a0d...",
+          "actor_name": "Admin",
+          "actor_role": "ADMIN",
+          "target_type": "mr",
+          "target_id": "6a0d...",
+          "target_name": "Suresh Patel",
+          "action_details": {
+            "email": "suresh@example.com",
+            "territory": "Hyderabad"
+          },
+          "severity": "info",
+          "ip_address": "103.217.239.66",
+          "user_agent": "Mozilla/5.0...",
+          "created_at": "2026-05-25T09:30:00"
         }
       ],
       "total": 150,
