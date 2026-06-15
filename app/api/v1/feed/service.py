@@ -15,6 +15,9 @@ from app.api.v1.notifications.helpers import (
 from app.models.post_model import PostInDB, LikeInDB, CommentInDB
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 async def create_post(content: str, current_user: Dict) -> Dict[str, Any]:
@@ -671,7 +674,7 @@ async def get_my_liked_posts(
                 valid_likes.append(like)
         except Exception as e:
             # Skip invalid post IDs - don't fail the entire request
-            print(f"Skipping invalid post_id in like: {like.get('post_id')} - Error: {e}")
+            logger.warning(f"Skipping invalid post_id in like: {like.get('post_id')} - Error: {e}")
             continue
     
     if not post_ids:

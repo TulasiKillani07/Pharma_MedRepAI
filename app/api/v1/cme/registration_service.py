@@ -14,6 +14,9 @@ from app.api.v1.notifications.helpers import notify_cme_registration_confirmed, 
 from app.api.v1.email.service import send_cme_registration_confirmation_email
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, TargetType, LogSeverity
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 def generate_registration_passcode() -> str:
@@ -114,7 +117,7 @@ async def register_for_cme(event_id: str, current_user: Dict) -> Dict[str, Any]:
         )
     except Exception as e:
         # Log email failure but don't fail registration
-        print(f"Failed to send registration confirmation email: {e}")
+        logger.error(f"Failed to send registration confirmation email: {e}")
     
     # Send in-app notification
     await notify_cme_registration_confirmed(

@@ -15,6 +15,9 @@ import cloudinary.uploader
 from app.config import settings
 import os
 import json
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 # Configure Cloudinary
 cloudinary.config(
@@ -270,7 +273,7 @@ async def _upload_file_to_cloudinary(
         
         file_url = upload_result.get('secure_url') or upload_result.get('url')
         
-        print(f"[SUCCESS] File uploaded to Cloudinary: {file.filename} ({file_size} bytes)")
+        logger.info(f"File uploaded to Cloudinary: {file.filename} ({file_size} bytes)")
         
         return {
             "message": "File uploaded successfully",
@@ -281,7 +284,7 @@ async def _upload_file_to_cloudinary(
         }
         
     except Exception as e:
-        print(f"[ERROR] Cloudinary upload failed: {str(e)}")
+        logger.error(f"Cloudinary upload failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload file to cloud storage: {str(e)}"
@@ -411,7 +414,7 @@ async def create_communication(
     # Insert into database
     result = await db.communications.insert_one(comm.model_dump())
     
-    print(f"[SUCCESS] Communication created: {title} (ID: {result.inserted_id}, Targeted: {targeted_count} MRs)")
+    logger.info(f"Communication created: {title} (ID: {result.inserted_id}, Targeted: {targeted_count} MRs)")
     
     return {
         "message": "Communication sent successfully",
@@ -666,7 +669,7 @@ async def get_communication_detail_for_mr(
         await db.communication_reads.insert_one(read_doc.model_dump())
         is_read = True
         
-        print(f"[INFO] MR {mr_id} read communication {communication_id}")
+        logger.info(f"MR {mr_id} read communication {communication_id}")
     
     # Return full details
     return {
@@ -934,7 +937,7 @@ async def update_communication(
         {"$set": update_data}
     )
     
-    print(f"[SUCCESS] Communication updated: {communication_id}")
+    logger.info(f"Communication updated: {communication_id}")
     
     return {"message": "Communication updated successfully"}
 
@@ -983,7 +986,7 @@ async def delete_communication(
         }
     )
     
-    print(f"[SUCCESS] Communication deactivated: {communication_id}")
+    logger.info(f"Communication deactivated: {communication_id}")
     
     return {"message": "Communication deactivated successfully"}
 

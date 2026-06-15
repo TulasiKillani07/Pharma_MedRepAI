@@ -140,7 +140,7 @@ async def schedule_visit(
         actor=current_user,
         target_type=TargetType.VISIT,
         target_id=str(result.inserted_id),
-        target_name=None,
+        target_name=f"Visit with {doctor['name']}",
         details={
             "doctor_id": doctor_id,
             "doctor_name": doctor["name"],
@@ -689,7 +689,7 @@ async def complete_visit(
         actor=current_user,
         target_type=TargetType.VISIT,
         target_id=visit_id,
-        target_name=None,
+        target_name=f"Visit with {visit['doctor_name']}",
         details=activity_details,
         severity=LogSeverity.INFO,
         request=request
@@ -780,7 +780,7 @@ async def cancel_visit(
         actor=current_user,
         target_type=TargetType.VISIT,
         target_id=visit_id,
-        target_name=None,
+        target_name=f"Visit with {visit['doctor_name']}",
         details={
             "doctor_id": visit["doctor_id"],
             "doctor_name": visit["doctor_name"],
@@ -910,7 +910,7 @@ async def check_in_visit(
             actor=current_user,
             target_type=TargetType.VISIT,
             target_id=visit_id,
-            target_name=None,
+            target_name=f"Check-in at {visit['doctor_name']}",
             details={
                 "action": "check_in",
                 "doctor_id": visit["doctor_id"],
@@ -1024,7 +1024,7 @@ async def check_out_visit(
             actor=current_user,
             target_type=TargetType.VISIT,
             target_id=visit_id,
-            target_name=None,
+            target_name=f"Check-out from {visit['doctor_name']}",
             details={
                 "action": "check_out",
                 "doctor_id": visit["doctor_id"],
@@ -1162,7 +1162,7 @@ async def submit_visit_report(
             actor=current_user,
             target_type=TargetType.VISIT,
             target_id=visit_id,
-            target_name=None,
+            target_name=f"Report for {visit['doctor_name']}",
             details={
                 "doctor_id": visit["doctor_id"],
                 "doctor_name": visit["doctor_name"],
@@ -1347,7 +1347,7 @@ async def cancel_check_in(
             actor=current_user,
             target_type=TargetType.VISIT,
             target_id=visit_id,
-            target_name=None,
+            target_name=f"Cancelled check-in for {visit['doctor_name']}",
             details={
                 "action": "cancel_check_in",
                 "doctor_id": visit["doctor_id"],

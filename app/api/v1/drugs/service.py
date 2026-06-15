@@ -21,6 +21,9 @@ from app.api.v1.notifications.helpers import notify_drug_added
 from app.models.drug_model import DrugInDB, DrugFieldTemplateInDB, DrugFieldType
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 # ============ HELPER FUNCTIONS ============
@@ -947,7 +950,7 @@ async def upload_drug_brochure(drug_id: str, file: UploadFile, current_user: Dic
             await delete_drug_brochure(old_public_id)
         except Exception as e:
             # Log but don't fail if old brochure deletion fails
-            print(f"Warning: Failed to delete old brochure: {e}")
+            logger.warning(f"Failed to delete old brochure: {e}")
     
     # Upload new brochure to Cloudinary
     upload_result = await cloudinary_upload(file, drug_id)

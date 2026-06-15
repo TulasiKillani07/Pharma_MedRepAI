@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import List, Dict, Any
 from fastapi import HTTPException, status
 from app.database import get_database
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 async def get_all_departments(include_inactive: bool = False) -> List[Dict[str, Any]]:
@@ -78,7 +81,7 @@ async def create_department(
     
     await db.departments.insert_one(dept_doc)
     
-    print(f"[SUCCESS] Department created: {code}")
+    logger.info(f"Department created: {code}")
     
     return {"message": f"Department '{name}' created successfully"}
 
@@ -130,7 +133,7 @@ async def update_department(
         {"$set": update_data}
     )
     
-    print(f"[SUCCESS] Department updated: {code}")
+    logger.info(f"Department updated: {code}")
     
     return {"message": f"Department '{code}' updated successfully"}
 
@@ -173,6 +176,6 @@ async def deactivate_department(
         }
     )
     
-    print(f"[SUCCESS] Department deactivated: {code}")
+    logger.info(f"Department deactivated: {code}")
     
     return {"message": f"Department '{code}' deactivated successfully"}

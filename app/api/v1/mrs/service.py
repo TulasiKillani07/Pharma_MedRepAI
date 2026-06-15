@@ -166,7 +166,7 @@ async def create_mr(
         )
     except Exception as e:
         # Log email error but don't fail the creation
-        print(f"Failed to send invitation email to {email}: {str(e)}")
+        logger.error(f"Failed to send invitation email to {email}: {str(e)}")
     
     return {
         "message": "MR added successfully",
@@ -802,7 +802,7 @@ async def bulk_upload_mrs(
                     password=random_password
                 )
             except Exception as email_error:
-                print(f"Failed to send email to {email}: {str(email_error)}")
+                logger.error(f"Failed to send email to {email}: {str(email_error)}")
             
             # Track created user for summary
             created_users.append({
@@ -861,7 +861,7 @@ async def bulk_upload_mrs(
                 created_users=created_users
             )
         except Exception as e:
-            print(f"Failed to send summary email to admin: {str(e)}")
+            logger.error(f"Failed to send summary email to admin: {str(e)}")
     
     return {
         "total_rows": total_rows,

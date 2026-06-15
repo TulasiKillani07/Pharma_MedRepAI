@@ -7,6 +7,9 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List
 from app.api.v1.ai.service import extract_text_from_pdf, summarize_text, summarize_images
 import traceback
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 router = APIRouter()
@@ -62,7 +65,7 @@ async def summarize_pdf(file: UploadFile = File(...)):
     except Exception as e:
         # Log the full error for debugging
         error_details = traceback.format_exc()
-        print(f"Error in summarize_pdf: {error_details}")
+        logger.error(f"Error in summarize_pdf: {error_details}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error processing PDF: {str(e)}"

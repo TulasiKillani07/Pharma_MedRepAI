@@ -8,6 +8,9 @@ from fastapi import HTTPException, status
 from app.database import get_database
 from app.models.grievance_model import GrievanceStatus, GrievancePriority
 from bson import ObjectId
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 async def generate_ticket_id(department: str) -> str:
@@ -105,7 +108,7 @@ async def create_grievance(
     
     await db.grievances.insert_one(grievance_doc)
     
-    print(f"[SUCCESS] Grievance created: {ticket_id} by MR {current_user['_id']}")
+    logger.info(f"Grievance created: {ticket_id} by MR {current_user['_id']}")
     
     return {
         "message": "Grievance submitted successfully",
@@ -435,7 +438,7 @@ async def respond_to_grievance(
         {"$set": update_data}
     )
     
-    print(f"[SUCCESS] Grievance {ticket_id} updated by admin {current_user['_id']}")
+    logger.info(f"Grievance {ticket_id} updated by admin {current_user['_id']}")
     
     return {"message": f"Response submitted successfully. Status updated to {new_status.value}"}
 

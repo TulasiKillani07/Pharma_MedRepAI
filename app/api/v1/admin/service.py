@@ -8,6 +8,9 @@ from fastapi import HTTPException, status
 from app.database import get_database
 from app.core.security import hash_password
 from bson import ObjectId
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 async def create_department_admin(
@@ -34,9 +37,26 @@ async def create_department_admin(
         dict: Success message with admin details
     
     Raises:
-        HTTPException: If email already exists or department is invalid
+        HTTPException: If email already exists, department is invalid, or access limit reached
     """
     db = get_database()
+    
+    # Check access limit for admin users
+    company_doc = await db.company.find_one({})
+    if company_doc:
+        max_admin_users = company_doc.get("max_admin_users", 2)
+        
+        # Count current active non-general admins (department admins only)
+        current_admin_count = await db.company_admins.count_documents({
+            "is_active": True,
+            "department": {"$ne": "general"}  # Exclude general admin from count
+        })
+        
+        if current_admin_count >= max_admin_users:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Admin user limit reached. Maximum allowed: {max_admin_users}. Current: {current_admin_count}. Please contact support to increase your license limit."
+            )
     
     # Check if email already exists
     existing_user = await db.company_admins.find_one({"email": email})
@@ -74,7 +94,7 @@ async def create_department_admin(
     # Insert admin into database
     result = await db.company_admins.insert_one(admin_doc)
     
-    print(f"[SUCCESS] Department admin created: {email} (department: {department}) by {current_user.get('full_name', 'Unknown')}")
+    logger.info(f"Department admin created: {email} (department: {department}) by {current_user.get('full_name', 'Unknown')}")
     
     return {
         "message": "Department admin created successfully",
@@ -169,7 +189,7 @@ async def update_admin_department(
         }
     )
     
-    print(f"[SUCCESS] Admin department updated: {admin['email']} → {new_department}")
+    logger.info(f"Admin department updated: {admin['email']} → {new_department}")
     
     return {"message": f"Admin department updated to {new_department}"}
 
@@ -220,7 +240,7 @@ async def deactivate_admin(
         }
     )
     
-    print(f"[SUCCESS] Admin deactivated: {admin['email']}")
+    logger.info(f"Admin deactivated: {admin['email']}")
     
     return {"message": f"Admin {admin['email']} deactivated successfully"}
 
@@ -263,6 +283,6 @@ async def reactivate_admin(
         }
     )
     
-    print(f"[SUCCESS] Admin reactivated: {admin['email']}")
+    logger.info(f"Admin reactivated: {admin['email']}")
     
     return {"message": f"Admin {admin['email']} reactivated successfully"}
