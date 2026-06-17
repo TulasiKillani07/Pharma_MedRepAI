@@ -28,6 +28,27 @@ class RescheduleHistoryEntry(BaseModel):
     reason: Optional[str] = None
 
 
+class TemporaryLocation(BaseModel):
+    """Schema for temporary visit location"""
+    reason: str = Field(..., min_length=1, max_length=200, description="Reason for temporary location")
+    name: str = Field(..., min_length=1, max_length=200, description="Location name")
+    address: Optional[str] = Field(None, max_length=500, description="Full address")
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
+
+
+class VisitLocation(BaseModel):
+    """Schema for visit location (permanent or temporary)"""
+    type: str = Field(..., description="Location type: permanent or temporary")
+    
+    # For permanent locations
+    location_id: Optional[str] = Field(None, description="Doctor's location ID")
+    location_name: Optional[str] = Field(None, description="Location name (cached)")
+    
+    # For temporary locations
+    temporary_location: Optional[TemporaryLocation] = Field(None, description="Temporary location details")
+
+
 class VisitInDB(BaseModel):
     """
     Write model for visit document (INSERT operations)
@@ -38,6 +59,8 @@ class VisitInDB(BaseModel):
     - doctor_id
     - scheduled_date
     - status
+    
+    NOTE: Backward compatible with old visits that have location: str
     """
     mr_id: str = Field(..., description="MR user ID")
     mr_name: str = Field(..., description="MR name")
@@ -46,20 +69,17 @@ class VisitInDB(BaseModel):
     scheduled_date: date = Field(..., description="Visit date")
     scheduled_time: str = Field(..., description="Visit time")
     purpose: str = Field(..., min_length=1, max_length=500, description="Visit purpose")
-    location: str = Field(..., min_length=1, max_length=200, description="Visit location")
     
-    @field_validator('location')
-    @classmethod
-    def validate_location(cls, v: str) -> str:
-        """Ensure location is not empty"""
-        if not v or not v.strip():
-            raise ValueError('Location cannot be empty')
-        return v.strip()
+    # Location can be either:
+    # - NEW FORMAT: dict with type/location_id/temporary_location
+    # - OLD FORMAT: string (for backward compatibility)
+    location: str | dict = Field(..., description="Visit location (string for old visits, dict for new)")
+    
     notes: Optional[str] = Field(None, max_length=1000, description="Additional notes")
     status: VisitStatus = Field(default=VisitStatus.SCHEDULED, description="Visit status")
     
     # Check-in/Check-out data
-    check_in: Optional[dict] = Field(None, description="Check-in data: {timestamp, latitude, longitude}")
+    check_in: Optional[dict] = Field(None, description="Check-in data: {timestamp, latitude, longitude, geofence_status, distance_from_location, photo_url}")
     check_out: Optional[dict] = Field(None, description="Check-out data: {timestamp, latitude, longitude}")
     duration_minutes: Optional[int] = Field(None, description="Visit duration in minutes")
     

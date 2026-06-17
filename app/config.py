@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     LOG_DIR: Optional[str] = None  # Log directory (optional, uses platform default if not set)
     LOG_LEVEL: str = "INFO"  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
     
+    # Location & Geofencing Configuration
+    GEOFENCE_RADIUS: int = 100  # Geofence radius in meters
+    TEMP_LOCATION_CLUSTER_RADIUS: int = 50  # Clustering radius for temporary locations in meters
+    TEMP_LOCATION_MIN_USAGE_COUNT: int = 5  # Minimum visits before suggesting location
+    REJECTED_LOCATION_COOLDOWN_DAYS: int = 180  # Days before re-suggesting rejected location
+    
     class Config:
         """
         Pydantic configuration.

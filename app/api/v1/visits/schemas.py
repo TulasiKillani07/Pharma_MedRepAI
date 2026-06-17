@@ -18,64 +18,9 @@ class VisitStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class VisitCreateRequest(BaseModel):
-    """Schema for scheduling a new visit"""
-    doctor_id: str = Field(..., description="Doctor ID to visit")
-    scheduled_date: date = Field(..., description="Visit date (YYYY-MM-DD)")
-    scheduled_time: str = Field(..., description="Visit time (HH:MM or HH:MM AM/PM)")
-    purpose: str = Field(..., min_length=5, description="Purpose of visit")
-    location: str = Field(..., description="Visit location")
-    notes: Optional[str] = Field(None, description="Additional notes")
-    
-    # Validators
-    @field_validator('scheduled_date')
-    @classmethod
-    def validate_date(cls, v: date) -> date:
-        return DateValidator.validate_future_date(v, max_years=1)
-    
-    @field_validator('scheduled_time')
-    @classmethod
-    def validate_time(cls, v: str) -> str:
-        result = TimeValidator.validate(v)
-        if result is None:
-            raise ValueError('Time is required')
-        return result
-    
-    @field_validator('purpose')
-    @classmethod
-    def validate_purpose(cls, v: str) -> str:
-        result = TextValidator.validate(v, min_length=5, max_length=500, strip_html=True)
-        if result is None:
-            raise ValueError('Purpose is required')
-        return result
-    
-    @field_validator('location')
-    @classmethod
-    def validate_location(cls, v: str) -> str:
-        """Validate location is not empty"""
-        if not v or not v.strip():
-            raise ValueError('Location is required and cannot be empty')
-        result = TextValidator.validate(v, min_length=1, max_length=200, strip_html=True)
-        if result is None:
-            raise ValueError('Location is required')
-        return result
-    
-    @field_validator('notes')
-    @classmethod
-    def validate_notes(cls, v: Optional[str]) -> Optional[str]:
-        return TextValidator.validate(v, max_length=1000, strip_html=True)
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "doctor_id": "507f1f77bcf86cd799439011",
-                "scheduled_date": "2024-04-15",
-                "scheduled_time": "10:30",
-                "purpose": "Product presentation and discussion",
-                "location": "City Hospital, Room 301",
-                "notes": "Bring product samples"
-            }
-        }
+# OLD FORMAT - REMOVED
+# VisitCreateRequest with location as string has been replaced
+# with new format that supports permanent/temporary locations
 
 
 class VisitRescheduleRequest(BaseModel):
@@ -389,18 +334,8 @@ class VisitCreateResponse(BaseModel):
 # NEW SCHEMAS FOR CHECK-IN/CHECK-OUT/REPORT FLOW
 # ============================================================================
 
-class VisitCheckInRequest(BaseModel):
-    """Schema for checking in to a visit"""
-    latitude: float = Field(..., ge=-90, le=90, description="GPS latitude")
-    longitude: float = Field(..., ge=-180, le=180, description="GPS longitude")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "latitude": 17.4401,
-                "longitude": 78.3489
-            }
-        }
+# OLD FORMAT - REMOVED
+# VisitCheckInRequest without photo support has been replaced
 
 
 class VisitCheckOutRequest(BaseModel):
@@ -583,5 +518,171 @@ class ActiveVisitResponse(BaseModel):
                     "duration_so_far_minutes": 15
                 },
                 "pending_reports": 1
+            }
+        }
+
+
+
+# ============================================================================
+# NEW SCHEMAS FOR LOCATION-BASED VISIT SCHEDULING
+# ============================================================================
+
+class TemporaryLocationRequest(BaseModel):
+    """Schema for temporary location details"""
+    reason: str = Field(..., min_length=1, max_length=200, description="Reason for temporary location")
+    name: str = Field(..., min_length=1, max_length=200, description="Location name")
+    address: Optional[str] = Field(None, max_length=500, description="Full address")
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "reason": "Medical camp",
+                "name": "Community Health Center",
+                "address": "Gachibowli, Hyderabad",
+                "latitude": 17.4435,
+                "longitude": 78.3772
+            }
+        }
+
+
+class VisitLocationRequest(BaseModel):
+    """Schema for visit location (permanent or temporary)"""
+    type: str = Field(..., description="Location type: permanent or temporary")
+    
+    # For permanent locations
+    location_id: Optional[str] = Field(None, description="Doctor's location ID (required if type=permanent)")
+    location_name: Optional[str] = Field(None, description="Location name (cached)")
+    
+    # For temporary locations
+    temporary_location: Optional[TemporaryLocationRequest] = Field(None, description="Temporary location details (required if type=temporary)")
+    
+    @field_validator('location_id')
+    @classmethod
+    def validate_permanent_location(cls, v, values):
+        """Ensure location_id is provided for permanent type"""
+        if values.data.get('type') == 'permanent' and not v:
+            raise ValueError('location_id is required for permanent location type')
+        return v
+    
+    @field_validator('temporary_location')
+    @classmethod
+    def validate_temporary_location(cls, v, values):
+        """Ensure temporary_location is provided for temporary type"""
+        if values.data.get('type') == 'temporary' and not v:
+            raise ValueError('temporary_location is required for temporary location type')
+        return v
+    
+    class Config:
+        json_schema_extra = {
+            "examples": [
+                {
+                    "type": "permanent",
+                    "location_id": "loc_123",
+                    "location_name": "Apollo Hospital"
+                },
+                {
+                    "type": "temporary",
+                    "temporary_location": {
+                        "reason": "Medical camp",
+                        "name": "Community Health Center",
+                        "latitude": 17.4435,
+                        "longitude": 78.3772
+                    }
+                }
+            ]
+        }
+
+
+class VisitCreateRequest(BaseModel):
+    """
+    Schema for scheduling a visit with location selection.
+    Supports both permanent and temporary locations.
+    """
+    doctor_id: str = Field(..., description="Doctor ID to visit")
+    scheduled_date: date = Field(..., description="Visit date (YYYY-MM-DD)")
+    scheduled_time: str = Field(..., description="Visit time (HH:MM or HH:MM AM/PM)")
+    purpose: str = Field(..., min_length=5, description="Purpose of visit")
+    location: VisitLocationRequest = Field(..., description="Visit location (permanent or temporary)")
+    notes: Optional[str] = Field(None, description="Additional notes")
+    
+    # Validators
+    @field_validator('scheduled_date')
+    @classmethod
+    def validate_date(cls, v: date) -> date:
+        return DateValidator.validate_future_date(v, max_years=1)
+    
+    @field_validator('scheduled_time')
+    @classmethod
+    def validate_time(cls, v: str) -> str:
+        result = TimeValidator.validate(v)
+        if result is None:
+            raise ValueError('Time is required')
+        return result
+    
+    @field_validator('purpose')
+    @classmethod
+    def validate_purpose(cls, v: str) -> str:
+        result = TextValidator.validate(v, min_length=5, max_length=500, strip_html=True)
+        if result is None:
+            raise ValueError('Purpose is required')
+        return result
+    
+    @field_validator('notes')
+    @classmethod
+    def validate_notes(cls, v: Optional[str]) -> Optional[str]:
+        return TextValidator.validate(v, max_length=1000, strip_html=True)
+    
+    class Config:
+        json_schema_extra = {
+            "examples": [
+                {
+                    "doctor_id": "507f1f77bcf86cd799439011",
+                    "scheduled_date": "2024-04-15",
+                    "scheduled_time": "10:30",
+                    "purpose": "Product presentation",
+                    "location": {
+                        "type": "permanent",
+                        "location_id": "loc_123",
+                        "location_name": "Apollo Hospital"
+                    },
+                    "notes": "Bring samples"
+                },
+                {
+                    "doctor_id": "507f1f77bcf86cd799439011",
+                    "scheduled_date": "2024-04-20",
+                    "scheduled_time": "14:00",
+                    "purpose": "Follow-up visit",
+                    "location": {
+                        "type": "temporary",
+                        "temporary_location": {
+                            "reason": "Medical camp at community center",
+                            "name": "Community Health Center",
+                            "address": "Gachibowli, Hyderabad",
+                            "latitude": 17.4435,
+                            "longitude": 78.3772
+                        }
+                    }
+                }
+            ]
+        }
+
+
+class VisitCheckInRequest(BaseModel):
+    """
+    Schema for check-in with photo upload support.
+    Photo is required if outside geofence or temporary location.
+    Note: Photo will be uploaded as multipart/form-data file.
+    """
+    latitude: float = Field(..., ge=-90, le=90, description="Current GPS latitude")
+    longitude: float = Field(..., ge=-180, le=180, description="Current GPS longitude")
+    # Note: photo will be uploaded as multipart/form-data file
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "latitude": 17.4401,
+                "longitude": 78.3489
             }
         }

@@ -32,7 +32,7 @@ async def schedule_visit(
     scheduled_date: date,
     scheduled_time: str,
     purpose: str,
-    location: str,
+    location: str | dict,  # UPDATED: Accept both string (old) and dict (new)
     notes: Optional[str],
     current_user: Dict[str, Any],
     request: Optional[Request] = None
@@ -41,12 +41,14 @@ async def schedule_visit(
     Schedule a new visit.
     MR can only schedule with their assigned doctors.
     
+    UPDATED: Now supports both old location format (string) and new format (dict with type)
+    
     Args:
         doctor_id: Doctor's ID
         scheduled_date: Visit date
         scheduled_time: Visit time
         purpose: Purpose of visit
-        location: Visit location
+        location: Visit location (string for backward compatibility, dict for new format)
         notes: Additional notes
         current_user: Current authenticated MR
     
@@ -57,7 +59,7 @@ async def schedule_visit(
         HTTPException: If validation fails
     """
     company_db = get_company_database()
-    mr_id = current_user["_id"]  # Changed from "sub" to "_id"
+    mr_id = current_user["_id"]
     
     # Validate doctor ID
     if not ObjectId.is_valid(doctor_id):
@@ -102,16 +104,70 @@ async def schedule_visit(
             detail=f"Doctor {doctor['name']} already has a scheduled visit. Please complete or cancel it first."
         )
     
-    # RULE 1: INSERT with model (RULE 7: Convert date to datetime)
+    # NEW: Validate location format if dict
+    visit_location = location
+    if isinstance(location, dict):
+        location_type = location.get("type")
+        
+        if location_type == "permanent":
+            # Validate location_id exists in doctor's locations
+            location_id = location.get("location_id")
+            if not location_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="location_id required for permanent location"
+                )
+            
+            # Check if location exists and is active
+            doctor_locations = doctor.get("locations", [])
+            location_found = False
+            for loc in doctor_locations:
+                if loc["id"] == location_id and loc.get("is_active", True):
+                    location_found = True
+                    # Cache location name if not provided
+                    if not location.get("location_name"):
+                        visit_location = location.copy()
+                        visit_location["location_name"] = loc["name"]
+                    break
+            
+            if not location_found:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected location not found or inactive"
+                )
+        
+        elif location_type == "temporary":
+            # Validate temporary location has required fields
+            temp_loc = location.get("temporary_location")
+            if not temp_loc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="temporary_location required for temporary type"
+                )
+            
+            required_fields = ["reason", "name", "latitude", "longitude"]
+            for field in required_fields:
+                if field not in temp_loc:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"temporary_location.{field} is required"
+                    )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid location type: {location_type}"
+            )
+    
+    # Create visit (supports both old string and new dict format)
     visit = VisitInDB(
         mr_id=mr_id,
         mr_name=mr["name"],
         doctor_id=doctor_id,
         doctor_name=doctor["name"],
-        scheduled_date=scheduled_date,  # Model accepts date type
+        scheduled_date=scheduled_date,
         scheduled_time=scheduled_time,
         purpose=purpose,
-        location=location,
+        location=visit_location,  # Can be string or dict
         notes=notes,
         status=VisitStatus.SCHEDULED
     )
@@ -1174,6 +1230,17 @@ async def submit_visit_report(
             severity=LogSeverity.INFO,
             request=request
         )
+    
+    # NEW: Trigger location analysis if temporary location
+    location = visit.get("location")
+    if isinstance(location, dict) and location.get("type") == "temporary":
+        from app.services.location_analysis import trigger_analysis_if_needed
+        try:
+            await trigger_analysis_if_needed(visit["doctor_id"])
+            logger.info(f"Triggered location analysis for doctor {visit['doctor_id']}")
+        except Exception as e:
+            # Don't fail report submission if analysis fails
+            logger.error(f"Location analysis failed: {str(e)}")
     
     return {
         "message": "Report submitted successfully",

@@ -152,3 +152,75 @@ async def validate_cloudinary_connection() -> bool:
     except Exception as e:
         logger.error(f"Cloudinary connection test failed: {str(e)}")
         return False
+
+
+
+async def upload_checkin_photo(file: UploadFile, visit_id: str) -> Dict[str, Any]:
+    """
+    Upload check-in photo to Cloudinary.
+    
+    Args:
+        file: UploadFile object containing the image
+        visit_id: Visit ID to organize files in Cloudinary
+        
+    Returns:
+        dict: Upload result with URL, public_id, size
+        
+    Raises:
+        HTTPException: If upload fails or validation fails
+    """
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/jpg", "image/png"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: JPEG, PNG. Got: {file.content_type}"
+        )
+    
+    # Validate file size (max 5MB)
+    max_size = 5 * 1024 * 1024  # 5MB
+    file.file.seek(0, 2)  # Seek to end
+    file_size = file.file.tell()
+    file.file.seek(0)  # Reset to start
+    
+    if file_size > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Max size: 5MB. Got: {file_size / (1024*1024):.2f}MB"
+        )
+    
+    try:
+        # Upload to Cloudinary
+        # Folder structure: visits/{visit_id}/checkin_{timestamp}
+        from datetime import datetime
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        
+        result = cloudinary.uploader.upload(
+            file.file,
+            folder=f"visits/{visit_id}",
+            public_id=f"checkin_{timestamp}",
+            resource_type="image",
+            format="jpg",  # Convert all to JPG
+            quality="auto:good",  # Optimize quality
+            fetch_format="auto"
+        )
+        
+        file_url = result.get('secure_url') or result.get('url')
+        public_id = result.get('public_id')
+        
+        logger.info(f"Check-in photo uploaded: {public_id} ({file_size} bytes)")
+        
+        return {
+            "file_url": file_url,
+            "public_id": public_id,
+            "file_name": file.filename,
+            "file_size": file_size,
+            "file_type": "image"
+        }
+    
+    except Exception as e:
+        logger.error(f"Check-in photo upload failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload photo: {str(e)}"
+        )

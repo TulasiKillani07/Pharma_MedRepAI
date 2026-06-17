@@ -782,6 +782,321 @@ async def reject_doctor_request_endpoint(
     return await reject_doctor_request(request_id, request.rejection_reason, current_user)
 
 
+# ============================================================================
+# DOCTOR LOCATION MANAGEMENT ENDPOINTS
+# NOTE: These routes MUST be defined BEFORE the /{doctor_id:path} catch-all route
+# to avoid route conflicts where "{doctor_id}/locations" is treated as just doctor_id
+# ============================================================================
+
+from app.api.v1.doctors.location_schemas import (
+    AddLocationRequest,
+    UpdateLocationRequest,
+    LocationResponse,
+    LocationListResponse,
+    GeoSearchRequest,
+    GeoSearchResponse,
+    LocationSuggestionsResponse,
+    ApproveSuggestionRequest,
+    RejectSuggestionRequest,
+    MessageResponse as LocationMessageResponse
+)
+from app.api.v1.doctors.location_service import (
+    add_doctor_location,
+    get_doctor_locations,
+    update_doctor_location,
+    search_locations,
+    get_location_suggestions,
+    approve_location_suggestion,
+    reject_location_suggestion
+)
+
+
+@router.post(
+    "/geosearch",
+    response_model=GeoSearchResponse,
+    summary="Search Locations (Geocoding)"
+)
+async def geosearch_endpoint(
+    request: GeoSearchRequest,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Search for locations using Nominatim geocoding (Admin only).
+    
+    **Access:** Admin only
+    
+    **Usage:**
+    - Admin types location name
+    - Optionally provides current location for nearby results
+    - System searches using Nominatim API
+    - Returns list of results with coordinates
+    
+    **Example 1: Without location bias (global search):**
+    ```json
+    {
+        "query": "Apollo Hospital Hyderabad",
+        "limit": 5
+    }
+    ```
+    
+    **Example 2: With location bias (prioritizes nearby results):**
+    ```json
+    {
+        "query": "apollo hospital",
+        "limit": 5,
+        "user_latitude": 17.4400,
+        "user_longitude": 78.3489
+    }
+    ```
+    
+    **How location bias works:**
+    - If you provide user_latitude and user_longitude
+    - System tells Nominatim to prioritize results near that location
+    - Results within ~50km radius get higher priority
+    - But still searches globally (not restricted)
+    
+    **Response:**
+    ```json
+    {
+        "total": 3,
+        "results": [
+            {
+                "display_name": "Apollo Hospital, Road 45, Jubilee Hills, Hyderabad",
+                "latitude": 17.4401,
+                "longitude": 78.3489,
+                "address": {...},
+                "type": "hospital",
+                "importance": 0.8
+            }
+        ]
+    }
+    ```
+    """
+    return await search_locations(
+        request.query, 
+        request.limit,
+        request.user_latitude,
+        request.user_longitude
+    )
+
+
+@router.post(
+    "/{doctor_id}/locations",
+    response_model=LocationMessageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add Doctor Location"
+)
+async def add_location_endpoint(
+    doctor_id: str,
+    request: AddLocationRequest,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Add a new location to a doctor's profile (Admin only).
+    
+    **Access:** Admin only
+    
+    **Usage:**
+    - Admin searches location using GeoSearch
+    - Gets coordinates and address
+    - Adds location to doctor's profile
+    
+    **Validations:**
+    - Location must not exist within 50m radius
+    - Coordinates must be valid
+    
+    **Example:**
+    ```json
+    {
+        "name": "Apollo Hospital",
+        "address": "Road 45, Jubilee Hills, Hyderabad",
+        "latitude": 17.4401,
+        "longitude": 78.3489,
+        "type": "primary",
+        "geofence_radius": 100
+    }
+    ```
+    """
+    result = await add_doctor_location(
+        doctor_id=doctor_id,
+        name=request.name,
+        address=request.address,
+        latitude=request.latitude,
+        longitude=request.longitude,
+        location_type=request.type,
+        geofence_radius=request.geofence_radius,
+        admin_user=current_user
+    )
+    
+    return result
+
+
+@router.get(
+    "/{doctor_id}/locations",
+    response_model=LocationListResponse,
+    summary="Get Doctor Locations"
+)
+async def get_locations_endpoint(
+    doctor_id: str,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Get all locations for a doctor.
+    
+    **Access:** Admin and MR
+    
+    **Returns:** List of doctor's permanent locations only (no suggestions)
+    
+    **Note:** MRs use this to select location when scheduling visits.
+    """
+    return await get_doctor_locations(doctor_id)
+
+
+@router.put(
+    "/{doctor_id}/locations/{location_id}",
+    response_model=LocationMessageResponse,
+    summary="Update Doctor Location"
+)
+async def update_location_endpoint(
+    doctor_id: str,
+    location_id: str,
+    request: UpdateLocationRequest,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Update a doctor's location (Admin only).
+    
+    **Access:** Admin only
+    
+    **Updatable fields:**
+    - name: Location name
+    - address: Full address
+    - latitude: GPS latitude
+    - longitude: GPS longitude
+    - type: Location type (primary/secondary)
+    - geofence_radius: Geofence radius in meters
+    - is_active: Activate (true) or deactivate (false)
+    
+    **Common Use Cases:**
+    
+    1. **Deactivate location** (soft delete):
+       ```json
+       PUT /api/v1/doctors/{doctor_id}/locations/{location_id}
+       {"is_active": false}
+       ```
+    
+    2. **Reactivate location**:
+       ```json
+       {"is_active": true}
+       ```
+    
+    3. **Update geofence radius**:
+       ```json
+       {"geofence_radius": 150}
+       ```
+    
+    4. **Update address and coordinates**:
+       ```json
+       {
+         "address": "New Address, Hyderabad",
+         "latitude": 17.4500,
+         "longitude": 78.3800
+       }
+       ```
+    
+    **Note:** 
+    - Locations are never hard-deleted to preserve history
+    - Deactivated locations (is_active=false) won't appear in MR's location selection
+    - Can be reactivated anytime by setting is_active=true
+    """
+    updates = request.model_dump(exclude_unset=True)
+    return await update_doctor_location(doctor_id, location_id, updates)
+
+
+@router.get(
+    "/{doctor_id}/location-suggestions",
+    response_model=LocationSuggestionsResponse,
+    summary="Get Location Suggestions"
+)
+async def get_suggestions_endpoint(
+    doctor_id: str,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Get location suggestions for a doctor (Admin only).
+    
+    **Access:** Admin only
+    
+    **Returns:** List of pending/approved/rejected location suggestions
+    
+    **How suggestions are created:**
+    - System analyzes temporary location visits
+    - Groups locations by proximity (50m)
+    - Creates suggestion when location used 5+ times
+    - Admin reviews and approves/rejects
+    """
+    return await get_location_suggestions(doctor_id)
+
+
+@router.put(
+    "/{doctor_id}/location-suggestions/{suggestion_id}/approve",
+    response_model=LocationMessageResponse,
+    summary="Approve Location Suggestion"
+)
+async def approve_suggestion_endpoint(
+    doctor_id: str,
+    suggestion_id: str,
+    request: ApproveSuggestionRequest,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Approve a location suggestion (Admin only).
+    
+    **Access:** Admin only
+    
+    **What happens:**
+    - Suggestion moved to doctor's permanent locations
+    - Marked as 'approved'
+    - Future MRs can select this location when scheduling
+    """
+    return await approve_location_suggestion(
+        doctor_id=doctor_id,
+        suggestion_id=suggestion_id,
+        admin_user=current_user,
+        notes=request.notes,
+        geofence_radius=request.geofence_radius
+    )
+
+
+@router.put(
+    "/{doctor_id}/location-suggestions/{suggestion_id}/reject",
+    response_model=LocationMessageResponse,
+    summary="Reject Location Suggestion"
+)
+async def reject_suggestion_endpoint(
+    doctor_id: str,
+    suggestion_id: str,
+    request: RejectSuggestionRequest,
+    current_user: Dict = Depends(require_admin)
+):
+    """
+    Reject a location suggestion (Admin only).
+    
+    **Access:** Admin only
+    
+    **What happens:**
+    - Suggestion marked as 'rejected'
+    - System won't suggest this location again for 180 days
+    - Reason saved for audit
+    """
+    return await reject_location_suggestion(
+        doctor_id=doctor_id,
+        suggestion_id=suggestion_id,
+        admin_user=current_user,
+        notes=request.notes
+    )
+
+
 @router.get("/{doctor_id:path}", response_model=DoctorResponse, summary="Get Doctor Details")
 async def get_doctor(
     doctor_id: str,
@@ -974,3 +1289,5 @@ async def delete_doctor_endpoint(
     ```
     """
     return await delete_doctor(doctor_id, current_user)
+
+

@@ -2,7 +2,7 @@
 Visit routes - API endpoints for visit management.
 """
 
-from fastapi import APIRouter, Depends, Query, status, HTTPException, Request
+from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, Form, File, UploadFile
 from typing import Dict, Any, Optional
 from datetime import date
 from app.api.v1.visits.schemas import (
@@ -15,7 +15,7 @@ from app.api.v1.visits.schemas import (
     VisitListWithTargetsResponse,
     MessageResponse,
     VisitCreateResponse,
-    # New schemas for check-in/check-out/report flow
+    # Schemas for check-in/check-out/report flow
     VisitCheckInRequest,
     VisitCheckOutRequest,
     VisitReportRequest,
@@ -54,27 +54,61 @@ async def schedule_visit_endpoint(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Schedule a new visit (MR only).
+    Schedule a new visit (MR only) with location selection.
     
     **Access:** MR only
     
+    **Location Selection:**
+    MRs can now select either:
+    - **Permanent Location**: Doctor's registered locations (requires location_id)
+    - **Temporary Location**: One-time location with GPS coordinates
+    
     **Validations:**
     - MR can only schedule with their assigned doctors
-    - Doctor must not have another scheduled visit
+    - Doctor must not have another scheduled visit at same time
+    - Location must be valid (either permanent with location_id OR temporary with coordinates)
     
-    **Usage:**
-    ```
-    POST /api/v1/visits
-    Headers: Authorization: Bearer <mr_token>
+    **Usage - Permanent Location:**
+    ```json
     {
         "doctor_id": "507f1f77bcf86cd799439011",
         "scheduled_date": "2024-04-15",
         "scheduled_time": "10:30",
         "purpose": "Product presentation",
-        "location": "City Hospital, Room 301",
+        "location": {
+            "type": "permanent",
+            "location_id": "loc_123",
+            "location_name": "Apollo Hospital"
+        },
         "notes": "Bring samples"
     }
     ```
+    
+    **Usage - Temporary Location:**
+    ```json
+    {
+        "doctor_id": "507f1f77bcf86cd799439011",
+        "scheduled_date": "2024-04-20",
+        "scheduled_time": "14:00",
+        "purpose": "Follow-up visit",
+        "location": {
+            "type": "temporary",
+            "temporary_location": {
+                "reason": "Medical camp at community center",
+                "name": "Community Health Center",
+                "address": "Gachibowli, Hyderabad",
+                "latitude": 17.4435,
+                "longitude": 78.3772
+            }
+        }
+    }
+    ```
+    
+    **Temporary Location Intelligence:**
+    - System tracks all temporary location visits
+    - After 5 completed visits at same location (within 50m radius)
+    - System auto-creates suggestion for admin review
+    - Admin can approve → becomes permanent location
     """
     # Check if user is MR
     if current_user.get("role") != UserRole.MR.value:
@@ -83,12 +117,15 @@ async def schedule_visit_endpoint(
             detail="Only MRs can schedule visits"
         )
     
+    # Convert location object to dict for service layer
+    location_dict = visit_request.location.model_dump()
+    
     return await schedule_visit(
         doctor_id=visit_request.doctor_id,
         scheduled_date=visit_request.scheduled_date,
         scheduled_time=visit_request.scheduled_time,
         purpose=visit_request.purpose,
-        location=visit_request.location,
+        location=location_dict,
         notes=visit_request.notes,
         current_user=current_user,
         request=request
@@ -501,12 +538,15 @@ async def cancel_visit_endpoint(
 @router.put("/{visit_id}/check-in", response_model=CheckInResponse, summary="Check In to Visit")
 async def check_in_visit_endpoint(
     visit_id: str,
-    check_in_request: VisitCheckInRequest,
-    request: Request,
+    latitude: float = Form(..., description="Current GPS latitude", ge=-90, le=90),
+    longitude: float = Form(..., description="Current GPS longitude", ge=-180, le=180),
+    photo: Optional[UploadFile] = File(None, description="Check-in photo (required if outside geofence or temporary location)"),
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Check in to a visit with GPS coordinates (MR only).
+    Check in to a visit with GPS coordinates and geofence validation (MR only).
+    
+    **NEW: Now supports multipart/form-data with optional photo upload**
     
     **Access:** MR only
     
@@ -516,56 +556,64 @@ async def check_in_visit_endpoint(
     - MR cannot have more than 2 pending reports (status=checked_out)
     - Visit must belong to this MR
     - GPS coordinates required
+    - **NEW: Geofence validation (100m radius)**
+    - **NEW: Photo required if outside geofence OR temporary location**
     
-    **Rules:**
-    1. **Only 1 active check-in at a time** - If you're already checked in to another visit, you must check out first
-    2. **Max 2 pending reports** - If you have 2 visits waiting for reports, submit them before checking in to a new visit
+    **Geofence Logic:**
+    1. System resolves visit location (permanent from doctor.locations OR temporary)
+    2. Calculates distance from MR GPS to location
+    3. If distance > 100m → Status: "outside", Photo: REQUIRED
+    4. If distance <= 100m → Status: "inside", Photo: OPTIONAL
+    5. If temporary location → Photo: ALWAYS REQUIRED
     
-    **What Happens:**
-    - Visit status changes: scheduled → checked_in
-    - GPS coordinates and timestamp saved
-    - Timer starts (duration calculated on check-out)
-    - You cannot check in to another visit until you check out
-    
-    **Usage:**
+    **Usage (with photo):**
     ```
     PUT /api/v1/visits/{visit_id}/check-in
+    Content-Type: multipart/form-data
     Headers: Authorization: Bearer <mr_token>
-    {
-        "latitude": 17.4401,
-        "longitude": 78.3489
-    }
+    
+    Form Data:
+    - latitude: 17.4401
+    - longitude: 78.3489
+    - photo: <image file>
     ```
     
     **Response:**
     ```json
     {
         "message": "Checked in successfully",
-        "visit_id": "507f1f77bcf86cd799439011",
-        "check_in_time": "2026-05-25T10:05:32"
+        "visit_id": "...",
+        "check_in_time": "2026-06-17T10:05:32Z",
+        "geofence_status": "outside",
+        "distance_meters": 145.5,
+        "photo_uploaded": true
     }
     ```
     
     **Error Responses:**
     - 400: "Check out of your current visit first" - You have another active check-in
     - 400: "Submit pending reports before checking in" - You have 2+ pending reports
-    - 400: "Visit must be in scheduled status" - Visit is not scheduled
+    - 400: "Photo is required for check-in (outside geofence or temporary location)"
     - 403: "You can only check in to your own visits" - Not your visit
     - 404: "Visit not found" - Invalid visit ID
     """
     # Check if user is MR
-    if current_user.get("role") != UserRole.MR.value:
+    if current_user.get("role") != "MR":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only MRs can check in to visits"
         )
     
-    return await check_in_visit(
+    # Use new geofence service
+    from app.api.v1.visits.geofence_service import check_in_with_geofence
+    
+    return await check_in_with_geofence(
         visit_id=visit_id,
-        latitude=check_in_request.latitude,
-        longitude=check_in_request.longitude,
-        current_user=current_user,
-        request=request
+        latitude=latitude,
+        longitude=longitude,
+        photo=photo,
+        current_user=current_user
+
     )
 
 
