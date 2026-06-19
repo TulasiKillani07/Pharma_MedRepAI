@@ -20,6 +20,7 @@ from app.api.v1.notifications.helpers import (
 from app.models.visit_model import VisitInDB, VisitStatus
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.utils.serializers import convert_objectids_to_strings, serialize_mongo_document
 
 
 def get_company_database():
@@ -307,11 +308,14 @@ async def get_visits(
             drug_map[pid] = drug_name or "Unknown Drug"
     
     # Convert ObjectId to string and resolve product names
-    for visit in visits:
+    for i, visit in enumerate(visits):
         visit["id"] = str(visit.pop("_id"))
         
+        # Recursively convert any ObjectIds in nested fields to strings
+        visits[i] = convert_objectids_to_strings(visit)
+        
         # Resolve products in report
-        report = visit.get("report")
+        report = visits[i].get("report")
         if report and report.get("products_discussed"):
             resolved = []
             for pid in report["products_discussed"]:
@@ -441,7 +445,7 @@ async def get_visit_by_id(visit_id: str, current_user: Dict[str, Any]) -> Dict[s
     
     # Check authorization
     user_role = current_user.get("role")
-    user_id = current_user.get("_id")  # Changed from "sub" to "_id"
+    user_id = current_user.get("_id")
     
     if user_role == "MR" and visit["mr_id"] != user_id:
         raise HTTPException(
@@ -451,6 +455,9 @@ async def get_visit_by_id(visit_id: str, current_user: Dict[str, Any]) -> Dict[s
     
     # Convert ObjectId to string
     visit["id"] = str(visit.pop("_id"))
+    
+    # Recursively convert any ObjectIds in nested fields to strings
+    visit = convert_objectids_to_strings(visit)
     
     return visit
 
@@ -1001,13 +1008,13 @@ async def check_out_visit(
     
     Args:
         visit_id: Visit's ID
-        latitude: GPS latitude
-        longitude: GPS longitude
+        latitude: GPS latitude at check-out
+        longitude: GPS longitude at check-out
         current_user: Current authenticated MR
         request: FastAPI request object
     
     Returns:
-        dict: Success message, visit_id, and duration_minutes
+        dict: Success message, visit_id, duration_minutes, and distance from location
     
     Raises:
         HTTPException: If validation fails
@@ -1056,17 +1063,47 @@ async def check_out_visit(
     check_out_time = datetime.utcnow()
     duration_minutes = int((check_out_time - check_in_time).total_seconds() / 60)
     
+    # Resolve visit location and calculate distance from actual location
+    from app.api.v1.visits.geofence_service import resolve_visit_location
+    from app.utils.geo_utils import calculate_distance
+    
+    try:
+        location_info = await resolve_visit_location(visit, company_db)
+        
+        # Calculate distance from actual location (same as check-in)
+        distance_meters = calculate_distance(
+            latitude, longitude,
+            location_info["latitude"], location_info["longitude"]
+        )
+        distance_km = round(distance_meters / 1000, 2)
+        
+        # Determine geofence status
+        geofence_radius = location_info.get("geofence_radius", settings.GEOFENCE_RADIUS)
+        geofence_status = "inside" if distance_meters <= geofence_radius else "outside"
+        
+    except Exception as e:
+        # If location resolution fails, proceed without distance calculation
+        distance_km = None
+        geofence_status = None
+    
+    # Prepare check-out data
+    check_out_data = {
+        "timestamp": check_out_time,
+        "latitude": latitude,
+        "longitude": longitude
+    }
+    
+    if distance_km is not None:
+        check_out_data["distance_from_location"] = distance_km
+        check_out_data["geofence_status"] = geofence_status
+    
     # Perform check-out
     await company_db.visits.update_one(
         {"_id": ObjectId(visit_id)},
         {
             "$set": {
                 "status": "checked_out",
-                "check_out": {
-                    "timestamp": check_out_time,
-                    "latitude": latitude,
-                    "longitude": longitude
-                },
+                "check_out": check_out_data,
                 "duration_minutes": duration_minutes,
                 "updated_at": datetime.utcnow()
             }
@@ -1086,17 +1123,25 @@ async def check_out_visit(
                 "doctor_id": visit["doctor_id"],
                 "doctor_name": visit["doctor_name"],
                 "duration_minutes": duration_minutes,
+                "distance_km": distance_km,
+                "geofence_status": geofence_status,
                 "gps": f"{latitude},{longitude}"
             },
             severity=LogSeverity.INFO,
             request=request
         )
     
-    return {
+    response = {
         "message": "Checked out successfully",
         "visit_id": visit_id,
         "duration_minutes": duration_minutes
     }
+    
+    if distance_km is not None:
+        response["distance_km"] = distance_km
+        response["geofence_status"] = geofence_status
+    
+    return response
 
 
 async def submit_visit_report(

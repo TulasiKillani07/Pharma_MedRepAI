@@ -27,7 +27,7 @@ class VisitRescheduleRequest(BaseModel):
     """Schema for rescheduling a visit"""
     scheduled_date: date = Field(..., description="New visit date")
     scheduled_time: str = Field(..., description="New visit time (HH:MM or HH:MM AM/PM)")
-    location: Optional[str] = Field(None, description="New location")
+    location: Optional[str | dict] = Field(None, description="New location (optional - can be string for old format or dict for new location format)")
     notes: Optional[str] = Field(None, description="Updated notes")
     reason: Optional[str] = Field(None, description="Reason for rescheduling")
     
@@ -52,12 +52,23 @@ class VisitRescheduleRequest(BaseModel):
     
     class Config:
         json_schema_extra = {
-            "example": {
-                "scheduled_date": "2024-04-16",
-                "scheduled_time": "14:00",
-                "location": "City Hospital, Room 302",
-                "reason": "Doctor requested different time"
-            }
+            "examples": [
+                {
+                    "scheduled_date": "2024-04-16",
+                    "scheduled_time": "14:00",
+                    "location": {
+                        "type": "permanent",
+                        "location_id": "loc_123",
+                        "location_name": "City Hospital"
+                    },
+                    "reason": "Doctor requested different time"
+                },
+                {
+                    "scheduled_date": "2024-04-16",
+                    "scheduled_time": "14:00",
+                    "reason": "Doctor requested different time"
+                }
+            ]
         }
 
 
@@ -184,6 +195,10 @@ class VisitCheckInResponse(BaseModel):
     timestamp: Optional[datetime] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    geofence_status: Optional[str] = Field(None, description="Geofence status: inside or outside")
+    distance_from_location: Optional[float] = Field(None, description="Distance from location in kilometers (km)")
+    photo_url: Optional[str] = Field(None, description="Cloudinary URL of captured photo")
+    photo_captured_at: Optional[datetime] = Field(None, description="Timestamp when photo was captured")
 
 
 class VisitResponse(BaseModel):
@@ -196,7 +211,7 @@ class VisitResponse(BaseModel):
     scheduled_date: date
     scheduled_time: str
     purpose: str
-    location: str
+    location: str | dict  # Supports both old format (string) and new format (dict with type/location_id/temporary_location)
     notes: Optional[str] = None
     status: VisitStatus
     
@@ -222,43 +237,84 @@ class VisitResponse(BaseModel):
     
     class Config:
         json_schema_extra = {
-            "example": {
-                "id": "507f1f77bcf86cd799439011",
-                "mr_id": "507f1f77bcf86cd799439012",
-                "mr_name": "Rajesh Kumar",
-                "doctor_id": "507f1f77bcf86cd799439013",
-                "doctor_name": "Dr. Sneha Sharma",
-                "scheduled_date": "2026-05-25",
-                "scheduled_time": "10:00",
-                "purpose": "Drug Promotion",
-                "location": "Apollo Hospital",
-                "status": "completed",
-                "check_in": {
-                    "timestamp": "2026-05-25T10:05:32",
-                    "latitude": 17.4401,
-                    "longitude": 78.3489
+            "examples": [
+                {
+                    "title": "Visit with Permanent Location",
+                    "id": "507f1f77bcf86cd799439011",
+                    "mr_id": "507f1f77bcf86cd799439012",
+                    "mr_name": "Rajesh Kumar",
+                    "doctor_id": "507f1f77bcf86cd799439013",
+                    "doctor_name": "Dr. Sneha Sharma",
+                    "scheduled_date": "2026-05-25",
+                    "scheduled_time": "10:00",
+                    "purpose": "Drug Promotion",
+                    "location": {
+                        "type": "permanent",
+                        "location_id": "loc_123",
+                        "location_name": "Apollo Hospital"
+                    },
+                    "status": "completed",
+                    "check_in": {
+                        "timestamp": "2026-05-25T10:05:32",
+                        "latitude": 17.4401,
+                        "longitude": 78.3489
+                    },
+                    "check_out": {
+                        "timestamp": "2026-05-25T10:33:12",
+                        "latitude": 17.4401,
+                        "longitude": 78.3490
+                    },
+                    "duration_minutes": 28,
+                    "report": {
+                        "doctor_mood": "positive",
+                        "products_discussed": [{"id": "drug_id_1", "name": "Amlodipine 5mg"}],
+                        "samples_given": 3,
+                        "outcome": "Doctor interested in product",
+                        "rx_commitment": True,
+                        "expected_rx_per_month": 10,
+                        "competitor_info": "Cipla — Amlokind 5mg",
+                        "follow_up_date": "2026-06-01",
+                        "notes": "Doctor wants clinical trial data"
+                    },
+                    "completed_at": "2026-05-25T10:33:12",
+                    "created_at": "2026-05-25T09:00:00",
+                    "updated_at": "2026-05-25T10:33:12"
                 },
-                "check_out": {
-                    "timestamp": "2026-05-25T10:33:12",
-                    "latitude": 17.4401,
-                    "longitude": 78.3490
-                },
-                "duration_minutes": 28,
-                "report": {
-                    "doctor_mood": "positive",
-                    "products_discussed": [{"id": "drug_id_1", "name": "Amlodipine 5mg"}],
-                    "samples_given": 3,
-                    "outcome": "Doctor interested in product",
-                    "rx_commitment": True,
-                    "expected_rx_per_month": 10,
-                    "competitor_info": "Cipla — Amlokind 5mg",
-                    "follow_up_date": "2026-06-01",
-                    "notes": "Doctor wants clinical trial data"
-                },
-                "completed_at": "2026-05-25T10:33:12",
-                "created_at": "2026-05-25T09:00:00",
-                "updated_at": "2026-05-25T10:33:12"
-            }
+                {
+                    "title": "Temporary Location Visit with Photo",
+                    "description": "Example showing check-in with captured photo (required for temporary locations)",
+                    "id": "507f1f77bcf86cd799439022",
+                    "mr_id": "507f1f77bcf86cd799439012",
+                    "mr_name": "Rajesh Kumar",
+                    "doctor_id": "507f1f77bcf86cd799439013",
+                    "doctor_name": "Dr. Sneha Sharma",
+                    "scheduled_date": "2026-05-26",
+                    "scheduled_time": "14:00",
+                    "purpose": "Medical Camp Visit",
+                    "location": {
+                        "type": "temporary",
+                        "temporary_location": {
+                            "reason": "Medical camp",
+                            "name": "Community Health Center",
+                            "address": "Gachibowli, Hyderabad",
+                            "latitude": 17.4435,
+                            "longitude": 78.3772
+                        }
+                    },
+                    "status": "checked_in",
+                    "check_in": {
+                        "timestamp": "2026-05-26T14:05:00",
+                        "latitude": 17.4435,
+                        "longitude": 78.3772,
+                        "geofence_status": "inside",
+                        "distance_from_location": 25,
+                        "photo_url": "https://res.cloudinary.com/demo/image/upload/v1234567890/visits/checkin_photo.jpg",
+                        "photo_captured_at": "2026-05-26T14:05:00"
+                    },
+                    "created_at": "2026-05-25T09:00:00",
+                    "updated_at": "2026-05-26T14:05:00"
+                }
+            ]
         }
 
 

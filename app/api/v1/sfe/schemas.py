@@ -258,7 +258,7 @@ class MCRVisitDetail(BaseModel):
     scheduled_date: Optional[Any] = None
     completed_at: Optional[datetime] = None
     duration_minutes: Optional[int] = None
-    location: Optional[str] = None
+    location: Optional[str | dict] = None  # Supports both old format (string) and new format (dict)
     purpose: Optional[str] = None
     doctor_mood: Optional[str] = None
     products_discussed: Optional[List[Any]] = None

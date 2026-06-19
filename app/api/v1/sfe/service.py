@@ -9,6 +9,7 @@ from bson import ObjectId
 from app.database import get_database
 from app.models.sfe_models import DoctorClass, DoctorAssignment
 from app.utils.logger import get_medrep_logger
+from app.utils.serializers import convert_objectids_to_strings
 
 # Initialize logger
 logger = get_medrep_logger(__name__)
@@ -390,7 +391,7 @@ async def get_mcr_report(
             "scheduled_date": visit.get("scheduled_date"),
             "completed_at": visit.get("completed_at"),
             "duration_minutes": visit.get("duration_minutes"),
-            "location": visit.get("location"),
+            "location": convert_objectids_to_strings(visit.get("location")),
             "purpose": visit.get("purpose"),
         }
         

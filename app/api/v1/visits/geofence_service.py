@@ -123,20 +123,23 @@ async def validate_geofence(
     Returns:
         dict: {
             status: "inside" | "outside",
-            distance_meters: float,
+            distance_km: float,
             photo_required: bool
         }
     """
-    distance = calculate_distance(
+    distance_meters = calculate_distance(
         mr_latitude, mr_longitude,
         location_latitude, location_longitude
     )
     
-    is_inside = distance <= geofence_radius
+    # Convert meters to kilometers
+    distance_km = round(distance_meters / 1000, 2)
+    
+    is_inside = distance_meters <= geofence_radius
     
     return {
         "status": "inside" if is_inside else "outside",
-        "distance_meters": round(distance, 2),
+        "distance_km": distance_km,
         "photo_required": not is_inside  # Photo required if outside
     }
 
@@ -280,7 +283,7 @@ async def check_in_with_geofence(
         "latitude": latitude,
         "longitude": longitude,
         "geofence_status": geofence_result["status"],
-        "distance_from_location": geofence_result["distance_meters"]
+        "distance_from_location": geofence_result["distance_km"]
     }
     
     if photo_url:
@@ -300,7 +303,7 @@ async def check_in_with_geofence(
     
     logger.info(
         f"Check-in: visit={visit_id}, geofence={geofence_result['status']}, "
-        f"distance={geofence_result['distance_meters']}m, photo={'yes' if photo_url else 'no'}"
+        f"distance={geofence_result['distance_km']}km, photo={'yes' if photo_url else 'no'}"
     )
     
     return {
@@ -308,6 +311,6 @@ async def check_in_with_geofence(
         "visit_id": visit_id,
         "check_in_time": check_in_time,
         "geofence_status": geofence_result["status"],
-        "distance_meters": geofence_result["distance_meters"],
+        "distance_km": geofence_result["distance_km"],
         "photo_uploaded": bool(photo_url)
     }

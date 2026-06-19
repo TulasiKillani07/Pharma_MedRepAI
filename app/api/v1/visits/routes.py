@@ -144,136 +144,50 @@ async def list_visits(
     """
     Get list of visits with filters and visit targets.
     
-    **Access:** 
-    - Admin: Can view all visits (no targets array)
-    - MR: Can view own visits with targets array showing monthly progress
+    Access: 
+    - Admin: Can view ALL visits from ALL MRs
+    - MR: Can view own visits with targets array
+    - Doctor: Can view visits where they are the doctor
     
-    **New Feature - Visit Targets (MR Only):**
-    The response includes a `targets` array that shows visit progress for each assigned doctor in the current month.
-    This helps MRs track their monthly visit requirements.
+    Admin Visibility (Important):
+    Admins can see complete visit details including:
+    - All location types (permanent and temporary)
+    - Check-in GPS coordinates
+    - Captured photos via photo_url in check_in data
+    - Geofence status and distance (in kilometers)
+    - Visit reports and outcomes
     
-    **How Targets Work:**
-    1. System gets MR's assigned doctors from `mrs.assigned_doctors`
-    2. For each doctor, reads their `classification` (A/B/C) from `doctors` collection
-    3. Gets required visits from `sfe_settings.classification_targets[classification]`
-    4. Counts completed visits for that doctor in current month
-    5. Returns progress: completed/required
+    Photo Access:
+    When MR checks in at temporary location or outside geofence, they capture
+    a photo. This photo URL is included in the response in check_in data.
+    Admin can click photo_url to view the captured image from Cloudinary.
     
-    **Target Calculation:**
-    - **Classification**: From doctor's profile (A/B/C)
-    - **Required**: From SFE settings (e.g., A=4, B=3, C=2 visits/month)
-    - **Completed**: Count of visits with status="completed" this month
-    - **Default**: If doctor has no classification, defaults to "C"
+    Distance Display:
+    The distance_from_location field shows how far the MR was from the expected
+    location during check-in, measured in kilometers (km).
     
-    **Usage Examples:**
+    Query Parameters:
+    - status: Filter by visit status
+    - date_from: Start date (YYYY-MM-DD)
+    - date_to: End date (YYYY-MM-DD)  
+    - doctor_id: Filter by doctor
+    - mr_id: Filter by MR (Admin only)
     
-    **MR - Get all visits with targets:**
-    ```
-    GET /api/v1/visits
-    Headers: Authorization: Bearer <mr_token>
-    ```
+    Examples:
+    - Admin view all visits: GET /api/v1/visits
+    - Admin view MR visits: GET /api/v1/visits?mr_id=xxx
+    - MR view own visits: GET /api/v1/visits
+    - Filter by date: GET /api/v1/visits?date_from=2026-05-01&date_to=2026-05-31
     
-    **MR - Filter by status:**
-    ```
-    GET /api/v1/visits?status=scheduled
-    Headers: Authorization: Bearer <mr_token>
-    ```
+    Response Fields:
+    - total: Total number of visits matching filters
+    - visits: Array of visit objects with all details
+    - targets: Array of visit target objects (MR only, shows current month progress)
     
-    **MR - Filter by date range:**
-    ```
-    GET /api/v1/visits?date_from=2026-05-01&date_to=2026-05-31
-    Headers: Authorization: Bearer <mr_token>
-    ```
-    
-    **Admin - View specific MR's visits (no targets):**
-    ```
-    GET /api/v1/visits?mr_id=507f1f77bcf86cd799439013
-    Headers: Authorization: Bearer <admin_token>
-    ```
-    
-    **MR Response Example:**
-    ```json
-    {
-      "total": 10,
-      "visits": [
-        {
-          "id": "507f1f77bcf86cd799439011",
-          "mr_id": "507f1f77bcf86cd799439012",
-          "mr_name": "Rajesh Kumar",
-          "doctor_id": "507f1f77bcf86cd799439013",
-          "doctor_name": "Dr. Sneha Sharma",
-          "scheduled_date": "2026-05-25",
-          "scheduled_time": "10:00",
-          "purpose": "Product presentation",
-          "location": "Apollo Hospital",
-          "status": "completed",
-          "outcome": "Successfully presented new product line",
-          "completed_at": "2026-05-25T10:30:00",
-          "created_at": "2026-05-20T09:00:00",
-          "updated_at": "2026-05-25T10:30:00"
-        }
-      ],
-      "targets": [
-        {
-          "doctor_id": "507f1f77bcf86cd799439013",
-          "doctor_name": "Dr. Sneha Sharma",
-          "classification": "A",
-          "required": 4,
-          "completed": 1
-        },
-        {
-          "doctor_id": "507f1f77bcf86cd799439014",
-          "doctor_name": "Dr. Ashok Patel",
-          "classification": "C",
-          "required": 2,
-          "completed": 0
-        },
-        {
-          "doctor_id": "507f1f77bcf86cd799439015",
-          "doctor_name": "Dr. Priya Reddy",
-          "classification": "B",
-          "required": 3,
-          "completed": 2
-        }
-      ]
-    }
-    ```
-    
-    **Admin Response Example:**
-    ```json
-    {
-      "total": 50,
-      "visits": [...],
-      "targets": []
-    }
-    ```
-    
-    **What Targets Tell You:**
-    - **Dr. Sneha (A)**: Needs 4 visits/month, completed 1 → Progress: 1/4 (25%)
-    - **Dr. Ashok (C)**: Needs 2 visits/month, completed 0 → Progress: 0/2 (0%)
-    - **Dr. Priya (B)**: Needs 3 visits/month, completed 2 → Progress: 2/3 (67%)
-    
-    **Integration with SFE Settings:**
-    - Admin can change visit requirements via `PUT /api/v1/sfe/settings`
-    - Changes immediately reflect in targets array
-    - Example: If admin changes A from 4 to 6, Dr. Sneha's required becomes 6
-    
-    **Query Parameters:**
-    - `status`: Filter by visit status (scheduled, completed, cancelled)
-    - `date_from`: Start date for filtering (YYYY-MM-DD)
-    - `date_to`: End date for filtering (YYYY-MM-DD)
-    - `doctor_id`: Filter visits for specific doctor
-    - `mr_id`: (Admin only) Filter visits for specific MR
-    
-    **Response Fields:**
-    - `total`: Total number of visits matching filters
-    - `visits`: Array of visit objects
-    - `targets`: Array of visit target objects (MR only, always current month)
-    
-    **Notes:**
-    - Targets array is **only populated for MR users**
-    - Targets always show **current month** progress (not affected by date filters)
-    - If doctor has no classification, defaults to "C"
+    Notes:
+    - Targets array is only populated for MR users
+    - Targets always show current month progress (not affected by date filters)
+    - If doctor has no classification, defaults to C
     - If SFE settings not configured, uses defaults (A=2, B=1, C=1)
     """
     # Check if user is admin or MR
@@ -364,9 +278,39 @@ async def get_visit(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Get details of a specific visit.
+    Get details of a specific visit by ID.
     
-    **Access:** Admin (all visits) and MR (own visits only)
+    Access:
+    - Admin: Can view any visit
+    - MR: Can view only own visits
+    
+    Admin Visibility:
+    Admins can see complete visit details including:
+    - All location information (permanent or temporary)
+    - Check-in and check-out GPS coordinates
+    - Captured photos via photo_url in check_in data
+    - Geofence status and distance from location (in kilometers)
+    - Visit reports and outcomes
+    - Complete visit timeline and audit trail
+    
+    Photo Access:
+    If MR captured a photo during check-in (required for temporary locations
+    or when outside geofence), the photo URL will be available in the response:
+    
+    check_in: {
+      timestamp: "2026-06-17T10:05:32Z",
+      latitude: 17.4401,
+      longitude: 78.3489,
+      photo_url: "https://res.cloudinary.com/.../photo.jpg",
+      photo_captured_at: "2026-06-17T10:05:32Z",
+      geofence_status: "outside",
+      distance_from_location: 0.15  (in kilometers)
+    }
+    
+    Usage:
+    GET /api/v1/visits/{visit_id}
+    
+    Response includes full visit data with check-in, check-out, and report details.
     """
     # Check if user is admin or MR
     user_role = current_user.get("role")
@@ -585,7 +529,7 @@ async def check_in_visit_endpoint(
         "visit_id": "...",
         "check_in_time": "2026-06-17T10:05:32Z",
         "geofence_status": "outside",
-        "distance_meters": 145.5,
+        "distance_km": 0.15,
         "photo_uploaded": true
     }
     ```
@@ -637,9 +581,15 @@ async def check_out_visit_endpoint(
     **What Happens:**
     - Visit status changes: checked_in → checked_out
     - GPS coordinates and timestamp saved
+    - **Distance calculated from actual visit location (permanent or temporary)**
+    - Geofence status determined (inside/outside)
     - Duration calculated from check-in to check-out
     - Visit now requires report submission
     - You can check in to another visit now
+    
+    **Distance Calculation:**
+    System calculates how far the MR is from the actual visit location during check-out.
+    This helps track if MR stayed at the location or moved away.
     
     **Usage:**
     ```
@@ -656,7 +606,9 @@ async def check_out_visit_endpoint(
     {
         "message": "Checked out successfully",
         "visit_id": "507f1f77bcf86cd799439011",
-        "duration_minutes": 28
+        "duration_minutes": 28,
+        "distance_km": 0.05,
+        "geofence_status": "inside"
     }
     ```
     
