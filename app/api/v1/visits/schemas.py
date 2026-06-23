@@ -73,7 +73,7 @@ class VisitRescheduleRequest(BaseModel):
 
 
 class RxCommitmentRequest(BaseModel):
-    """Prescription commitment data"""
+    """Prescription commitment data - DEPRECATED: Use SFE RCPA endpoints instead"""
     product_id: str = Field(..., description="Product/Drug ID")
     rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
     confidence: str = Field(default="medium", description="Confidence level: high/medium/low")
@@ -91,7 +91,6 @@ class VisitCompleteRequest(BaseModel):
     doctor_mood: Optional[str] = Field(None, description="Doctor's receptiveness: positive/neutral/negative")
     competitor_info: Optional[str] = Field(None, max_length=500, description="Competitor information")
     followup_date: Optional[date] = Field(None, description="Next follow-up date (YYYY-MM-DD)")
-    rx_commitment: Optional[RxCommitmentRequest] = Field(None, description="Prescription commitment")
     gps_lat: Optional[float] = Field(None, ge=-90, le=90, description="GPS latitude")
     gps_lng: Optional[float] = Field(None, ge=-180, le=180, description="GPS longitude")
     
@@ -183,8 +182,6 @@ class VisitReportResponse(BaseModel):
     products_discussed: Optional[List[Any]] = None
     samples_given: Optional[int] = None
     outcome: Optional[str] = None
-    rx_commitment: Optional[bool] = None
-    expected_rx_per_month: Optional[int] = None
     competitor_info: Optional[str] = None
     follow_up_date: Optional[Any] = None
     notes: Optional[str] = None
@@ -414,8 +411,6 @@ class VisitReportRequest(BaseModel):
     products_discussed: List[str] = Field(..., description="List of product/drug IDs discussed")
     samples_given: int = Field(..., ge=0, le=1000, description="Number of samples distributed")
     outcome: str = Field(..., min_length=10, description="Visit outcome summary")
-    rx_commitment: Optional[bool] = Field(None, description="Did doctor commit to prescribing?")
-    expected_rx_per_month: Optional[int] = Field(None, ge=0, le=10000, description="Expected prescriptions per month")
     competitor_info: Optional[str] = Field(None, max_length=500, description="Competitor information")
     follow_up_date: Optional[date] = Field(None, description="Next follow-up date")
     notes: Optional[str] = Field(None, max_length=1000, description="Additional notes")
@@ -457,8 +452,6 @@ class VisitReportRequest(BaseModel):
                 "products_discussed": ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"],
                 "samples_given": 3,
                 "outcome": "Positive — Doctor interested in Amlodipine 5mg. Discussed clinical trial data.",
-                "rx_commitment": True,
-                "expected_rx_per_month": 10,
                 "competitor_info": "Cipla — Amlokind 5mg",
                 "follow_up_date": "2026-06-01",
                 "notes": "Doctor wants clinical trial data"
@@ -541,7 +534,7 @@ class ActiveVisitData(BaseModel):
     doctor_id: str
     doctor_name: str
     check_in_time: datetime
-    location: str
+    location: str | dict  # Supports both old format (string) and new format (dict)
     duration_so_far_minutes: int
     
     class Config:
@@ -551,7 +544,11 @@ class ActiveVisitData(BaseModel):
                 "doctor_id": "507f1f77bcf86cd799439013",
                 "doctor_name": "Dr. Sneha",
                 "check_in_time": "2026-05-25T10:05:32",
-                "location": "Apollo Hospital",
+                "location": {
+                    "type": "permanent",
+                    "location_id": "loc_123",
+                    "location_name": "Apollo Hospital"
+                },
                 "duration_so_far_minutes": 15
             }
         }

@@ -459,6 +459,78 @@ async def get_visit_by_id(visit_id: str, current_user: Dict[str, Any]) -> Dict[s
     # Recursively convert any ObjectIds in nested fields to strings
     visit = convert_objectids_to_strings(visit)
     
+    # Resolve product names from report
+    report = visit.get("report")
+    if report and report.get("products_discussed"):
+        # Collect all product IDs
+        product_ids = set()
+        for pid in report["products_discussed"]:
+            pid_str = str(pid) if not isinstance(pid, str) else pid
+            if ObjectId.is_valid(pid_str):
+                product_ids.add(pid_str)
+        
+        # Fetch all products in one query
+        drug_map = {}
+        if product_ids:
+            product_object_ids = [ObjectId(pid) for pid in product_ids]
+            products = await company_db.drugs.find({"_id": {"$in": product_object_ids}}).to_list(length=None)
+            for product in products:
+                pid = str(product["_id"])
+                drug_name = product.get("drug_name", "")
+                if not drug_name and product.get("field_values"):
+                    for field in product["field_values"]:
+                        if field.get("key") == "drug_name":
+                            drug_name = field.get("value", "Unknown Drug")
+                            break
+                        elif field.get("key") in ["name", "product_name", "brand_name"]:
+                            drug_name = field.get("value", "Unknown Drug")
+                            break
+                drug_map[pid] = drug_name or "Unknown Drug"
+        
+        # Replace product IDs with {id, name} objects
+        resolved_products = []
+        for pid in report["products_discussed"]:
+            pid_str = str(pid) if not isinstance(pid, str) else pid
+            resolved_products.append({
+                "id": pid_str,
+                "name": drug_map.get(pid_str, "Unknown Drug")
+            })
+        report["products_discussed"] = resolved_products
+    
+    # Also resolve legacy products_promoted field if exists
+    if visit.get("products_promoted"):
+        product_ids = set()
+        for pid in visit["products_promoted"]:
+            pid_str = str(pid) if not isinstance(pid, str) else pid
+            if ObjectId.is_valid(pid_str):
+                product_ids.add(pid_str)
+        
+        drug_map = {}
+        if product_ids:
+            product_object_ids = [ObjectId(pid) for pid in product_ids]
+            products = await company_db.drugs.find({"_id": {"$in": product_object_ids}}).to_list(length=None)
+            for product in products:
+                pid = str(product["_id"])
+                drug_name = product.get("drug_name", "")
+                if not drug_name and product.get("field_values"):
+                    for field in product["field_values"]:
+                        if field.get("key") == "drug_name":
+                            drug_name = field.get("value", "Unknown Drug")
+                            break
+                        elif field.get("key") in ["name", "product_name", "brand_name"]:
+                            drug_name = field.get("value", "Unknown Drug")
+                            break
+                drug_map[pid] = drug_name or "Unknown Drug"
+        
+        resolved_products = []
+        for pid in visit["products_promoted"]:
+            pid_str = str(pid) if not isinstance(pid, str) else pid
+            resolved_products.append({
+                "id": pid_str,
+                "name": drug_map.get(pid_str, "Unknown Drug")
+            })
+        visit["products_promoted"] = resolved_products
+    
     return visit
 
 
@@ -580,7 +652,6 @@ async def complete_visit(
     doctor_mood: Optional[str] = None,
     competitor_info: Optional[str] = None,
     followup_date: Optional[date] = None,
-    rx_commitment: Optional[Dict[str, Any]] = None,
     gps_lat: Optional[float] = None,
     gps_lng: Optional[float] = None
 ) -> Dict[str, str]:
@@ -598,7 +669,6 @@ async def complete_visit(
         doctor_mood: Doctor's receptiveness (positive/neutral/negative)
         competitor_info: Competitor information
         followup_date: Next follow-up date
-        rx_commitment: Prescription commitment data
         gps_lat: GPS latitude
         gps_lng: GPS longitude
     
@@ -695,34 +765,6 @@ async def complete_visit(
         
         await company_db.visits.insert_one(followup_doc)
     
-    # Handle prescription commitment
-    if rx_commitment:
-        from app.models.sfe_models import PrescriptionCommitment, CommitmentConfidence
-        
-        # Get product details
-        product = await company_db.drugs.find_one({"_id": ObjectId(rx_commitment["product_id"])})
-        
-        if product:
-            # Get MR details for territory info
-            mr = await company_db.mrs.find_one({"_id": ObjectId(user_id)})
-            
-            commitment = PrescriptionCommitment(
-                mr_id=user_id,
-                mr_name=visit["mr_name"],
-                doctor_id=visit["doctor_id"],
-                doctor_name=visit["doctor_name"],
-                product_id=rx_commitment["product_id"],
-                product_name=product["name"],
-                rx_per_month=rx_commitment["rx_per_month"],
-                confidence=CommitmentConfidence(rx_commitment.get("confidence", "medium")),
-                visit_id=visit_id,
-                territory=mr.get("territory") if mr else None,
-                zone=mr.get("zone") if mr else None,
-                state=mr.get("state") if mr else None
-            )
-            
-            await company_db.prescription_commitments.insert_one(commitment.model_dump())
-    
     # Send notification to MR (self-notification for confirmation)
     await notify_visit_completed(
         mr_id=user_id,
@@ -744,8 +786,6 @@ async def complete_visit(
         activity_details["products_promoted_count"] = len(products_promoted)
     if samples_given:
         activity_details["samples_given"] = samples_given
-    if rx_commitment:
-        activity_details["rx_commitment"] = True
     
     await log_activity(
         action_type=ActivityLogAction.VISIT_COMPLETED,

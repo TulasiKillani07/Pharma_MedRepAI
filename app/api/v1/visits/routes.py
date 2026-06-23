@@ -388,7 +388,6 @@ async def complete_visit_endpoint(
     - doctor_mood: Doctor's receptiveness (positive/neutral/negative)
     - competitor_info: Competitor information observed
     - followup_date: Next follow-up date (auto-creates next visit)
-    - rx_commitment: Prescription commitment (product_id, rx_per_month, confidence)
     - gps_lat, gps_lng: GPS coordinates for location proof
     
     **Usage:**
@@ -402,11 +401,7 @@ async def complete_visit_endpoint(
         "samples_given": 10,
         "doctor_mood": "positive",
         "followup_date": "2026-06-15",
-        "rx_commitment": {
-            "product_id": "prod_id_1",
-            "rx_per_month": 15,
-            "confidence": "high"
-        },
+        "competitor_info": "Cipla competitor mentioned",
         "gps_lat": 17.3850,
         "gps_lng": 78.4867
     }
@@ -431,7 +426,6 @@ async def complete_visit_endpoint(
         doctor_mood=complete_request.doctor_mood,
         competitor_info=complete_request.competitor_info,
         followup_date=complete_request.followup_date,
-        rx_commitment=complete_request.rx_commitment.model_dump() if complete_request.rx_commitment else None,
         gps_lat=complete_request.gps_lat,
         gps_lng=complete_request.gps_lng
     )
@@ -667,8 +661,6 @@ async def submit_report_endpoint(
     - outcome: String (min 10 chars)
     
     **Optional Fields:**
-    - rx_commitment: Boolean
-    - expected_rx_per_month: Number
     - competitor_info: String
     - follow_up_date: Date (YYYY-MM-DD)
     - notes: String
@@ -682,8 +674,6 @@ async def submit_report_endpoint(
         "products_discussed": ["507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012"],
         "samples_given": 3,
         "outcome": "Positive — Doctor interested in Amlodipine 5mg. Discussed clinical trial data.",
-        "rx_commitment": true,
-        "expected_rx_per_month": 10,
         "competitor_info": "Cipla — Amlokind 5mg",
         "follow_up_date": "2026-06-01",
         "notes": "Doctor wants clinical trial data"
