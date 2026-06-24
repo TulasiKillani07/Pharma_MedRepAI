@@ -18,6 +18,8 @@ from app.config import settings
 from app.api.v1.activity_logs.helpers import log_activity
 from app.api.v1.email.service import send_invitation_email, send_bulk_upload_summary_email
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.models.doctor_model import DoctorInDB
+from app.models.doctor_request_model import DoctorRequestInDB, RequestStatus
 
 
 def get_company_database():
@@ -91,35 +93,37 @@ async def create_doctor(
     admin_name = current_user.get("full_name", "Admin")
     admin_department = current_user.get("department", "general")
     
-    # Create doctor document
-    doctor_doc = {
-        "name": name,
-        "email": email,
-        "password_hash": password_hash,
-        "phone": phone,
-        "specialization": specialization,
-        "classification": classification,
-        "hospital": hospital,
-        "license_number": license_number,
-        "address": address,
-        "is_active": True,
-        "is_password_changed": False,  # User must change password on first login
-        "password_changed_at": None,
-        "first_login_completed": False,  # Track first login
-        "first_login_at": None,
-        "added_by": {
+    # RULE 1: INSERT with Pydantic Model
+    doctor = DoctorInDB(
+        name=name,
+        email=email,
+        password_hash=password_hash,
+        phone=phone,
+        specialization=specialization,
+        classification=classification,
+        hospital=hospital,
+        license_number=license_number,
+        address=address,
+        is_active=True,
+        is_password_changed=False,
+        password_changed_at=None,
+        first_login_completed=False,
+        first_login_at=None,
+        added_by={
             "role": "ADMIN",
             "id": current_user["_id"],
             "name": admin_name,
             "department": admin_department
         },
-        "approved_by": None,  # Admin added directly, no approval needed
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+        approved_by=None,
+        locations=[],
+        location_suggestions=[],
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
     
     # Insert into database
-    result = await company_db.doctors.insert_one(doctor_doc)
+    result = await company_db.doctors.insert_one(doctor.model_dump())
     
     # Log activity
     await log_activity(
@@ -690,34 +694,37 @@ async def bulk_upload_doctors(
             admin_name = current_user.get("full_name", "Admin")
             admin_department = current_user.get("department", "general")
             
-            doctor_doc = {
-                "name": name,
-                "email": email,
-                "password_hash": password_hash,
-                "phone": phone,
-                "specialization": specialization,
-                "classification": classification,
-                "hospital": hospital if hospital else None,
-                "license_number": license_number if license_number else None,
-                "address": address if address else None,
-                "is_active": True,
-                "is_password_changed": False,  # User must change password on first login
-                "password_changed_at": None,
-                "first_login_completed": False,  # Track first login
-                "first_login_at": None,
-                "added_by": {
+            # RULE 1: INSERT with Pydantic Model
+            doctor = DoctorInDB(
+                name=name,
+                email=email,
+                password_hash=password_hash,
+                phone=phone,
+                specialization=specialization,
+                classification=classification,
+                hospital=hospital if hospital else None,
+                license_number=license_number if license_number else None,
+                address=address if address else None,
+                is_active=True,
+                is_password_changed=False,
+                password_changed_at=None,
+                first_login_completed=False,
+                first_login_at=None,
+                added_by={
                     "role": "ADMIN",
                     "id": current_user["_id"],
                     "name": admin_name,
                     "department": admin_department
                 },
-                "approved_by": None,  # Bulk upload by admin, no approval needed
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
+                approved_by=None,
+                locations=[],
+                location_suggestions=[],
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
             
             # Insert into database
-            result = await company_db.doctors.insert_one(doctor_doc)
+            result = await company_db.doctors.insert_one(doctor.model_dump())
             successful += 1
             
             # Send invitation email
@@ -867,31 +874,31 @@ async def create_doctor_request(
             detail="A pending request for this doctor already exists. Please wait for admin approval."
         )
     
-    # Create doctor request document
-    request_doc = {
-        "requested_by": current_user["_id"],
-        "requested_by_name": current_user["name"],
-        "requested_by_email": current_user["email"],
-        "status": "pending",
-        "name": name,
-        "email": email,
-        "phone": phone,
-        "specialization": specialization,
-        "classification": classification,
-        "hospital": hospital,
-        "license_number": license_number,
-        "address": address,
-        "reviewed_by": None,
-        "reviewed_by_name": None,
-        "reviewed_at": None,
-        "rejection_reason": None,
-        "doctor_id": None,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # Create doctor request document (RULE 1: INSERT with Pydantic Model)
+    request = DoctorRequestInDB(
+        requested_by=current_user["_id"],
+        requested_by_name=current_user["name"],
+        requested_by_email=current_user["email"],
+        status=RequestStatus.PENDING,
+        name=name,
+        email=email,
+        phone=phone,
+        specialization=specialization,
+        classification=classification,
+        hospital=hospital,
+        license_number=license_number,
+        address=address,
+        reviewed_by=None,
+        reviewed_by_name=None,
+        reviewed_at=None,
+        rejection_reason=None,
+        doctor_id=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
     
     # Insert into database
-    result = await company_db.doctor_requests.insert_one(request_doc)
+    result = await company_db.doctor_requests.insert_one(request.model_dump())
     request_id = str(result.inserted_id)
     
     # Get all admin users to send notifications
@@ -1072,39 +1079,41 @@ async def approve_doctor_request(
     admin_name = current_user.get("full_name", "Admin")
     admin_department = current_user.get("department", "general")
     
-    # Create doctor document
-    doctor_doc = {
-        "name": request["name"],
-        "email": request["email"],
-        "password_hash": password_hash,
-        "phone": request["phone"],
-        "specialization": request["specialization"],
-        "classification": request.get("classification", "C"),  # Default to C if not provided (for backward compatibility)
-        "hospital": request.get("hospital"),
-        "license_number": request.get("license_number"),
-        "address": request.get("address"),
-        "is_active": True,
-        "is_password_changed": False,
-        "password_changed_at": None,
-        "first_login_completed": False,
-        "first_login_at": None,
-        "added_by": {
+    # RULE 1: INSERT with Pydantic Model
+    doctor = DoctorInDB(
+        name=request["name"],
+        email=request["email"],
+        password_hash=password_hash,
+        phone=request["phone"],
+        specialization=request["specialization"],
+        classification=request.get("classification", "C"),
+        hospital=request.get("hospital"),
+        license_number=request.get("license_number"),
+        address=request.get("address"),
+        is_active=True,
+        is_password_changed=False,
+        password_changed_at=None,
+        first_login_completed=False,
+        first_login_at=None,
+        added_by={
             "role": "MR",
             "id": request["requested_by"],
             "name": request["requested_by_name"]
         },
-        "approved_by": {
+        approved_by={
             "role": "ADMIN",
             "id": current_user["_id"],
             "name": admin_name,
             "department": admin_department
         },
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+        locations=[],
+        location_suggestions=[],
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
     
     # Insert doctor into database
-    doctor_result = await company_db.doctors.insert_one(doctor_doc)
+    doctor_result = await company_db.doctors.insert_one(doctor.model_dump())
     doctor_id = str(doctor_result.inserted_id)
     
     logger.info(f"Doctor created from approved request - Doctor ID: {doctor_id}, Email: {request['email']}, Requested by: {request['requested_by_name']}")

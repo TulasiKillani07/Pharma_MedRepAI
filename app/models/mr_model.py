@@ -10,7 +10,7 @@ from datetime import datetime
 class MRBase(BaseModel):
     """Base schema for MR with common fields"""
     email: EmailStr
-    full_name: str
+    name: str  # Changed from full_name to match DB structure
     phone: str
     zone: str  # Geographic zone (e.g., South, North, East, West)
     state: str  # State (e.g., Telangana, Karnataka, Maharashtra)

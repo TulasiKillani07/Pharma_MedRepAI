@@ -37,6 +37,7 @@ class DoctorRequestInDB(BaseModel):
     email: EmailStr = Field(..., description="Doctor's email address")
     phone: str = Field(..., description="Doctor's phone number")
     specialization: str = Field(..., min_length=2, max_length=100, description="Medical specialization")
+    classification: Literal["A", "B", "C"] = Field(..., description="Doctor classification for SFE tracking")
     hospital: Optional[str] = Field(None, max_length=200, description="Hospital name")
     license_number: Optional[str] = Field(None, max_length=50, description="Medical license number")
     address: Optional[str] = Field(None, max_length=500, description="Full address")

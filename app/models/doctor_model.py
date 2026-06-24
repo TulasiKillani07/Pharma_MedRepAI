@@ -55,9 +55,10 @@ class LocationSuggestion(BaseModel):
 class DoctorBase(BaseModel):
     """Base schema for Doctor with common fields"""
     email: EmailStr
-    full_name: str
+    name: str  # Changed from full_name to match DB structure
     phone: str
     specialization: str
+    classification: str  # Doctor classification (A/B/C) for SFE tracking
     hospital: Optional[str] = None
     license_number: Optional[str] = None
     address: Optional[str] = None
@@ -72,7 +73,11 @@ class DoctorInDB(DoctorBase):
     first_login_completed: bool = False  # Track if user has logged in at least once
     first_login_at: Optional[datetime] = None  # When user first logged in
     
-    # Location management (NEW)
+    # Added by/Approved by tracking
+    added_by: Optional[dict] = None  # {"role": str, "id": str, "name": str, "department": str}
+    approved_by: Optional[dict] = None  # {"role": str, "id": str, "name": str, "department": str}
+    
+    # Location management
     locations: List[DoctorLocation] = Field(default_factory=list, description="Doctor's permanent locations")
     location_suggestions: List[LocationSuggestion] = Field(default_factory=list, description="Pending location suggestions")
     

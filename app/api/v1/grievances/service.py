@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import HTTPException, status
 from app.database import get_database
-from app.models.grievance_model import GrievanceStatus, GrievancePriority
+from app.models.grievance_model import GrievanceStatus, GrievancePriority, GrievanceInDB
 from bson import ObjectId
 from app.utils.logger import get_medrep_logger
 
@@ -83,30 +83,30 @@ async def create_grievance(
     # Generate ticket ID
     ticket_id = await generate_ticket_id(department.lower())
     
-    # Create grievance document
-    grievance_doc = {
-        "ticket_id": ticket_id,
-        "department": department.lower(),
-        "subject": subject,
-        "description": description,
-        "priority": priority.value,
-        "status": GrievanceStatus.OPEN.value,
-        "created_by": current_user["_id"],
-        "created_by_name": current_user.get("name", "Unknown"),
-        "created_by_email": current_user.get("email", ""),
-        "mr_territory": current_user.get("territory"),
-        "mr_state": current_user.get("state"),
-        "admin_response": None,
-        "responded_by": None,
-        "responded_by_name": None,
-        "responded_at": None,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-        "resolved_at": None,
-        "is_active": True
-    }
+    # RULE 1: INSERT with Pydantic Model
+    grievance = GrievanceInDB(
+        ticket_id=ticket_id,
+        department=department.lower(),
+        subject=subject,
+        description=description,
+        priority=priority,
+        status=GrievanceStatus.OPEN,
+        created_by=current_user["_id"],
+        created_by_name=current_user.get("name", "Unknown"),
+        created_by_email=current_user.get("email", ""),
+        mr_territory=current_user.get("territory"),
+        mr_state=current_user.get("state"),
+        admin_response=None,
+        responded_by=None,
+        responded_by_name=None,
+        responded_at=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        resolved_at=None,
+        is_active=True
+    )
     
-    await db.grievances.insert_one(grievance_doc)
+    await db.grievances.insert_one(grievance.model_dump())
     
     logger.info(f"Grievance created: {ticket_id} by MR {current_user['_id']}")
     
@@ -421,7 +421,7 @@ async def respond_to_grievance(
     # Prepare update
     update_data = {
         "admin_response": admin_response,
-        "status": new_status.value,
+        "status": new_status,  # RULE 2: Use Enum directly in UPDATE
         "responded_by": current_user["_id"],
         "responded_by_name": current_user.get("name", "Admin"),
         "responded_at": datetime.utcnow(),

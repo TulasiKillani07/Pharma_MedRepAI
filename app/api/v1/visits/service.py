@@ -713,7 +713,7 @@ async def complete_visit(
     
     # Prepare update data
     update_data = {
-        "status": "completed",
+        "status": VisitStatus.COMPLETED,
         "outcome": outcome,
         "feedback": feedback,
         "completed_at": datetime.utcnow(),
@@ -860,7 +860,7 @@ async def cancel_visit(
         {"_id": ObjectId(visit_id)},
         {
             "$set": {
-                "status": "cancelled",
+                "status": VisitStatus.CANCELLED,
                 "cancel_reason": reason,
                 "cancelled_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
@@ -995,7 +995,7 @@ async def check_in_visit(
         {"_id": ObjectId(visit_id)},
         {
             "$set": {
-                "status": "checked_in",
+                "status": VisitStatus.CHECKED_IN,
                 "check_in": {
                     "timestamp": check_in_time,
                     "latitude": latitude,
@@ -1142,7 +1142,7 @@ async def check_out_visit(
         {"_id": ObjectId(visit_id)},
         {
             "$set": {
-                "status": "checked_out",
+                "status": VisitStatus.CHECKED_OUT,
                 "check_out": check_out_data,
                 "duration_minutes": duration_minutes,
                 "updated_at": datetime.utcnow()
@@ -1279,7 +1279,7 @@ async def submit_visit_report(
         {"_id": ObjectId(visit_id)},
         {
             "$set": {
-                "status": "completed",  # NOW IT COUNTS TOWARD TARGET!
+                "status": VisitStatus.COMPLETED,  # NOW IT COUNTS TOWARD TARGET!
                 "report": report_data,
                 "completed_at": completed_at,
                 "updated_at": datetime.utcnow()
@@ -1482,7 +1482,7 @@ async def cancel_check_in(
         {"_id": ObjectId(visit_id)},
         {
             "$set": {
-                "status": "scheduled",  # Back to scheduled!
+                "status": VisitStatus.SCHEDULED,  # Back to scheduled!
                 "check_in_cancelled": cancellation_data,
                 "updated_at": datetime.utcnow()
             },

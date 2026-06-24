@@ -97,7 +97,7 @@ def normalize_field_values(field_values: List[Any], template_fields: Dict[str, A
 
 
 def get_default_fixed_fields() -> List[Dict[str, Any]]:
-    """Returns the 15 default fixed fields for drug template (12 drug fields + 3 brochure fields)"""
+    """Returns the 17 default fixed fields for drug template (14 drug fields + 3 brochure fields)"""
     return [
         {
             "field_id": str(uuid.uuid4()),
@@ -231,6 +231,29 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "options": None,
             "is_active": True
         },
+        # Pricing fields
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "price",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 13,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "discount",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 14,
+            "options": None,
+            "is_active": True
+        },
         # Brochure fields (optional, auto-filled by upload endpoint)
         {
             "field_id": str(uuid.uuid4()),
@@ -239,7 +262,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 13,
+            "order": 15,
             "options": None,
             "is_active": True
         },
@@ -250,7 +273,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": False,  # Hidden - internal use only
-            "order": 14,
+            "order": 16,
             "options": None,
             "is_active": True
         },
@@ -261,7 +284,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 15,
+            "order": 17,
             "options": None,
             "is_active": True
         }
@@ -562,17 +585,21 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
     # Normalize field values (coerce array fields to lists)
     normalized_field_values = normalize_field_values(drug_data.field_values, template_fields)
     
-    # Build flat top-level fields + search_text for fast querying
-    flat_fields = build_flat_fields(normalized_field_values)
+    # Create drug using DrugInDB model
+    drug = DrugInDB(
+        template_id=template_id,
+        field_values=normalized_field_values,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        is_active=True
+    )
     
-    drug_doc = {
-        "template_id": template_id,
-        "field_values": normalized_field_values,
-        **flat_fields,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-        "is_active": True
-    }
+    # Convert to dict and add flat fields for DB optimization
+    drug_doc = drug.model_dump()
+    
+    # Build flat top-level fields + search_text for fast querying (DB optimization)
+    flat_fields = build_flat_fields(normalized_field_values)
+    drug_doc.update(flat_fields)  # Add flat fields for fast querying
     
     result = await db["drugs"].insert_one(drug_doc)
     drug_doc["_id"] = str(result.inserted_id)
@@ -1281,7 +1308,8 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     # Define fixed field keys
     fixed_fields = [
         "drug_name", "brand_name", "drug_class", "manufacturer", "symptoms", "indications",
-        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url"
+        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url",
+        "price", "discount"  # Added pricing fields
     ]
     
     # Validate required columns (only drug_name and symptoms are truly required)
@@ -1305,15 +1333,15 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     template = await db["drug_field_templates"].find_one({"is_active": True})
     
     if not template:
-        # Create template with fixed fields
-        template_doc = {
-            "template_name": "Default Drug Template",
-            "fields": get_default_fixed_fields(),
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "is_active": True
-        }
-        result = await db["drug_field_templates"].insert_one(template_doc)
+        # Create template using DrugFieldTemplateInDB model
+        template_obj = DrugFieldTemplateInDB(
+            template_name="Default Drug Template",
+            fields=get_default_fixed_fields(),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            is_active=True
+        )
+        result = await db["drug_field_templates"].insert_one(template_obj.model_dump())
         template = await db["drug_field_templates"].find_one({"_id": result.inserted_id})
     
     template_id = str(template["_id"])
@@ -1465,15 +1493,24 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
         
         # Create drug document
         try:
+            # Create drug using DrugInDB model
+            from app.models.drug_model import DrugFieldValue
+            field_values_models = [DrugFieldValue(**fv) for fv in field_values]
+            
+            drug = DrugInDB(
+                template_id=template_id,
+                field_values=field_values_models,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+                is_active=True
+            )
+            
+            # Convert to dict and add flat fields for DB optimization
+            drug_doc = drug.model_dump()
+            
+            # Build flat fields for fast querying (DB optimization)
             flat_fields = build_flat_fields(field_values)
-            drug_doc = {
-                "template_id": template_id,
-                "field_values": field_values,
-                **flat_fields,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "is_active": True
-            }
+            drug_doc.update(flat_fields)  # Add flat fields for fast querying
             
             await db["drugs"].insert_one(drug_doc)
             successful += 1

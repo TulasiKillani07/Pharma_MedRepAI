@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 from fastapi import HTTPException, status
 from app.database import get_database
 from app.utils.logger import get_medrep_logger
+from app.models.department_model import DepartmentInDB
 
 logger = get_medrep_logger(__name__)
 
@@ -68,18 +69,18 @@ async def create_department(
             detail=f"Department with code '{code}' already exists"
         )
     
-    # Create department document
-    dept_doc = {
-        "code": code.lower(),
-        "name": name,
-        "description": description,
-        "is_active": True,
-        "order": order,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # RULE 1: INSERT with Pydantic Model
+    department = DepartmentInDB(
+        code=code.lower(),
+        name=name,
+        description=description,
+        is_active=True,
+        order=order,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
     
-    await db.departments.insert_one(dept_doc)
+    await db.departments.insert_one(department.model_dump())
     
     logger.info(f"Department created: {code}")
     

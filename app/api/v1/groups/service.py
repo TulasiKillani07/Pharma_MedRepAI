@@ -9,6 +9,7 @@ from app.database import get_database
 from fastapi import HTTPException
 from app.api.v1.notifications.helpers import notify_group_message, notify_group_added
 from app.models.group_model import GroupInDB
+from app.models.message_model import MessageInDB, MessageType
 
 
 async def get_user_details(user_id: str) -> Dict[str, Any]:
@@ -745,18 +746,23 @@ async def send_group_message(
     if user_id not in group["members"]:
         raise HTTPException(status_code=403, detail="You are not a member of this group")
     
-    # Create message
-    message_doc = {
-        "conversation_id": group_id,
-        "conversation_type": "group",
-        "sender_id": user_id,
-        "sender_name": current_user.get("name", ""),
-        "sender_role": current_user.get("role", ""),
-        "content": content,
-        "message_type": "text",
-        "read_by": [user_id],
-        "created_at": datetime.utcnow()
-    }
+    # Create message (RULE 1: INSERT with Pydantic Model)
+    message = MessageInDB(
+        conversation_id=group_id,
+        sender_id=user_id,
+        sender_name=current_user.get("name", ""),
+        sender_role=current_user.get("role", ""),
+        content=content,
+        message_type=MessageType.TEXT,
+        is_read=False,
+        read_at=None,
+        created_at=datetime.utcnow()
+    )
+    
+    # Add DB-specific fields for group messages
+    message_doc = message.model_dump()
+    message_doc["conversation_type"] = "group"
+    message_doc["read_by"] = [user_id]
     
     result = await db["messages"].insert_one(message_doc)
     

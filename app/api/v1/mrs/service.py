@@ -19,6 +19,7 @@ from app.api.v1.activity_logs.helpers import log_activity
 from app.api.v1.email.service import send_invitation_email, send_bulk_upload_summary_email
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 from app.utils.logger import get_medrep_logger
+from app.models.mr_model import MRInDB
 
 # Initialize logger
 logger = get_medrep_logger(__name__)
@@ -114,28 +115,28 @@ async def create_mr(
     # Hash password
     password_hash = hash_password(password)
     
-    # Create MR document
-    mr_doc = {
-        "name": name,
-        "email": email,
-        "password_hash": password_hash,
-        "phone": phone,
-        "zone": zone,  # NEW: Geographic zone
-        "state": state,  # NEW: State
-        "territory": territory,
-        "assigned_doctors": assigned_doctors or [],
-        "assigned_drugs": assigned_drugs or [],
-        "is_active": True,
-        "is_password_changed": False,  # User must change password on first login
-        "password_changed_at": None,
-        "first_login_completed": False,  # Track first login
-        "first_login_at": None,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # RULE 1: INSERT with Pydantic Model
+    mr = MRInDB(
+        name=name,
+        email=email,
+        password_hash=password_hash,
+        phone=phone,
+        zone=zone,
+        state=state,
+        territory=territory,
+        assigned_doctors=assigned_doctors or [],
+        assigned_drugs=assigned_drugs or [],
+        is_active=True,
+        is_password_changed=False,
+        password_changed_at=None,
+        first_login_completed=False,
+        first_login_at=None,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
     
     # Insert into database
-    result = await company_db.mrs.insert_one(mr_doc)
+    result = await company_db.mrs.insert_one(mr.model_dump())
     
     # Log activity
     await log_activity(
@@ -768,27 +769,28 @@ async def bulk_upload_mrs(
             random_password = generate_random_password()
             password_hash = hash_password(random_password)
             
-            mr_doc = {
-                "name": name,
-                "email": email,
-                "password_hash": password_hash,
-                "phone": phone,
-                "zone": zone,
-                "state": state,
-                "territory": territory,
-                "assigned_doctors": [],  # Empty on bulk upload
-                "assigned_drugs": [],  # Empty on bulk upload
-                "is_active": True,
-                "is_password_changed": False,  # User must change password on first login
-                "password_changed_at": None,
-                "first_login_completed": False,  # Track first login
-                "first_login_at": None,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
+            # RULE 1: INSERT with Pydantic Model
+            mr = MRInDB(
+                name=name,
+                email=email,
+                password_hash=password_hash,
+                phone=phone,
+                zone=zone,
+                state=state,
+                territory=territory,
+                assigned_doctors=[],
+                assigned_drugs=[],
+                is_active=True,
+                is_password_changed=False,
+                password_changed_at=None,
+                first_login_completed=False,
+                first_login_at=None,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
             
             # Insert into database
-            result = await company_db.mrs.insert_one(mr_doc)
+            result = await company_db.mrs.insert_one(mr.model_dump())
             successful += 1
             
             # Send invitation email

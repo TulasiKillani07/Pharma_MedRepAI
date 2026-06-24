@@ -77,19 +77,23 @@ async def create_department_admin(
     # Hash password
     password_hash = hash_password(password)
     
-    # Create admin document
-    admin_doc = {
-        "email": email,
-        "password_hash": password_hash,
-        "full_name": full_name,
-        "phone": phone,
-        "department": department.lower(),
-        "role": "ADMIN",
-        "is_active": True,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-        "created_by": current_user["_id"]  # Track who created this admin
-    }
+    # Create admin using AdminInDB model
+    from app.models.admin_model import AdminInDB
+    admin = AdminInDB(
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        phone=phone,
+        department=department.lower(),
+        role="ADMIN",
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    # Convert to dict and add DB-specific field
+    admin_doc = admin.model_dump()
+    admin_doc["created_by"] = current_user["_id"]  # DB-specific field: track who created this admin
     
     # Insert admin into database
     result = await db.company_admins.insert_one(admin_doc)

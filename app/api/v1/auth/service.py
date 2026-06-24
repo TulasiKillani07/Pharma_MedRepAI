@@ -13,6 +13,8 @@ from bson import ObjectId
 from typing import Optional
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.models.admin_model import AdminInDB
+from app.models.password_reset_model import PasswordResetToken
 
 # Initialize logger
 logger = get_medrep_logger(__name__)
@@ -199,21 +201,21 @@ async def register_admin(email: str, password: str, full_name: str, phone: str, 
     # Hash password
     password_hash = hash_password(password)
     
-    # Create admin document (NO company_name here - it's in separate collection)
-    admin_doc = {
-        "email": email,
-        "password_hash": password_hash,
-        "full_name": full_name,
-        "phone": phone,
-        "department": "general",  # Default to general department
-        "role": "ADMIN",  # Explicitly set role
-        "is_active": True,
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
-    }
+    # Create admin document (RULE 1: INSERT with Pydantic Model)
+    admin = AdminInDB(
+        email=email,
+        password_hash=password_hash,
+        full_name=full_name,
+        phone=phone,
+        department="general",  # Default to general department
+        role="ADMIN",  # Explicitly set role
+        is_active=True,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
     
     # Insert admin into database
-    result = await db.company_admins.insert_one(admin_doc)
+    result = await db.company_admins.insert_one(admin.model_dump())
     
     # Update company name in the separate company collection
     await db.company.update_one(
@@ -404,18 +406,18 @@ async def request_password_reset(email: str, role: UserRole) -> dict:
         }
     )
     
-    # Store OTP in database
-    reset_token = {
-        "email": email,
-        "role": role.value,
-        "otp": otp,
-        "created_at": created_at,
-        "expires_at": expires_at,
-        "is_used": False,
-        "used_at": None
-    }
+    # Store OTP in database (RULE 1: INSERT with Pydantic Model)
+    reset_token = PasswordResetToken(
+        email=email,
+        role=role.value,  # Store as string value
+        otp=otp,
+        created_at=created_at,
+        expires_at=expires_at,
+        is_used=False,
+        used_at=None
+    )
     
-    await db.password_reset_tokens.insert_one(reset_token)
+    await db.password_reset_tokens.insert_one(reset_token.model_dump())
     
     # Send OTP via email
     from app.api.v1.email.service import send_password_reset_otp_email

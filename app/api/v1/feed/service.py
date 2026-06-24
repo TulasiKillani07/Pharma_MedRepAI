@@ -13,6 +13,7 @@ from app.api.v1.notifications.helpers import (
     notify_post_shared
 )
 from app.models.post_model import PostInDB, LikeInDB, CommentInDB
+from app.models.message_model import ConversationInDB, MessageInDB, MessageType
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 from app.utils.logger import get_medrep_logger
@@ -1181,9 +1182,10 @@ async def share_post(
                     continue
                 
                 # Create conversation
-                conversation_doc = {
-                    "participants": participants,
-                    "participant_details": [
+                # Create conversation (RULE 1: INSERT with Pydantic Model)
+                conversation_obj = ConversationInDB(
+                    participants=participants,
+                    participant_details=[
                         {
                             "user_id": current_user_id,
                             "name": current_user.get("name", ""),
@@ -1195,32 +1197,32 @@ async def share_post(
                             "role": "DOCTOR"
                         }
                     ],
-                    "last_message": None,
-                    "last_message_at": None,
-                    "unread_count": {
+                    last_message=None,
+                    last_message_at=None,
+                    unread_count={
                         current_user_id: 0,
                         user_id: 0
                     },
-                    "created_at": datetime.utcnow(),
-                    "updated_at": datetime.utcnow()
-                }
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
                 
-                result = await db["conversations"].insert_one(conversation_doc)
+                result = await db["conversations"].insert_one(conversation_obj.model_dump())
                 conversation = await db["conversations"].find_one({"_id": result.inserted_id})
             
             conversation_id = str(conversation["_id"])
             
-            # Create shared post message
+            # Create shared post message (RULE 1: INSERT with Pydantic Model)
             message_content = message if message else ""
             
-            message_doc = {
-                "conversation_id": conversation_id,
-                "sender_id": current_user_id,
-                "sender_name": current_user.get("name", ""),
-                "sender_role": current_user.get("role", ""),
-                "content": message_content,
-                "message_type": "shared_post",
-                "shared_post": {
+            message_obj = MessageInDB(
+                conversation_id=conversation_id,
+                sender_id=current_user_id,
+                sender_name=current_user.get("name", ""),
+                sender_role=current_user.get("role", ""),
+                content=message_content,
+                message_type=MessageType.SHARED_POST,
+                shared_post={
                     "post_id": post_id,
                     "author_name": post.get("author_name", ""),
                     "author_role": post.get("author_role", ""),
@@ -1230,12 +1232,12 @@ async def share_post(
                     "shares_count": post.get("shares_count", 0),
                     "created_at": post.get("created_at")
                 },
-                "is_read": False,
-                "read_at": None,
-                "created_at": datetime.utcnow()
-            }
+                is_read=False,
+                read_at=None,
+                created_at=datetime.utcnow()
+            )
             
-            await db["messages"].insert_one(message_doc)
+            await db["messages"].insert_one(message_obj.model_dump())
             
             # Notify recipient about shared post
             await notify_post_shared(
