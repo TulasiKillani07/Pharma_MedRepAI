@@ -10,8 +10,9 @@ from enum import Enum
 
 class LocationType(str, Enum):
     """Location type constants"""
-    PRIMARY = "primary"
-    SECONDARY = "secondary"
+    HOSPITAL = "hospital"
+    SOLO_CLINIC = "solo_clinic"
+    POLYCLINIC = "polyclinic"
 
 
 class LocationSuggestionStatus(str, Enum):
@@ -24,9 +25,14 @@ class LocationSuggestionStatus(str, Enum):
 class DoctorLocation(BaseModel):
     """Schema for a doctor's location"""
     id: str = Field(..., description="Unique location ID")
-    type: LocationType = Field(..., description="Location type: primary or secondary")
+    type: str = Field(..., description="Location type: hospital, solo_clinic, or polyclinic")
     name: str = Field(..., min_length=1, max_length=200, description="Location name")
-    address: Optional[str] = Field(None, max_length=500, description="Full address")
+    address: str = Field(..., max_length=500, description="Full address")
+    country: str = Field(..., max_length=100, description="Country")
+    state: str = Field(..., max_length=100, description="State / Province")
+    district: str = Field(..., max_length=100, description="District / City")
+    city: str = Field(..., max_length=100, description="City")
+    area: str = Field(..., max_length=200, description="Area / Locality / Neighbourhood")
     latitude: float = Field(..., ge=-90, le=90, description="Latitude")
     longitude: float = Field(..., ge=-180, le=180, description="Longitude")
     is_active: bool = Field(default=True, description="Whether location is active")

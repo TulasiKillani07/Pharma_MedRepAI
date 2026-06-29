@@ -9,42 +9,81 @@ from datetime import datetime
 class AddLocationRequest(BaseModel):
     """Schema for adding a new location to doctor"""
     name: str = Field(..., min_length=1, max_length=200, description="Location name")
-    address: Optional[str] = Field(None, max_length=500, description="Full address")
+    address: str = Field(..., max_length=500, description="Full address")
+    country: str = Field(..., max_length=100, description="Country")
+    state: str = Field(..., max_length=100, description="State / Province")
+    district: str = Field(..., max_length=100, description="District / City")
+    city: str = Field(..., max_length=100, description="City")
+    area: str = Field(..., max_length=200, description="Area / Locality / Neighbourhood")
     latitude: float = Field(..., ge=-90, le=90, description="Latitude")
     longitude: float = Field(..., ge=-180, le=180, description="Longitude")
-    type: str = Field(default="secondary", description="Location type: primary or secondary")
+    type: str = Field(default="hospital", description="Location type: hospital, solo_clinic, or polyclinic")
     geofence_radius: int = Field(default=100, ge=10, le=1000, description="Geofence radius in meters")
-    
-    class Config:
-        json_schema_extra = {
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        allowed = {"hospital", "solo_clinic", "polyclinic"}
+        if v not in allowed:
+            raise ValueError(f"type must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+    model_config = {
+        "json_schema_extra": {
             "example": {
-                "name": "Apollo Hospital",
-                "address": "Road 45, Jubilee Hills, Hyderabad",
+                "name": "Apollo Hospital - Jubilee Hills",
+                "address": "Road 45, Jubilee Hills, Hyderabad - 500033",
+                "country": "India",
+                "state": "Telangana",
+                "district": "Ranga Reddy",
+                "city": "Hyderabad",
+                "area": "Jubilee Hills",
                 "latitude": 17.4401,
                 "longitude": 78.3489,
-                "type": "primary",
+                "type": "hospital",
                 "geofence_radius": 100
             }
         }
+    }
 
 
 class UpdateLocationRequest(BaseModel):
     """Schema for updating a location"""
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     address: Optional[str] = Field(None, max_length=500)
+    country: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    district: Optional[str] = Field(None, max_length=100)
+    city: Optional[str] = Field(None, max_length=100)
+    area: Optional[str] = Field(None, max_length=200)
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
-    type: Optional[str] = Field(None, description="primary or secondary")
+    type: Optional[str] = Field(None, description="hospital, solo_clinic, or polyclinic")
     geofence_radius: Optional[int] = Field(None, ge=10, le=1000)
     is_active: Optional[bool] = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"hospital", "solo_clinic", "polyclinic"}
+        if v not in allowed:
+            raise ValueError(f"type must be one of: {', '.join(sorted(allowed))}")
+        return v
 
 
 class LocationResponse(BaseModel):
     """Schema for location response"""
     id: str
-    type: str
+    type: str  # str not enum — allows old values (primary/secondary) to pass through
     name: str
-    address: Optional[str]
+    address: Optional[str] = None    # Optional for backward compat with old docs
+    country: Optional[str] = None
+    state: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    area: Optional[str] = None       # Optional for backward compat with old docs
     latitude: float
     longitude: float
     is_active: bool

@@ -709,35 +709,35 @@ async def create_rcpa_commitment(
             detail="Doctor not found"
         )
     
-    # Validate product ID
-    product_id = commitment_data["product_id"]
-    if not ObjectId.is_valid(product_id):
+    # Validate drug ID
+    drug_id = commitment_data["drug_id"]
+    if not ObjectId.is_valid(drug_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid product ID"
+            detail="Invalid drug ID"
         )
     
-    # Get product details
-    product = await db.drugs.find_one({"_id": ObjectId(product_id)})
+    # Get drug details
+    product = await db.drugs.find_one({"_id": ObjectId(drug_id)})
     if not product:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
+            detail="Drug not found"
         )
     
-    # Extract product name (stored in field_values or as flat field)
-    product_name = product.get("drug_name", "")
-    if not product_name and product.get("field_values"):
+    # Extract drug name (stored in field_values or as flat field)
+    drug_name = product.get("drug_name", "")
+    if not drug_name and product.get("field_values"):
         for field in product["field_values"]:
             field_key = field.get("key", "")
             if field_key == "drug_name":
-                product_name = field.get("value", "Unknown Drug")
+                drug_name = field.get("value", "Unknown Drug")
                 break
             elif field_key in ["name", "product_name", "brand_name"]:
-                product_name = field.get("value", "Unknown Drug")
+                drug_name = field.get("value", "Unknown Drug")
                 break
-    if not product_name:
-        product_name = "Unknown Drug"
+    if not drug_name:
+        drug_name = "Unknown Drug"
     
     # Get MR details
     mr = await db.mrs.find_one({"_id": ObjectId(mr_id)})
@@ -748,19 +748,16 @@ async def create_rcpa_commitment(
         mr_name=mr["name"],
         doctor_id=doctor_id,
         doctor_name=doctor["name"],
-        product_id=product_id,
-        product_name=product_name,
+        drug_id=drug_id,
+        drug_name=drug_name,
         rx_per_month=commitment_data["rx_per_month"],
-        confidence=commitment_data.get("confidence", "medium"),
         visit_id=commitment_data.get("visit_id"),
-        territory=mr.get("territory"),
-        zone=mr.get("zone"),
-        state=mr.get("state")
+        notes=commitment_data.get("notes")
     )
     
     result = await db.prescription_commitments.insert_one(commitment.model_dump())
     
-    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {product_id} ({commitment_data['rx_per_month']}/month)")
+    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {drug_id} ({commitment_data['rx_per_month']}/month)")
     
     commitment_dict = commitment.model_dump()
     commitment_dict["id"] = str(result.inserted_id)
@@ -772,8 +769,7 @@ async def get_rcpa_commitments(
     month: Optional[int],
     year: Optional[int],
     mr_id: Optional[str],
-    product_id: Optional[str],
-    status_filter: Optional[str],
+    drug_id: Optional[str],
     current_user: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
@@ -783,8 +779,7 @@ async def get_rcpa_commitments(
         month: Filter by month (optional)
         year: Filter by year (optional)
         mr_id: Filter by MR (admin only, optional)
-        product_id: Filter by product (optional)
-        status_filter: Filter by status (optional)
+        drug_id: Filter by drug (optional)
         current_user: Current authenticated user
     
     Returns:
@@ -826,18 +821,14 @@ async def get_rcpa_commitments(
             "$lte": end_date
         }
     
-    # Product filter
-    if product_id:
-        if not ObjectId.is_valid(product_id):
+    # Drug filter
+    if drug_id:
+        if not ObjectId.is_valid(drug_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid product ID"
+                detail="Invalid drug ID"
             )
-        query["product_id"] = product_id
-    
-    # Status filter
-    if status_filter:
-        query["status"] = status_filter
+        query["drug_id"] = drug_id
     
     # Get commitments
     commitments = await db.prescription_commitments.find(query).sort("created_at", -1).to_list(length=None)
@@ -903,10 +894,8 @@ async def update_rcpa_commitment(
     update_fields = {}
     if "rx_per_month" in update_data and update_data["rx_per_month"] is not None:
         update_fields["rx_per_month"] = update_data["rx_per_month"]
-    if "confidence" in update_data and update_data["confidence"] is not None:
-        update_fields["confidence"] = update_data["confidence"]
-    if "status" in update_data and update_data["status"] is not None:
-        update_fields["status"] = update_data["status"]
+    if "notes" in update_data and update_data["notes"] is not None:
+        update_fields["notes"] = update_data["notes"]
     
     if not update_fields:
         raise HTTPException(
@@ -978,60 +967,33 @@ async def get_rcpa_summary(
     total_rx_per_month = sum(c.get("rx_per_month", 0) for c in commitments)
     total_commitments = len(commitments)
     unique_doctors = len(set(c["doctor_id"] for c in commitments))
-    unique_products = len(set(c["product_id"] for c in commitments))
+    unique_drugs = len(set(c["drug_id"] for c in commitments))
     
-    # Group by product
-    product_summary = {}
+    # Group by drug
+    drug_summary = {}
     for c in commitments:
-        prod_id = c["product_id"]
-        if prod_id not in product_summary:
-            product_summary[prod_id] = {
-                "product_id": prod_id,
-                "product_name": c["product_name"],
+        d_id = c["drug_id"]
+        if d_id not in drug_summary:
+            drug_summary[d_id] = {
+                "drug_id": d_id,
+                "drug_name": c["drug_name"],
                 "rx_per_month": 0,
                 "doctors_count": set()
             }
-        product_summary[prod_id]["rx_per_month"] += c.get("rx_per_month", 0)
-        product_summary[prod_id]["doctors_count"].add(c["doctor_id"])
+        drug_summary[d_id]["rx_per_month"] += c.get("rx_per_month", 0)
+        drug_summary[d_id]["doctors_count"].add(c["doctor_id"])
     
     # Convert to list
-    by_product = [
+    by_drug = [
         {
-            "product_id": v["product_id"],
-            "product_name": v["product_name"],
+            "drug_id": v["drug_id"],
+            "drug_name": v["drug_name"],
             "rx_per_month": v["rx_per_month"],
             "doctors_count": len(v["doctors_count"])
         }
-        for v in product_summary.values()
+        for v in drug_summary.values()
     ]
-    by_product.sort(key=lambda x: x["rx_per_month"], reverse=True)
-    
-    # Group by territory
-    territory_summary = {}
-    for c in commitments:
-        terr = c.get("territory", "Unknown")
-        if terr not in territory_summary:
-            territory_summary[terr] = {
-                "territory": terr,
-                "rx_per_month": 0,
-                "doctors_count": set(),
-                "products_count": set()
-            }
-        territory_summary[terr]["rx_per_month"] += c.get("rx_per_month", 0)
-        territory_summary[terr]["doctors_count"].add(c["doctor_id"])
-        territory_summary[terr]["products_count"].add(c["product_id"])
-    
-    # Convert to list
-    by_territory = [
-        {
-            "territory": v["territory"],
-            "rx_per_month": v["rx_per_month"],
-            "doctors_count": len(v["doctors_count"]),
-            "products_count": len(v["products_count"])
-        }
-        for v in territory_summary.values()
-    ]
-    by_territory.sort(key=lambda x: x["rx_per_month"], reverse=True)
+    by_drug.sort(key=lambda x: x["rx_per_month"], reverse=True)
     
     logger.info(f"Admin fetched RCPA summary: {total_rx_per_month} rx/month from {total_commitments} commitments")
     
@@ -1039,9 +1001,8 @@ async def get_rcpa_summary(
         "total_rx_per_month": total_rx_per_month,
         "total_commitments": total_commitments,
         "total_doctors": unique_doctors,
-        "total_products": unique_products,
-        "by_product": by_product,
-        "by_territory": by_territory
+        "total_drugs": unique_drugs,
+        "by_drug": by_drug
     }
 
 

@@ -904,23 +904,40 @@ async def add_location_endpoint(
     **Validations:**
     - Location must not exist within 50m radius
     - Coordinates must be valid
+    - `type` must be one of: `hospital`, `solo_clinic`, `polyclinic`
+    
+    **Required fields:** name, address, country, state, district, area, latitude, longitude, type
     
     **Example:**
     ```json
     {
-        "name": "Apollo Hospital",
-        "address": "Road 45, Jubilee Hills, Hyderabad",
+        "name": "Apollo Hospital - Jubilee Hills",
+        "address": "Road 45, Jubilee Hills, Hyderabad - 500033",
+        "country": "India",
+        "state": "Telangana",
+        "district": "Hyderabad",
+        "area": "Jubilee Hills",
         "latitude": 17.4401,
         "longitude": 78.3489,
-        "type": "primary",
+        "type": "hospital",
         "geofence_radius": 100
     }
     ```
+    
+    **Location Types:**
+    - `hospital` — Multi-specialty hospital
+    - `solo_clinic` — Single doctor's private clinic
+    - `polyclinic` — Multi-doctor clinic
     """
     result = await add_doctor_location(
         doctor_id=doctor_id,
         name=request.name,
         address=request.address,
+        country=request.country,
+        state=request.state,
+        district=request.district,
+        city=request.city,
+        area=request.area,
         latitude=request.latitude,
         longitude=request.longitude,
         location_type=request.type,
@@ -968,20 +985,25 @@ async def update_location_endpoint(
     
     **Access:** Admin only
     
+    **All fields are optional — only send what you want to change.**
+    
     **Updatable fields:**
-    - name: Location name
-    - address: Full address
-    - latitude: GPS latitude
-    - longitude: GPS longitude
-    - type: Location type (primary/secondary)
-    - geofence_radius: Geofence radius in meters
-    - is_active: Activate (true) or deactivate (false)
+    - `name`: Location name
+    - `address`: Full address
+    - `country`: Country
+    - `state`: State / Province
+    - `district`: District / City
+    - `area`: Area / Locality / Neighbourhood
+    - `latitude`: GPS latitude
+    - `longitude`: GPS longitude
+    - `type`: Location type — `hospital`, `solo_clinic`, or `polyclinic`
+    - `geofence_radius`: Geofence radius in meters (10–1000)
+    - `is_active`: Activate (`true`) or deactivate (`false`)
     
     **Common Use Cases:**
     
     1. **Deactivate location** (soft delete):
        ```json
-       PUT /api/v1/doctors/{doctor_id}/locations/{location_id}
        {"is_active": false}
        ```
     
@@ -995,19 +1017,28 @@ async def update_location_endpoint(
        {"geofence_radius": 150}
        ```
     
-    4. **Update address and coordinates**:
+    4. **Update address and location details**:
        ```json
        {
          "address": "New Address, Hyderabad",
+         "country": "India",
+         "state": "Telangana",
+         "district": "Hyderabad",
+         "area": "Banjara Hills",
          "latitude": 17.4500,
          "longitude": 78.3800
        }
        ```
     
+    5. **Change location type**:
+       ```json
+       {"type": "polyclinic"}
+       ```
+    
     **Note:** 
-    - Locations are never hard-deleted to preserve history
-    - Deactivated locations (is_active=false) won't appear in MR's location selection
-    - Can be reactivated anytime by setting is_active=true
+    - Locations are never hard-deleted to preserve visit history
+    - Deactivated locations won't appear in MR's location selection
+    - Can be reactivated anytime
     """
     updates = request.model_dump(exclude_unset=True)
     return await update_doctor_location(doctor_id, location_id, updates)

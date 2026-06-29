@@ -321,62 +321,32 @@ async def get_mvc_report(
     status_code=status.HTTP_201_CREATED,
     summary="Create RCPA Commitment",
     description="""
-    **Purpose:** Manually log a prescription commitment from a doctor (usually done during visit completion).
+    **Purpose:** Log a prescription commitment from a doctor (usually done during or after a visit).
     
     **Required Role:** MR only
     
-    **Use Case:** 
-    - MR logs doctor's commitment to prescribe company's product
-    - Creates demand forecast for inventory planning
-    - Tracks doctor engagement and prescription potential
-    
     **Example Request:**
     ```json
-    POST /api/v1/sfe/rcpa
-    Headers: Authorization: Bearer <mr_token>
-    Body:
     {
       "doctor_id": "507f1f77bcf86cd799439011",
-      "product_id": "507f1f77bcf86cd799439021",
+      "drug_id": "507f1f77bcf86cd799439021",
       "rx_per_month": 15,
-      "confidence": "high",
       "visit_id": "507f1f77bcf86cd799439031"
     }
     ```
     
-    **Example Response:**
-    ```json
-    {
-      "id": "507f1f77bcf86cd799439041",
-      "mr_id": "507f1f77bcf86cd799439013",
-      "mr_name": "Rajesh Kumar",
-      "doctor_id": "507f1f77bcf86cd799439011",
-      "doctor_name": "Dr. Arjun Sharma",
-      "product_id": "507f1f77bcf86cd799439021",
-      "product_name": "Amlovas 5mg",
-      "rx_per_month": 15,
-      "confidence": "high",
-      "status": "active",
-      "visit_id": "507f1f77bcf86cd799439031",
-      "territory": "Visakhapatnam",
-      "created_at": "2026-05-19T16:20:00"
-    }
-    ```
-    
     **What Happens:**
-    1. System validates doctor and product exist
-    2. Creates commitment record with MR and territory info
-    3. Status is set to "active" by default
-    4. Commitment is included in demand forecast calculations
+    1. System validates doctor and drug exist
+    2. Creates commitment record
+    3. Included in demand forecast calculations
     
-    **Note:** Commitments are also auto-created during visit completion when MR logs rx_commitment field.
+    **Note:** Commitments are also auto-created during visit completion when MR logs rx_commitment.
     """
 )
 async def create_rcpa_commitment(
     request_data: schemas.RCPACreateRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    # Only MR can create commitments
     if current_user.get("role") != "MR":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -403,84 +373,27 @@ async def create_rcpa_commitment(
     
     **Required Role:**
     - MR: Can view own commitments
-    - Admin: Can view all commitments or filter by MR
-    
-    **Use Case:**
-    - MR reviews their logged commitments
-    - Admin monitors commitments across all MRs
-    - Filter by month/year to see recent commitments
-    - Filter by product to see demand for specific drug
-    
-    **Example Request (MR - own commitments):**
-    ```
-    GET /api/v1/sfe/rcpa?month=5&year=2026
-    Headers: Authorization: Bearer <mr_token>
-    ```
-    
-    **Example Request (Admin - specific MR):**
-    ```
-    GET /api/v1/sfe/rcpa?month=5&year=2026&mr_id=507f1f77bcf86cd799439013
-    Headers: Authorization: Bearer <admin_token>
-    ```
-    
-    **Example Request (Filter by product):**
-    ```
-    GET /api/v1/sfe/rcpa?product_id=507f1f77bcf86cd799439021&status=active
-    Headers: Authorization: Bearer <token>
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "total": 25,
-      "commitments": [
-        {
-          "id": "507f1f77bcf86cd799439041",
-          "mr_id": "507f1f77bcf86cd799439013",
-          "mr_name": "Rajesh Kumar",
-          "doctor_id": "507f1f77bcf86cd799439011",
-          "doctor_name": "Dr. Arjun Sharma",
-          "product_id": "507f1f77bcf86cd799439021",
-          "product_name": "Amlovas 5mg",
-          "rx_per_month": 15,
-          "confidence": "high",
-          "status": "active",
-          "territory": "Visakhapatnam",
-          "created_at": "2026-05-18T14:30:00"
-        }
-      ]
-    }
-    ```
+    - Admin: Can view all or filter by MR
     
     **Query Parameters:**
     - `month`: Filter by month (1-12)
     - `year`: Filter by year
     - `mr_id`: Filter by MR (admin only)
-    - `product_id`: Filter by product
-    - `status`: Filter by status (active, fulfilled, cancelled)
-    
-    **What It Tells You:**
-    - All commitments matching filters
-    - Doctor and product details
-    - Expected prescription volume per month
-    - Confidence level and status
+    - `drug_id`: Filter by drug
     """
 )
 async def get_rcpa_commitments(
     month: Optional[int] = Query(None, ge=1, le=12, description="Month (1-12)"),
     year: Optional[int] = Query(None, ge=2020, le=2030, description="Year"),
     mr_id: Optional[str] = Query(None, description="MR ID (admin only)"),
-    product_id: Optional[str] = Query(None, description="Product ID"),
-    status: Optional[str] = Query(None, description="Status filter"),
+    drug_id: Optional[str] = Query(None, description="Drug ID"),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    
     result = await service.get_rcpa_commitments(
         month=month,
         year=year,
         mr_id=mr_id,
-        product_id=product_id,
-        status_filter=status,
+        drug_id=drug_id,
         current_user=current_user
     )
     
@@ -493,47 +406,21 @@ async def get_rcpa_commitments(
     status_code=status.HTTP_200_OK,
     summary="Update RCPA Commitment",
     description="""
-    **Purpose:** Update an existing prescription commitment (e.g., doctor increased/decreased commitment).
+    **Purpose:** Update an existing prescription commitment.
     
-    **Required Role:**
-    - MR: Can update own commitments
-    - Admin: Can update any commitment
-    
-    **Use Case:**
-    - Doctor increases prescription commitment
-    - Doctor reduces commitment due to stock issues
-    - Mark commitment as fulfilled or cancelled
-    - Update confidence level based on follow-up
-    
-    **Example Request:**
-    ```json
-    PUT /api/v1/sfe/rcpa/507f1f77bcf86cd799439041
-    Headers: Authorization: Bearer <mr_token>
-    Body:
-    {
-      "rx_per_month": 20,
-      "confidence": "high"
-    }
-    ```
-    
-    **Example Response:**
-    ```json
-    {
-      "message": "Commitment updated successfully"
-    }
-    ```
+    **Required Role:** MR (own) or Admin (any)
     
     **Updatable Fields:**
     - `rx_per_month`: New prescription volume
-    - `confidence`: Updated confidence level (high/medium/low)
-    - `status`: Change status (active/fulfilled/cancelled)
+    - `notes`: Additional notes
     
-    **What Happens:**
-    1. System validates commitment exists
-    2. Checks authorization (MR owns it or user is admin)
-    3. Updates specified fields
-    4. Records update timestamp
-    5. New values are reflected in demand forecast
+    **Example Request:**
+    ```json
+    {
+      "rx_per_month": 20,
+      "notes": "Doctor confirmed after follow-up"
+    }
+    ```
     """
 )
 async def update_rcpa_commitment(
@@ -562,12 +449,6 @@ async def update_rcpa_commitment(
     
     **Required Role:** Admin only
     
-    **Use Case:**
-    - Company forecasts product demand
-    - Inventory planning based on prescription commitments
-    - Territory-wise demand analysis
-    - Product-wise prescription potential
-    
     **Example Request:**
     ```
     GET /api/v1/sfe/rcpa/summary?month=5&year=2026
@@ -580,56 +461,28 @@ async def update_rcpa_commitment(
       "total_rx_per_month": 1200,
       "total_commitments": 85,
       "total_doctors": 65,
-      "total_products": 8,
-      "by_product": [
+      "total_drugs": 8,
+      "by_drug": [
         {
-          "product_id": "507f1f77bcf86cd799439021",
-          "product_name": "Amlovas 5mg",
+          "drug_id": "507f1f77bcf86cd799439021",
+          "drug_name": "Amlovas 5mg",
           "rx_per_month": 450,
           "doctors_count": 25
         },
         {
-          "product_id": "507f1f77bcf86cd799439022",
-          "product_name": "Metformin 500mg",
+          "drug_id": "507f1f77bcf86cd799439022",
+          "drug_name": "Metformin 500mg",
           "rx_per_month": 350,
           "doctors_count": 20
-        }
-      ],
-      "by_territory": [
-        {
-          "territory": "Visakhapatnam",
-          "rx_per_month": 350,
-          "doctors_count": 20,
-          "products_count": 6
-        },
-        {
-          "territory": "Hyderabad",
-          "rx_per_month": 500,
-          "doctors_count": 30,
-          "products_count": 7
         }
       ]
     }
     ```
     
     **What It Tells You:**
-    - **Total Demand**: Expected prescriptions per month across all products
-    - **By Product**: Which products have highest demand
-    - **By Territory**: Which territories need more inventory
-    - **Doctor Engagement**: How many doctors are committing to prescribe
-    
-    **What Happens:**
-    1. System aggregates all active commitments
-    2. Groups by product (sorted by demand)
-    3. Groups by territory (sorted by demand)
-    4. Calculates totals and unique counts
-    5. Returns demand forecast for inventory planning
-    
-    **Business Value:**
-    - Prevents stockouts in high-demand territories
-    - Optimizes inventory distribution
-    - Identifies top-performing products
-    - Validates MR effectiveness (commitments vs actual prescriptions)
+    - Total expected prescriptions per month
+    - Which drugs have highest demand
+    - How many doctors are committing to prescribe each drug
     """
 )
 async def get_rcpa_summary(
@@ -637,7 +490,6 @@ async def get_rcpa_summary(
     year: Optional[int] = Query(None, ge=2020, le=2030, description="Year"),
     current_user: Dict[str, Any] = Depends(require_admin)
 ):
-    
     result = await service.get_rcpa_summary(
         month=month,
         year=year,

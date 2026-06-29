@@ -33,7 +33,6 @@ class DoctorCreateRequest(BaseModel):
     classification: Literal["A", "B", "C"] = Field(..., description="Doctor classification for SFE: A (2 visits/month), B (1 visit/month), C (1 visit/2 months)")
     hospital: Optional[str] = Field(None, description="Hospital name")
     license_number: Optional[str] = Field(None, description="Medical license number")
-    address: Optional[str] = Field(None, description="Address")
     
     # Validators
     @field_validator('name')
@@ -68,8 +67,7 @@ class DoctorCreateRequest(BaseModel):
                 "specialization": "Cardiologist",
                 "classification": "A",
                 "hospital": "City Hospital",
-                "license_number": "MH12345",
-                "address": "123 Medical Street, Mumbai"
+                "license_number": "MH12345"
             }
         }
 

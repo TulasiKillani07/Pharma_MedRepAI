@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
-from app.models.sfe_models import DoctorClass, DoctorMood, CommitmentConfidence
+from app.models.sfe_models import DoctorClass, DoctorMood
 
 
 
@@ -28,11 +28,6 @@ class DoctorMoodEnum(str, Enum):
     NEGATIVE = "negative"
 
 
-class CommitmentConfidenceEnum(str, Enum):
-    """Confidence level"""
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
 
 
 # ============================================================================
@@ -41,16 +36,14 @@ class CommitmentConfidenceEnum(str, Enum):
 
 class RxCommitmentRequest(BaseModel):
     """Prescription commitment data"""
-    product_id: str = Field(..., description="Product/Drug ID")
+    drug_id: str = Field(..., description="Drug ID")
     rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
-    confidence: CommitmentConfidenceEnum = Field(default=CommitmentConfidenceEnum.MEDIUM, description="Confidence level")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "product_id": "507f1f77bcf86cd799439011",
-                "rx_per_month": 15,
-                "confidence": "high"
+                "drug_id": "507f1f77bcf86cd799439011",
+                "rx_per_month": 15
             }
         }
 
@@ -90,9 +83,8 @@ class VisitCompleteExtendedRequest(BaseModel):
                 "competitor_info": "Doctor mentioned competitor's new diabetes drug",
                 "followup_date": "2026-06-15",
                 "rx_commitment": {
-                    "product_id": "507f1f77bcf86cd799439011",
-                    "rx_per_month": 15,
-                    "confidence": "high"
+                    "drug_id": "507f1f77bcf86cd799439011",
+                    "rx_per_month": 15
                 },
                 "gps_lat": 17.3850,
                 "gps_lng": 78.4867
@@ -469,18 +461,17 @@ class MVCResponse(BaseModel):
 class RCPACreateRequest(BaseModel):
     """Manual RCPA commitment creation"""
     doctor_id: str = Field(..., description="Doctor ID")
-    product_id: str = Field(..., description="Product/Drug ID")
+    drug_id: str = Field(..., description="Drug ID")
     rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
-    confidence: CommitmentConfidenceEnum = Field(default=CommitmentConfidenceEnum.MEDIUM, description="Confidence level")
     visit_id: Optional[str] = Field(None, description="Associated visit ID (if from visit)")
+    notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
     
     class Config:
         json_schema_extra = {
             "example": {
                 "doctor_id": "507f1f77bcf86cd799439011",
-                "product_id": "507f1f77bcf86cd799439021",
+                "drug_id": "507f1f77bcf86cd799439021",
                 "rx_per_month": 15,
-                "confidence": "high",
                 "visit_id": "507f1f77bcf86cd799439031"
             }
         }
@@ -489,15 +480,12 @@ class RCPACreateRequest(BaseModel):
 class RCPAUpdateRequest(BaseModel):
     """Update existing RCPA commitment"""
     rx_per_month: Optional[int] = Field(None, ge=1, le=1000, description="Updated prescriptions per month")
-    confidence: Optional[CommitmentConfidenceEnum] = Field(None, description="Updated confidence level")
-    status: Optional[str] = Field(None, description="Status: active, fulfilled, cancelled")
+    notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "rx_per_month": 20,
-                "confidence": "high",
-                "status": "active"
+                "rx_per_month": 20
             }
         }
 
@@ -509,15 +497,11 @@ class RCPACommitmentResponse(BaseModel):
     mr_name: str
     doctor_id: str
     doctor_name: str
-    product_id: str
-    product_name: str
+    drug_id: str
+    drug_name: str
     rx_per_month: int
-    confidence: str
-    status: str
     visit_id: Optional[str] = None
-    territory: Optional[str] = None
-    zone: Optional[str] = None
-    state: Optional[str] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -529,15 +513,11 @@ class RCPACommitmentResponse(BaseModel):
                 "mr_name": "Rajesh Kumar",
                 "doctor_id": "507f1f77bcf86cd799439011",
                 "doctor_name": "Dr. Arjun Sharma",
-                "product_id": "507f1f77bcf86cd799439021",
-                "product_name": "Amlovas 5mg",
+                "drug_id": "507f1f77bcf86cd799439021",
+                "drug_name": "Amlovas 5mg",
                 "rx_per_month": 15,
-                "confidence": "high",
-                "status": "active",
                 "visit_id": "507f1f77bcf86cd799439031",
-                "territory": "Visakhapatnam",
-                "zone": "South",
-                "state": "Andhra Pradesh",
+                "notes": None,
                 "created_at": "2026-05-18T14:30:00",
                 "updated_at": "2026-05-19T10:15:00"
             }
@@ -560,12 +540,9 @@ class RCPAListResponse(BaseModel):
                         "mr_name": "Rajesh Kumar",
                         "doctor_id": "507f1f77bcf86cd799439011",
                         "doctor_name": "Dr. Arjun Sharma",
-                        "product_id": "507f1f77bcf86cd799439021",
-                        "product_name": "Amlovas 5mg",
+                        "drug_id": "507f1f77bcf86cd799439021",
+                        "drug_name": "Amlovas 5mg",
                         "rx_per_month": 15,
-                        "confidence": "high",
-                        "status": "active",
-                        "territory": "Visakhapatnam",
                         "created_at": "2026-05-18T14:30:00"
                     }
                 ]
@@ -574,17 +551,17 @@ class RCPAListResponse(BaseModel):
 
 
 class RCPAProductSummary(BaseModel):
-    """RCPA summary by product"""
-    product_id: str
-    product_name: str
+    """RCPA summary by drug"""
+    drug_id: str
+    drug_name: str
     rx_per_month: int
     doctors_count: int
     
     class Config:
         json_schema_extra = {
             "example": {
-                "product_id": "507f1f77bcf86cd799439021",
-                "product_name": "Amlovas 5mg",
+                "drug_id": "507f1f77bcf86cd799439021",
+                "drug_name": "Amlovas 5mg",
                 "rx_per_month": 200,
                 "doctors_count": 12
             }
@@ -614,9 +591,8 @@ class RCPASummaryResponse(BaseModel):
     total_rx_per_month: int
     total_commitments: int
     total_doctors: int
-    total_products: int
-    by_product: List[RCPAProductSummary]
-    by_territory: List[RCPATerritorySummary]
+    total_drugs: int
+    by_drug: List[RCPAProductSummary]
     
     class Config:
         json_schema_extra = {

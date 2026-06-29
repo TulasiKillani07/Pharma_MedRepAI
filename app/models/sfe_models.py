@@ -28,20 +28,6 @@ class DoctorMood(str, Enum):
     NEGATIVE = "negative"
 
 
-class CommitmentConfidence(str, Enum):
-    """Confidence level of prescription commitment"""
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-class CommitmentStatus(str, Enum):
-    """Status of prescription commitment"""
-    ACTIVE = "active"
-    FULFILLED = "fulfilled"
-    CANCELLED = "cancelled"
-
-
 # ============================================================================
 # DOCTOR ASSIGNMENT & CLASSIFICATION
 # ============================================================================
@@ -133,29 +119,22 @@ class PrescriptionCommitment(BaseModel):
     Indexes:
     - mr_id
     - doctor_id
-    - product_id
-    - territory
-    - status
+    - drug_id
     - created_at
     """
     mr_id: str = Field(..., description="MR user ID")
     mr_name: str = Field(..., description="MR name")
     doctor_id: str = Field(..., description="Doctor user ID")
     doctor_name: str = Field(..., description="Doctor name")
-    product_id: str = Field(..., description="Product/Drug ID")
-    product_name: str = Field(..., description="Product/Drug name")
+    drug_id: str = Field(..., description="Drug ID")
+    drug_name: str = Field(..., description="Drug name")
     rx_per_month: int = Field(..., ge=1, description="Expected prescriptions per month")
-    confidence: CommitmentConfidence = Field(default=CommitmentConfidence.MEDIUM, description="Confidence level")
-    status: CommitmentStatus = Field(default=CommitmentStatus.ACTIVE, description="Commitment status")
     visit_id: Optional[str] = Field(None, description="Visit ID where commitment was made")
-    territory: Optional[str] = Field(None, description="Territory")
-    zone: Optional[str] = Field(None, description="Zone")
-    state: Optional[str] = Field(None, description="State")
     notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
-    @field_validator('mr_id', 'doctor_id', 'product_id')
+    @field_validator('mr_id', 'doctor_id', 'drug_id')
     @classmethod
     def validate_object_id(cls, v: str) -> str:
         """Validate IDs are valid ObjectId format"""
@@ -188,10 +167,9 @@ class PrescriptionCommitment(BaseModel):
 
 class RxCommitmentData(BaseModel):
     """Prescription commitment data captured during visit"""
-    product_id: str = Field(..., description="Product/Drug ID")
-    product_name: str = Field(..., description="Product/Drug name")
+    drug_id: str = Field(..., description="Drug ID")
+    drug_name: str = Field(..., description="Drug name")
     rx_per_month: int = Field(..., ge=1, description="Expected prescriptions per month")
-    confidence: CommitmentConfidence = Field(default=CommitmentConfidence.MEDIUM, description="Confidence level")
 
 
 class VisitCompletionExtended(BaseModel):

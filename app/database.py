@@ -560,22 +560,12 @@ async def initialize_collections():
             "doctor_id",
             name="commitment_doctor_idx"
         )        
-        # Index 3: Index on product_id - Fast product commitments lookup
+        # Index 3: Index on drug_id - Fast drug commitments lookup
         await database["prescription_commitments"].create_index(
-            "product_id",
-            name="commitment_product_idx"
+            "drug_id",
+            name="commitment_drug_idx"
         )        
-        # Index 4: Index on territory - Fast territory-wise aggregation
-        await database["prescription_commitments"].create_index(
-            "territory",
-            name="commitment_territory_idx"
-        )        
-        # Index 5: Index on status - Fast active commitments filtering
-        await database["prescription_commitments"].create_index(
-            "status",
-            name="commitment_status_idx"
-        )        
-        # Index 6: Index on created_at - Fast sorting by date
+        # Index 4: Index on created_at - Fast sorting by date
         await database["prescription_commitments"].create_index(
             "created_at",
             name="commitment_created_idx"

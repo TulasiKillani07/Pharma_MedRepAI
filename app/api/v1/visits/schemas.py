@@ -73,10 +73,9 @@ class VisitRescheduleRequest(BaseModel):
 
 
 class RxCommitmentRequest(BaseModel):
-    """Prescription commitment data - DEPRECATED: Use SFE RCPA endpoints instead"""
-    product_id: str = Field(..., description="Product/Drug ID")
+    """Prescription commitment data captured during visit report"""
+    drug_id: str = Field(..., description="Drug ID")
     rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
-    confidence: str = Field(default="medium", description="Confidence level: high/medium/low")
 
 
 class VisitCompleteRequest(BaseModel):
@@ -135,9 +134,8 @@ class VisitCompleteRequest(BaseModel):
                 "competitor_info": "Doctor mentioned competitor's new diabetes drug",
                 "followup_date": "2026-06-15",
                 "rx_commitment": {
-                    "product_id": "507f1f77bcf86cd799439011",
-                    "rx_per_month": 15,
-                    "confidence": "high"
+                    "drug_id": "507f1f77bcf86cd799439011",
+                    "rx_per_month": 15
                 },
                 "gps_lat": 17.3850,
                 "gps_lng": 78.4867
