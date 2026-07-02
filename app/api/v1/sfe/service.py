@@ -742,7 +742,37 @@ async def create_rcpa_commitment(
     # Get MR details
     mr = await db.mrs.find_one({"_id": ObjectId(mr_id)})
     
+    # Build doctor location snapshot (if location ID provided)
+    doctor_location_snapshot = None
+    doctor_location_id = commitment_data.get("doctor_location_id")
+    if doctor_location_id:
+        doctor_locations = doctor.get("locations", [])
+        for loc in doctor_locations:
+            if loc.get("id") == doctor_location_id:
+                doctor_location_snapshot = {
+                    "id": loc["id"],
+                    "type": loc.get("type", "hospital"),
+                    "name": loc.get("name", ""),
+                    "address": loc.get("address", ""),
+                    "country": loc.get("country", ""),
+                    "state": loc.get("state", ""),
+                    "district": loc.get("district", ""),
+                    "city": loc.get("city"),
+                    "area": loc.get("area", ""),
+                    "latitude": loc.get("latitude", 0),
+                    "longitude": loc.get("longitude", 0)
+                }
+                break
+    
     # Create commitment
+    # Fetch visit title if visit_id provided
+    visit_title = None
+    visit_id = commitment_data.get("visit_id")
+    if visit_id and ObjectId.is_valid(visit_id):
+        visit_doc = await db.visits.find_one({"_id": ObjectId(visit_id)})
+        if visit_doc:
+            visit_title = visit_doc.get("title")
+    
     commitment = PrescriptionCommitment(
         mr_id=mr_id,
         mr_name=mr["name"],
@@ -750,14 +780,18 @@ async def create_rcpa_commitment(
         doctor_name=doctor["name"],
         drug_id=drug_id,
         drug_name=drug_name,
+        committed_quantity=commitment_data.get("committed_quantity", commitment_data["rx_per_month"]),
         rx_per_month=commitment_data["rx_per_month"],
-        visit_id=commitment_data.get("visit_id"),
+        requested_discount=commitment_data.get("requested_discount", 0.0),
+        doctor_location=doctor_location_snapshot,
+        visit_id=visit_id,
+        visit_title=visit_title,
         notes=commitment_data.get("notes")
     )
     
     result = await db.prescription_commitments.insert_one(commitment.model_dump())
     
-    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {drug_id} ({commitment_data['rx_per_month']}/month)")
+    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {drug_id} (qty: {commitment.committed_quantity}, {commitment.rx_per_month}/month)")
     
     commitment_dict = commitment.model_dump()
     commitment_dict["id"] = str(result.inserted_id)
@@ -821,21 +855,26 @@ async def get_rcpa_commitments(
             "$lte": end_date
         }
     
-    # Drug filter
+    # Drug filter (supports both old product_id and new drug_id)
     if drug_id:
         if not ObjectId.is_valid(drug_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid drug ID"
             )
-        query["drug_id"] = drug_id
+        query["$or"] = [{"drug_id": drug_id}, {"product_id": drug_id}]
     
     # Get commitments
     commitments = await db.prescription_commitments.find(query).sort("created_at", -1).to_list(length=None)
     
-    # Convert ObjectId to string
+    # Convert ObjectId to string and normalize old field names
     for commitment in commitments:
         commitment["id"] = str(commitment.pop("_id"))
+        # Normalize old product_id/product_name to drug_id/drug_name
+        if "product_id" in commitment and "drug_id" not in commitment:
+            commitment["drug_id"] = commitment.pop("product_id")
+        if "product_name" in commitment and "drug_name" not in commitment:
+            commitment["drug_name"] = commitment.pop("product_name")
     
     logger.info(f"User {user_id} fetched {len(commitments)} RCPA commitments")
     
@@ -894,6 +933,8 @@ async def update_rcpa_commitment(
     update_fields = {}
     if "rx_per_month" in update_data and update_data["rx_per_month"] is not None:
         update_fields["rx_per_month"] = update_data["rx_per_month"]
+    if "committed_quantity" in update_data and update_data["committed_quantity"] is not None:
+        update_fields["committed_quantity"] = update_data["committed_quantity"]
     if "notes" in update_data and update_data["notes"] is not None:
         update_fields["notes"] = update_data["notes"]
     
@@ -915,6 +956,106 @@ async def update_rcpa_commitment(
     
     return {
         "message": "Commitment updated successfully"
+    }
+
+
+async def approve_rcpa_discount(
+    commitment_id: str,
+    approved_discount: float,
+    admin_user: Dict[str, Any]
+) -> Dict[str, str]:
+    """
+    Admin approves a discount request on a commitment.
+    """
+    db = get_company_database()
+    
+    if not ObjectId.is_valid(commitment_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid commitment ID")
+    
+    commitment = await db.prescription_commitments.find_one({"_id": ObjectId(commitment_id)})
+    if not commitment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")
+    
+    if commitment.get("approval_status") != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Commitment already {commitment.get('approval_status')}"
+        )
+    
+    await db.prescription_commitments.update_one(
+        {"_id": ObjectId(commitment_id)},
+        {"$set": {
+            "approval_status": "APPROVED",
+            "approved_discount": approved_discount,
+            "approved_by": admin_user["_id"],
+            "approved_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    logger.info(f"Admin {admin_user['_id']} approved discount for commitment {commitment_id}: {approved_discount}%")
+    
+    return {"message": f"Discount approved: {approved_discount}%"}
+
+
+async def reject_rcpa_discount(
+    commitment_id: str,
+    admin_user: Dict[str, Any]
+) -> Dict[str, str]:
+    """
+    Admin rejects a discount request on a commitment.
+    """
+    db = get_company_database()
+    
+    if not ObjectId.is_valid(commitment_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid commitment ID")
+    
+    commitment = await db.prescription_commitments.find_one({"_id": ObjectId(commitment_id)})
+    if not commitment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")
+    
+    if commitment.get("approval_status") != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Commitment already {commitment.get('approval_status')}"
+        )
+    
+    await db.prescription_commitments.update_one(
+        {"_id": ObjectId(commitment_id)},
+        {"$set": {
+            "approval_status": "REJECTED",
+            "approved_discount": None,
+            "approved_by": admin_user["_id"],
+            "approved_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    logger.info(f"Admin {admin_user['_id']} rejected discount for commitment {commitment_id}")
+    
+    return {"message": "Discount request rejected"}
+
+
+async def get_pending_discount_approvals(
+    current_user: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Get all commitments with pending discount approval (Admin only).
+    """
+    db = get_company_database()
+    
+    commitments = await db.prescription_commitments.find(
+        {"approval_status": "PENDING", "requested_discount": {"$gt": 0}}
+    ).sort("created_at", -1).to_list(length=None)
+    
+    for c in commitments:
+        c["id"] = str(c.pop("_id"))
+    
+    logger.info(f"Admin fetched {len(commitments)} pending discount approvals")
+    
+    return {
+        "total": len(commitments),
+        "commitments": commitments
     }
 
 
@@ -967,16 +1108,17 @@ async def get_rcpa_summary(
     total_rx_per_month = sum(c.get("rx_per_month", 0) for c in commitments)
     total_commitments = len(commitments)
     unique_doctors = len(set(c["doctor_id"] for c in commitments))
-    unique_drugs = len(set(c["drug_id"] for c in commitments))
+    unique_drugs = len(set(c.get("drug_id") or c.get("product_id", "") for c in commitments))
     
     # Group by drug
     drug_summary = {}
     for c in commitments:
-        d_id = c["drug_id"]
+        d_id = c.get("drug_id") or c.get("product_id", "unknown")
+        d_name = c.get("drug_name") or c.get("product_name", "Unknown Drug")
         if d_id not in drug_summary:
             drug_summary[d_id] = {
                 "drug_id": d_id,
-                "drug_name": c["drug_name"],
+                "drug_name": d_name,
                 "rx_per_month": 0,
                 "doctors_count": set()
             }

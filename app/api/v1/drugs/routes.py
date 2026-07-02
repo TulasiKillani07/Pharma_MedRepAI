@@ -34,7 +34,27 @@ async def create_template_endpoint(template_data: TemplateCreate):
 async def get_template_endpoint():
     """
     Get the active drug field template.
-    Admin only.
+    
+    **Access:** Admin only
+    
+    **Response includes all fields (fixed + dynamic):**
+    ```json
+    {
+        "_id": "template_id",
+        "template_name": "Default Drug Template",
+        "fields": [
+            {"field_id": "uuid", "key": "drug_name", "type": "text", "is_fixed": true, "required": true, "visible": true, "order": 1},
+            {"field_id": "uuid", "key": "symptoms", "type": "array", "is_fixed": true, "required": true, "visible": true, "order": 5},
+            {"field_id": "uuid", "key": "price", "type": "number", "is_fixed": true, "required": false, "visible": true, "order": 13},
+            {"field_id": "uuid", "key": "custom_field", "type": "text", "is_fixed": false, "required": false, "visible": true, "order": 18}
+        ],
+        "is_active": true
+    }
+    ```
+    
+    **Field Types:** text, textarea, number, select, boolean, date, array
+    
+    **Auto-migration:** New fixed fields (like `price`) are auto-added to existing templates on first call.
     """
     return await service.get_template()
 
@@ -129,23 +149,25 @@ async def bulk_upload_drugs_endpoint(
     - dosage_strength, dosage_form, route, side_effects, reference_url
     
     **Custom Columns:**
-    - Add any additional columns you need (e.g., price, expiry_date)
+    - Add any additional columns you need (e.g., expiry_date, batch_number)
     - Will be auto-created as dynamic fields in template
     - Type defaults to "text"
     
     **CSV Example (Fixed fields only):**
     ```csv
-    drug_name,symptoms,brand_name,drug_class,manufacturer,dosage_form,reference_url
-    paracetamol,"Fever, Headache",crocin,Analgesic,GSK,Tablet,https://www.drugs.com/paracetamol.html
-    ibuprofen,"Pain, Fever",brufen,NSAID,Abbott,Tablet,https://www.drugs.com/ibuprofen.html
+    drug_name,symptoms,brand_name,drug_class,manufacturer,dosage_form,pack_type,units_per_pack,packs_per_box,price_per_drug,pack_price
+    amlodipine,"Hypertension,Chest Pain",Amlovas,Calcium Channel Blocker,Macleods Pharma,Tablet,Strip,10,10,3.5,35
+    metformin,"Diabetes,Fatigue",Glycomet,Biguanide,USV Limited,Tablet,Strip,15,10,3,45
     ```
     
-    **CSV Example (With custom fields):**
+    **CSV Example (With optional pricing):**
     ```csv
-    drug_name,symptoms,brand_name,manufacturer,price,expiry_date,batch_number
-    paracetamol,"Fever, Headache",crocin,GSK,50,2025-12-31,BATCH001
-    ibuprofen,"Pain, Fever",brufen,Abbott,80,2026-06-30,BATCH002
+    drug_name,symptoms,brand_name,manufacturer,dosage_form,pack_type,units_per_pack,packs_per_box,price_per_drug,pack_price,box_price,mrp
+    amlodipine,"Hypertension,Chest Pain",Amlovas,Macleods Pharma,Tablet,Strip,10,10,3.5,35,350,40
+    metformin,"Diabetes,Fatigue",Glycomet,USV Limited,Tablet,Strip,15,10,3,45,450,50
     ```
+    
+    **Important:** Multi-value fields (symptoms, indications, side_effects) must be wrapped in double quotes if they contain commas.
     
     **Validation Rules:**
     - drug_name and symptoms are required (cannot be empty)
@@ -237,8 +259,29 @@ async def bulk_upload_drugs_endpoint(
 @router.post("/templates/{template_id}/fields", response_model=FieldDefinitionResponse, dependencies=[Depends(require_admin)])
 async def add_field_endpoint(template_id: str, field_data: FieldDefinitionCreate):
     """
-    Add a dynamic field to template.
-    Admin only.
+    Add a field to the template.
+    
+    **Access:** Admin only
+    
+    **Request:**
+    ```json
+    {
+        "key": "batch_number",
+        "type": "text",
+        "required": false,
+        "visible": true,
+        "order": 20,
+        "is_fixed": false
+    }
+    ```
+    
+    **Field Types:** text, textarea, number, select, boolean, date, array
+    
+    **Notes:**
+    - `is_fixed: true` → field cannot be deactivated later
+    - `is_fixed: false` (default) → field can be deactivated
+    - `key` must be unique within the template
+    - For `select` type, provide `options: ["Option1", "Option2"]`
     """
     return await service.add_dynamic_field(template_id, field_data)
 
@@ -262,7 +305,38 @@ async def update_field_endpoint(template_id: str, field_id: str, field_data: Fie
 async def create_drug_endpoint(drug_data: DrugCreate, current_user: Dict = Depends(require_admin)):
     """
     Create a new drug.
-    Admin only.
+    
+    **Access:** Admin only
+    
+    **Request Body:**
+    ```json
+    {
+        "template_id": "optional - uses default if not provided",
+        "field_values": [
+            {"field_id": "uuid", "key": "drug_name", "value": "Amlodipine"},
+            {"field_id": "uuid", "key": "symptoms", "value": ["Hypertension", "Chest Pain"]},
+            {"field_id": "uuid", "key": "dosage_form", "value": "Tablet"},
+            {"field_id": "uuid", "key": "pack_type", "value": "Strip"},
+            {"field_id": "uuid", "key": "units_per_pack", "value": 10},
+            {"field_id": "uuid", "key": "packs_per_box", "value": 10},
+            {"field_id": "uuid", "key": "pack_price", "value": 35},
+            {"field_id": "uuid", "key": "box_price", "value": 350},
+            {"field_id": "uuid", "key": "mrp", "value": 40}
+        ]
+    }
+    ```
+    
+    **Required fields:** drug_name, symptoms, dosage_form, pack_type, units_per_pack, packs_per_box, pack_price
+    
+    **Pricing fields:**
+    - `price_per_drug`: Price of a single unit (e.g. ₹3.5 per tablet)
+    - `pack_price`: Price per pack (e.g. ₹35 per strip) — **required**
+    - `box_price`: Price per box (e.g. ₹350)
+    - `mrp`: Maximum retail price (e.g. ₹40)
+    
+    **Notes:**
+    - Get field_ids from `GET /drugs/templates`
+    - Response includes `type` for each field_value
     """
     return await service.create_drug(drug_data, current_user)
 
@@ -343,38 +417,30 @@ async def get_drug_endpoint(
     - **Doctors/MRs:** Can only view active drugs (404 if inactive)
     - **Admins:** Can view any drug (active or inactive)
     
-    **Purpose:**
-    View detailed information about a specific drug.
-    
-    **Usage:**
-    ```
-    GET /api/v1/drugs/drug123
-    Headers: Authorization: Bearer <token>
-    ```
-    
     **Response:**
     ```json
     {
         "_id": "drug123",
         "template_id": "template456",
         "field_values": [
-            {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
-            {"field_id": "f2", "key": "brand_name", "value": "crocin"},
-            {"field_id": "f3", "key": "drug_class", "value": "Analgesic"},
-            {"field_id": "f4", "key": "manufacturer", "value": "GSK"},
-            {"field_id": "f5", "key": "dosage_form", "value": "Tablet"}
+            {"field_id": "f1", "key": "drug_name", "value": "amlodipine", "type": "text"},
+            {"field_id": "f2", "key": "brand_name", "value": "amlovas", "type": "text"},
+            {"field_id": "f3", "key": "symptoms", "value": ["Hypertension", "Chest Pain"], "type": "array"},
+            {"field_id": "f4", "key": "manufacturer", "value": "Macleods Pharma", "type": "text"},
+            {"field_id": "f5", "key": "dosage_form", "value": "Tablet", "type": "select"},
+            {"field_id": "f6", "key": "price", "value": 250, "type": "number"}
         ],
-        "created_at": "2024-04-07T10:00:00",
-        "updated_at": "2024-04-07T10:00:00",
+        "drug_name": "amlodipine",
+        "symptoms": ["Hypertension", "Chest Pain"],
+        "price": 250,
         "is_active": true,
-        "has_brochure": true
+        "has_brochure": false,
+        "created_at": "2026-06-29T06:30:00",
+        "updated_at": "2026-06-29T06:30:00"
     }
     ```
     
-    **Use Cases:**
-    - Doctor: Check drug information before prescribing
-    - MR: Reference drug details during doctor visits
-    - Admin: View and manage drug information (including inactive drugs)
+    **Note:** Each field_value includes `type` from the template (text, number, array, textarea, select, boolean, date).
     """
     # Get user role
     user_role = current_user.get("role", "")
@@ -393,125 +459,50 @@ async def get_drug_endpoint(
 @router.put("/{drug_id}", response_model=DrugResponse, dependencies=[Depends(require_admin)])
 async def update_drug_endpoint(drug_id: str, drug_data: DrugUpdate):
     """
-    Update a drug - can update field values and is_active status.
+    Update a drug — merges field values and can update is_active status.
     
     **Access:** Admin only
-    
-    **Purpose:**
-    Update drug information including field values and active status.
     
     **Request Body:**
     ```json
     {
         "field_values": [
-            {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
-            {"field_id": "f2", "key": "brand_name", "value": "crocin"}
+            {"field_id": "f1", "key": "price", "value": 300},
+            {"field_id": "f2", "key": "dosage_strength", "value": "10mg"}
         ],
         "is_active": true
     }
     ```
     
-    **Fields:**
-    - `field_values`: Array of field values to update (merges with existing)
-    - `is_active`: Optional boolean to activate/deactivate drug
+    **Behavior:**
+    - `field_values` are **merged** (not replaced) — only provided fields are updated, others kept
+    - Flat fields and search_text are rebuilt after merge
+    - `is_active` is optional — set `false` to soft-delete, `true` to restore
     
-    **Examples:**
-    
-    1. **Update drug information:**
-    ```json
-    {
-        "field_values": [
-            {"field_id": "f1", "key": "drug_name", "value": "paracetamol"},
-            {"field_id": "f2", "key": "brand_name", "value": "crocin updated"}
-        ]
-    }
-    ```
-    
-    2. **Deactivate drug:**
-    ```json
-    {
-        "field_values": [],
-        "is_active": false
-    }
-    ```
-    
-    3. **Reactivate drug:**
-    ```json
-    {
-        "field_values": [],
-        "is_active": true
-    }
-    ```
-    
-    4. **Update info and deactivate:**
-    ```json
-    {
-        "field_values": [
-            {"field_id": "f1", "key": "drug_name", "value": "updated name"}
-        ],
-        "is_active": false
-    }
-    ```
-    
-    **Note:** 
-    - Field values are merged (not replaced) - only provided fields are updated
-    - Can update inactive drugs (to reactivate them)
-    - Setting `is_active: false` soft-deletes the drug
-    - Setting `is_active: true` restores a deleted drug
+    **Response:** Updated drug with all field_values including `type` for each field.
     """
     return await service.update_drug(drug_id, drug_data)
 
 
-@router.delete("/{drug_id}", dependencies=[Depends(require_admin)])
-async def delete_drug_endpoint(drug_id: str):
+@router.delete("/{drug_id}")
+async def delete_drug_endpoint(drug_id: str, current_user: Dict = Depends(require_admin)):
     """
     Soft delete a drug (deactivate).
     
     **Access:** Admin only
     
-    **Purpose:**
-    Deactivate a drug instead of permanently deleting it. Drug remains in database but is hidden from listings.
-    
-    **Flow:**
-    1. Admin requests to delete drug
-    2. Backend sets is_active=false
-    3. Drug no longer appears in GET /drugs list
-    4. Drug data is preserved in database
-    
-    **Usage:**
-    ```
-    DELETE /api/v1/drugs/drug123
-    Headers: Authorization: Bearer <admin_token>
-    ```
+    **What happens:**
+    - Drug is marked as `is_active: false`
+    - Drug won't appear in listings for Doctors/MRs
+    - Data preserved in database
+    - Can be reactivated via PUT with `is_active: true`
     
     **Response:**
     ```json
-    {
-        "message": "Drug deleted successfully"
-    }
+    { "message": "Drug deleted successfully" }
     ```
-    
-    **Note:** This is a soft delete:
-    - Drug is marked as inactive (is_active=false)
-    - Drug data remains in database
-    - Drug won't appear in drug listings
-    - Can be reactivated by admin via PUT endpoint with is_active=true
-    
-    **To reactivate:**
-    ```
-    PUT /api/v1/drugs/drug123
-    {
-        "field_values": [...],  // Keep existing values
-        // Backend can add is_active field to update schema if needed
-    }
-    ```
-    
-    **Use Cases:**
-    - Drug discontinued by manufacturer
-    - Drug temporarily out of stock
-    - Drug no longer promoted by company
     """
-    return await service.delete_drug(drug_id)
+    return await service.delete_drug(drug_id, current_user)
 
 
 # ============ DRUG BROCHURE ENDPOINTS ============

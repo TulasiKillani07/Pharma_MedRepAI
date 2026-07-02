@@ -66,6 +66,7 @@ class VisitInDB(BaseModel):
     mr_name: str = Field(..., description="MR name")
     doctor_id: str = Field(..., description="Doctor user ID")
     doctor_name: str = Field(..., description="Doctor name")
+    title: str = Field(..., min_length=2, max_length=200, description="Visit title")
     scheduled_date: date = Field(..., description="Visit date")
     scheduled_time: str = Field(..., description="Visit time")
     purpose: str = Field(..., min_length=1, max_length=500, description="Visit purpose")

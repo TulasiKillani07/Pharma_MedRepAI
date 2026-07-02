@@ -192,10 +192,10 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "key": "dosage_form",
             "type": "select",
             "is_fixed": True,
-            "required": False,
+            "required": True,
             "visible": True,
             "order": 9,
-            "options": ["Tablet", "Capsule", "Syrup", "Injection", "Cream", "Ointment", "Drops", "Inhaler"],
+            "options": ["Tablet", "Capsule", "Syrup", "Injection", "Drops", "Cream", "Ointment", "Gel", "Powder", "Lotion", "Inhaler"],
             "is_active": True
         },
         {
@@ -231,26 +231,82 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "options": None,
             "is_active": True
         },
-        # Pricing fields
+        # Packaging fields
         {
             "field_id": str(uuid.uuid4()),
-            "key": "price",
-            "type": "number",
+            "key": "pack_type",
+            "type": "select",
             "is_fixed": True,
-            "required": False,
+            "required": True,
             "visible": True,
             "order": 13,
+            "options": ["Strip", "Bottle", "Vial", "Ampoule", "Tube", "Sachet", "Box", "Blister Pack"],
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "units_per_pack",
+            "type": "number",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 14,
             "options": None,
             "is_active": True
         },
         {
             "field_id": str(uuid.uuid4()),
-            "key": "discount",
+            "key": "packs_per_box",
+            "type": "number",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 15,
+            "options": None,
+            "is_active": True
+        },
+        # Pricing fields
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "price_per_drug",
             "type": "number",
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 14,
+            "order": 16,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "pack_price",
+            "type": "number",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 17,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "box_price",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 18,
+            "options": None,
+            "is_active": True
+        },
+        {
+            "field_id": str(uuid.uuid4()),
+            "key": "mrp",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 19,
             "options": None,
             "is_active": True
         },
@@ -262,7 +318,7 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "is_fixed": True,
             "required": False,
             "visible": True,
-            "order": 15,
+            "order": 19,
             "options": None,
             "is_active": True
         },
@@ -401,6 +457,126 @@ async def get_template() -> Optional[Dict[str, Any]]:
             "is_active": True
         })
         changes = True
+
+    # Remove old 'price' field (replaced by price_per_drug)
+    if "price" in key_to_index:
+        fields = [f for f in fields if f["key"] != "price"]
+        key_to_index = {f["key"]: i for i, f in enumerate(fields)}
+        changes = True
+
+    # Ensure pack_type exists
+    if "pack_type" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "pack_type",
+            "type": "select",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 13,
+            "options": ["Strip", "Bottle", "Vial", "Ampoule", "Tube", "Sachet", "Box", "Blister Pack"],
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure units_per_pack exists
+    if "units_per_pack" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "units_per_pack",
+            "type": "number",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 14,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure packs_per_box exists
+    if "packs_per_box" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "packs_per_box",
+            "type": "number",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 15,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure pack_price exists
+    if "pack_price" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "pack_price",
+            "type": "number",
+            "is_fixed": True,
+            "required": True,
+            "visible": True,
+            "order": 17,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure price_per_drug exists
+    if "price_per_drug" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "price_per_drug",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 16,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure box_price exists
+    if "box_price" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "box_price",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 17,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure mrp exists
+    if "mrp" not in key_to_index:
+        fields.append({
+            "field_id": str(uuid_module.uuid4()),
+            "key": "mrp",
+            "type": "number",
+            "is_fixed": True,
+            "required": False,
+            "visible": True,
+            "order": 18,
+            "options": None,
+            "is_active": True
+        })
+        changes = True
+
+    # Ensure dosage_form has updated options and is required
+    if "dosage_form" in key_to_index:
+        idx = key_to_index["dosage_form"]
+        new_options = ["Tablet", "Capsule", "Syrup", "Injection", "Drops", "Cream", "Ointment", "Gel", "Powder", "Lotion", "Inhaler"]
+        if fields[idx].get("options") != new_options or not fields[idx].get("required"):
+            fields[idx]["options"] = new_options
+            fields[idx]["required"] = True
+            changes = True
 
     # Persist changes if anything was updated
     if changes:
@@ -756,6 +932,15 @@ async def get_all_drugs(
                 if fv.get("key") not in ["brochure_url", "brochure_public_id", "brochure_uploaded_at"]
             ]
     
+    # Enrich field_values with type from template
+    template = await db["drug_field_templates"].find_one({"is_active": True})
+    if template:
+        field_type_map = {f["field_id"]: f["type"] for f in template.get("fields", [])}
+        for drug in drugs:
+            if "field_values" in drug:
+                for fv in drug["field_values"]:
+                    fv["type"] = field_type_map.get(fv.get("field_id"))
+    
     total = await db["drugs"].count_documents(query)
     
     return {"drugs": drugs, "total": total}
@@ -804,6 +989,14 @@ async def get_drug_by_id(drug_id: str) -> Dict[str, Any]:
             fv for fv in drug["field_values"]
             if fv.get("key") not in ["brochure_url", "brochure_public_id", "brochure_uploaded_at"]
         ]
+    
+    # Enrich field_values with type from template
+    template = await db["drug_field_templates"].find_one({"is_active": True})
+    if template:
+        field_type_map = {f["field_id"]: f["type"] for f in template.get("fields", [])}
+        if "field_values" in drug:
+            for fv in drug["field_values"]:
+                fv["type"] = field_type_map.get(fv.get("field_id"))
     
     return drug
 
@@ -901,20 +1094,35 @@ async def update_drug(drug_id: str, drug_data: DrugUpdate) -> Dict[str, Any]:
     return await get_drug_by_id(drug_id)
 
 
-async def delete_drug(drug_id: str) -> Dict[str, str]:
-    """Soft delete a drug"""
+async def delete_drug(drug_id: str, current_user: Dict) -> Dict[str, str]:
+    """Soft delete a drug and log the activity"""
     db = get_database()
     
     if not ObjectId.is_valid(drug_id):
         raise HTTPException(status_code=400, detail="Invalid drug ID")
+    
+    # Get drug details before deactivating (for logging)
+    drug = await db["drugs"].find_one({"_id": ObjectId(drug_id)})
+    if not drug:
+        raise HTTPException(status_code=404, detail="Drug not found")
+    
+    drug_name = drug.get("drug_name", "Unknown Drug")
     
     result = await db["drugs"].update_one(
         {"_id": ObjectId(drug_id)},
         {"$set": {"is_active": False, "updated_at": datetime.utcnow()}}
     )
     
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Drug not found")
+    # Log activity
+    await log_activity(
+        action_type=ActivityLogAction.DRUG_DELETED,
+        actor=current_user,
+        target_type=TargetType.DRUG,
+        target_id=drug_id,
+        target_name=drug_name,
+        details={"drug_name": drug_name},
+        severity=LogSeverity.CRITICAL
+    )
     
     return {"message": "Drug deleted successfully"}
 
@@ -1309,7 +1517,7 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     fixed_fields = [
         "drug_name", "brand_name", "drug_class", "manufacturer", "symptoms", "indications",
         "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url",
-        "price", "discount"  # Added pricing fields
+        "pack_type", "units_per_pack", "packs_per_box", "price_per_drug", "pack_price", "box_price", "mrp"
     ]
     
     # Validate required columns (only drug_name and symptoms are truly required)

@@ -439,6 +439,86 @@ async def update_rcpa_commitment(
     return result
 
 
+@router.post(
+    "/rcpa/{commitment_id}/approve",
+    response_model=schemas.MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Approve Discount (Admin Only)",
+    description="""
+    **Purpose:** Admin approves a discount request on a prescription commitment.
+    
+    **Required Role:** Admin only
+    
+    **Flow:**
+    1. MR creates commitment with `requested_discount`
+    2. Commitment is created with `approval_status: PENDING`
+    3. Admin reviews pending commitments
+    4. Admin approves with final `approved_discount` (can be same or different from requested)
+    
+    **Example:**
+    ```json
+    { "approved_discount": 4.5 }
+    ```
+    """
+)
+async def approve_rcpa_discount(
+    commitment_id: str,
+    request_data: schemas.RCPAApproveDiscountRequest,
+    current_user: Dict[str, Any] = Depends(require_admin)
+):
+    result = await service.approve_rcpa_discount(
+        commitment_id=commitment_id,
+        approved_discount=request_data.approved_discount,
+        admin_user=current_user
+    )
+    return result
+
+
+@router.post(
+    "/rcpa/{commitment_id}/reject",
+    response_model=schemas.MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reject Discount (Admin Only)",
+    description="""
+    **Purpose:** Admin rejects a discount request on a prescription commitment.
+    
+    **Required Role:** Admin only
+    
+    **What happens:**
+    - `approval_status` → `REJECTED`
+    - `approved_discount` → `None`
+    - Commitment still exists (just no discount given)
+    """
+)
+async def reject_rcpa_discount(
+    commitment_id: str,
+    current_user: Dict[str, Any] = Depends(require_admin)
+):
+    result = await service.reject_rcpa_discount(
+        commitment_id=commitment_id,
+        admin_user=current_user
+    )
+    return result
+
+
+@router.get(
+    "/rcpa/pending-approvals",
+    response_model=schemas.RCPAListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Pending Discount Approvals (Admin Only)",
+    description="""
+    **Purpose:** Admin views all commitments with pending discount approval.
+    
+    **Required Role:** Admin only
+    """
+)
+async def get_pending_approvals(
+    current_user: Dict[str, Any] = Depends(require_admin)
+):
+    result = await service.get_pending_discount_approvals(current_user)
+    return result
+
+
 @router.get(
     "/rcpa/summary",
     response_model=schemas.RCPASummaryResponse,

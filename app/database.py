@@ -565,7 +565,12 @@ async def initialize_collections():
             "drug_id",
             name="commitment_drug_idx"
         )        
-        # Index 4: Index on created_at - Fast sorting by date
+        # Index 4: Index on approval_status - Fast pending approvals query
+        await database["prescription_commitments"].create_index(
+            "approval_status",
+            name="commitment_approval_status_idx"
+        )        
+        # Index 5: Index on created_at - Fast sorting by date
         await database["prescription_commitments"].create_index(
             "created_at",
             name="commitment_created_idx"

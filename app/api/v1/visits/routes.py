@@ -58,23 +58,16 @@ async def schedule_visit_endpoint(
     
     **Access:** MR only
     
-    **Location Selection:**
-    MRs can now select either:
-    - **Permanent Location**: Doctor's registered locations (requires location_id)
-    - **Temporary Location**: One-time location with GPS coordinates
-    
-    **Validations:**
-    - MR can only schedule with their assigned doctors
-    - Doctor must not have another scheduled visit at same time
-    - Location must be valid (either permanent with location_id OR temporary with coordinates)
+    **Required Fields:** doctor_id, title, scheduled_date, scheduled_time, purpose, location
     
     **Usage - Permanent Location:**
     ```json
     {
         "doctor_id": "507f1f77bcf86cd799439011",
-        "scheduled_date": "2024-04-15",
+        "title": "Amlodipine 5mg Presentation",
+        "scheduled_date": "2026-07-15",
         "scheduled_time": "10:30",
-        "purpose": "Product presentation",
+        "purpose": "Product presentation and sample distribution",
         "location": {
             "type": "permanent",
             "location_id": "loc_123",
@@ -88,9 +81,10 @@ async def schedule_visit_endpoint(
     ```json
     {
         "doctor_id": "507f1f77bcf86cd799439011",
-        "scheduled_date": "2024-04-20",
+        "title": "Follow-up - Diabetes Camp",
+        "scheduled_date": "2026-07-20",
         "scheduled_time": "14:00",
-        "purpose": "Follow-up visit",
+        "purpose": "Follow-up visit at medical camp",
         "location": {
             "type": "temporary",
             "temporary_location": {
@@ -104,11 +98,13 @@ async def schedule_visit_endpoint(
     }
     ```
     
+    **Validations:**
+    - MR can only schedule with assigned doctors
+    - No duplicate visits at same time for same doctor
+    - `title` is mandatory (2-200 chars)
+    
     **Temporary Location Intelligence:**
-    - System tracks all temporary location visits
-    - After 5 completed visits at same location (within 50m radius)
-    - System auto-creates suggestion for admin review
-    - Admin can approve → becomes permanent location
+    - After 5 completed visits at same temp location → auto-suggests as permanent
     """
     # Check if user is MR
     if current_user.get("role") != UserRole.MR.value:
@@ -122,6 +118,7 @@ async def schedule_visit_endpoint(
     
     return await schedule_visit(
         doctor_id=visit_request.doctor_id,
+        title=visit_request.title,
         scheduled_date=visit_request.scheduled_date,
         scheduled_time=visit_request.scheduled_time,
         purpose=visit_request.purpose,

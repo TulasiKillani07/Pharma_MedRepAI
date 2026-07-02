@@ -203,6 +203,7 @@ class VisitResponse(BaseModel):
     mr_name: str
     doctor_id: str
     doctor_name: str
+    title: Optional[str] = None  # Optional for backward compat with old visits
     scheduled_date: date
     scheduled_time: str
     purpose: str
@@ -652,6 +653,7 @@ class VisitCreateRequest(BaseModel):
     Supports both permanent and temporary locations.
     """
     doctor_id: str = Field(..., description="Doctor ID to visit")
+    title: str = Field(..., min_length=2, max_length=200, description="Visit title")
     scheduled_date: date = Field(..., description="Visit date (YYYY-MM-DD)")
     scheduled_time: str = Field(..., description="Visit time (HH:MM or HH:MM AM/PM)")
     purpose: str = Field(..., min_length=5, description="Purpose of visit")
@@ -690,9 +692,10 @@ class VisitCreateRequest(BaseModel):
             "examples": [
                 {
                     "doctor_id": "507f1f77bcf86cd799439011",
-                    "scheduled_date": "2024-04-15",
+                    "title": "Amlodipine 5mg Presentation",
+                    "scheduled_date": "2026-07-15",
                     "scheduled_time": "10:30",
-                    "purpose": "Product presentation",
+                    "purpose": "Product presentation and sample distribution",
                     "location": {
                         "type": "permanent",
                         "location_id": "loc_123",
@@ -702,9 +705,10 @@ class VisitCreateRequest(BaseModel):
                 },
                 {
                     "doctor_id": "507f1f77bcf86cd799439011",
-                    "scheduled_date": "2024-04-20",
+                    "title": "Follow-up - Diabetes Camp",
+                    "scheduled_date": "2026-07-20",
                     "scheduled_time": "14:00",
-                    "purpose": "Follow-up visit",
+                    "purpose": "Follow-up visit at medical camp",
                     "location": {
                         "type": "temporary",
                         "temporary_location": {

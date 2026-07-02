@@ -462,7 +462,10 @@ class RCPACreateRequest(BaseModel):
     """Manual RCPA commitment creation"""
     doctor_id: str = Field(..., description="Doctor ID")
     drug_id: str = Field(..., description="Drug ID")
+    committed_quantity: int = Field(..., ge=1, le=10000, description="Quantity committed to prescribe")
     rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
+    requested_discount: float = Field(default=0.0, ge=0, le=100, description="Discount % requested")
+    doctor_location_id: Optional[str] = Field(None, description="Doctor location ID (for location snapshot)")
     visit_id: Optional[str] = Field(None, description="Associated visit ID (if from visit)")
     notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
     
@@ -471,7 +474,10 @@ class RCPACreateRequest(BaseModel):
             "example": {
                 "doctor_id": "507f1f77bcf86cd799439011",
                 "drug_id": "507f1f77bcf86cd799439021",
+                "committed_quantity": 100,
                 "rx_per_month": 15,
+                "requested_discount": 5.0,
+                "doctor_location_id": "6a328dee1b17f1eec88e1696",
                 "visit_id": "507f1f77bcf86cd799439031"
             }
         }
@@ -480,12 +486,26 @@ class RCPACreateRequest(BaseModel):
 class RCPAUpdateRequest(BaseModel):
     """Update existing RCPA commitment"""
     rx_per_month: Optional[int] = Field(None, ge=1, le=1000, description="Updated prescriptions per month")
+    committed_quantity: Optional[int] = Field(None, ge=1, le=10000, description="Updated quantity")
     notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "rx_per_month": 20
+                "rx_per_month": 20,
+                "committed_quantity": 150
+            }
+        }
+
+
+class RCPAApproveDiscountRequest(BaseModel):
+    """Approve or reject discount request"""
+    approved_discount: float = Field(..., ge=0, le=100, description="Approved discount %")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "approved_discount": 4.5
             }
         }
 
@@ -499,8 +519,16 @@ class RCPACommitmentResponse(BaseModel):
     doctor_name: str
     drug_id: str
     drug_name: str
+    committed_quantity: int
     rx_per_month: int
+    requested_discount: float = 0.0
+    approved_discount: Optional[float] = None
+    approval_status: str = "PENDING"
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    doctor_location: Optional[dict] = None
     visit_id: Optional[str] = None
+    visit_title: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -515,11 +543,29 @@ class RCPACommitmentResponse(BaseModel):
                 "doctor_name": "Dr. Arjun Sharma",
                 "drug_id": "507f1f77bcf86cd799439021",
                 "drug_name": "Amlovas 5mg",
+                "committed_quantity": 100,
                 "rx_per_month": 15,
+                "requested_discount": 5.0,
+                "approved_discount": 4.5,
+                "approval_status": "APPROVED",
+                "approved_by": "507f1f77bcf86cd799439099",
+                "approved_at": "2026-05-20T10:00:00",
+                "doctor_location": {
+                    "id": "6a328dee1b17f1eec88e1696",
+                    "type": "hospital",
+                    "name": "Apollo Hospital - Jubilee Hills",
+                    "address": "Road 45, Jubilee Hills",
+                    "country": "India",
+                    "state": "Telangana",
+                    "district": "Hyderabad",
+                    "area": "Jubilee Hills",
+                    "latitude": 17.4401,
+                    "longitude": 78.3489
+                },
                 "visit_id": "507f1f77bcf86cd799439031",
                 "notes": None,
                 "created_at": "2026-05-18T14:30:00",
-                "updated_at": "2026-05-19T10:15:00"
+                "updated_at": "2026-05-20T10:00:00"
             }
         }
 
@@ -533,19 +579,7 @@ class RCPAListResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "total": 25,
-                "commitments": [
-                    {
-                        "id": "507f1f77bcf86cd799439041",
-                        "mr_id": "507f1f77bcf86cd799439013",
-                        "mr_name": "Rajesh Kumar",
-                        "doctor_id": "507f1f77bcf86cd799439011",
-                        "doctor_name": "Dr. Arjun Sharma",
-                        "drug_id": "507f1f77bcf86cd799439021",
-                        "drug_name": "Amlovas 5mg",
-                        "rx_per_month": 15,
-                        "created_at": "2026-05-18T14:30:00"
-                    }
-                ]
+                "commitments": []
             }
         }
 

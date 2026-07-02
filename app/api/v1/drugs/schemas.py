@@ -94,6 +94,7 @@ class DrugFieldValueResponse(BaseModel):
     field_id: str
     key: str
     value: Any
+    type: Optional[str] = None  # Field data type from template (text, number, array, etc.)
 
 
 class DrugResponse(BaseModel):

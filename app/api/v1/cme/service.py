@@ -289,14 +289,25 @@ async def update_cme_event(event_id: str, event_data: CMEEventUpdate, current_us
                 )
     
     # Log activity
-    await log_activity(
-        action_type=ActivityLogAction.CME_UPDATED,
-        actor=current_user,
-        target_type=TargetType.CME_EVENT,
-        target_id=event_id,
-        target_name=event.get("title"),
-        details={"updated_fields": updated_fields},
-        severity=LogSeverity.INFO
-    )
+    if "status" in updated_fields and update_data.get("status") == "cancelled":
+        await log_activity(
+            action_type=ActivityLogAction.CME_DELETED,
+            actor=current_user,
+            target_type=TargetType.CME_EVENT,
+            target_id=event_id,
+            target_name=event.get("title"),
+            details={"reason": "Cancelled by admin"},
+            severity=LogSeverity.CRITICAL
+        )
+    else:
+        await log_activity(
+            action_type=ActivityLogAction.CME_UPDATED,
+            actor=current_user,
+            target_type=TargetType.CME_EVENT,
+            target_id=event_id,
+            target_name=event.get("title"),
+            details={"updated_fields": updated_fields},
+            severity=LogSeverity.INFO
+        )
     
     return await get_cme_event_by_id(event_id)

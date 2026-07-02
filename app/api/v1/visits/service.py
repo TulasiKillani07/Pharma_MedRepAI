@@ -30,6 +30,7 @@ def get_company_database():
 
 async def schedule_visit(
     doctor_id: str,
+    title: str,
     scheduled_date: date,
     scheduled_time: str,
     purpose: str,
@@ -165,6 +166,7 @@ async def schedule_visit(
         mr_name=mr["name"],
         doctor_id=doctor_id,
         doctor_name=doctor["name"],
+        title=title,
         scheduled_date=scheduled_date,
         scheduled_time=scheduled_time,
         purpose=purpose,
@@ -752,6 +754,7 @@ async def complete_visit(
             mr_name=visit["mr_name"],
             doctor_id=visit["doctor_id"],
             doctor_name=visit["doctor_name"],
+            title=f"Follow-up: {visit.get('title', visit.get('purpose', 'Visit'))}",
             scheduled_date=followup_date,
             scheduled_time=visit["scheduled_time"],  # Use same time as previous visit
             purpose=f"Follow-up from visit on {visit['scheduled_date'].strftime('%Y-%m-%d')}",
