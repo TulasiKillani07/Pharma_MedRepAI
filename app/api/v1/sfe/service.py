@@ -671,127 +671,198 @@ async def get_mvc_report(
 
 
 
+async def get_eligible_visits(current_user: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Get completed visits for the logged-in MR (eligible for RCPA commitment).
+    Only COMPLETED visits qualify.
+    """
+    db = get_company_database()
+    mr_id = current_user["_id"]
+    
+    visits = await db.visits.find({
+        "mr_id": mr_id,
+        "status": "completed"
+    }).sort("created_at", -1).to_list(length=None)
+    
+    result = []
+    for v in visits:
+        # Build location snapshot from visit location
+        loc_snapshot = None
+        location = v.get("location")
+        if isinstance(location, dict):
+            if location.get("type") == "permanent":
+                loc_snapshot = {"name": location.get("location_name", "")}
+                # Try to get full details from doctor locations
+                doctor = await db.doctors.find_one({"_id": ObjectId(v["doctor_id"])})
+                if doctor:
+                    for dl in doctor.get("locations", []):
+                        if dl.get("id") == location.get("location_id"):
+                            loc_snapshot = {
+                                "name": dl.get("name", ""),
+                                "area": dl.get("area"),
+                                "district": dl.get("district"),
+                                "state": dl.get("state")
+                            }
+                            break
+            elif location.get("type") == "temporary":
+                temp = location.get("temporary_location", {})
+                loc_snapshot = {"name": temp.get("name", ""), "area": None, "district": None, "state": None}
+        
+        scheduled_date = v.get("scheduled_date")
+        visit_date = scheduled_date.strftime("%Y-%m-%d") if scheduled_date else None
+        
+        result.append({
+            "visit_id": str(v["_id"]),
+            "visit_title": v.get("title"),
+            "doctor_id": v.get("doctor_id"),
+            "doctor_name": v.get("doctor_name"),
+            "doctor_location": loc_snapshot,
+            "visit_date": visit_date
+        })
+    
+    return {"total": len(result), "visits": result}
+
+
 async def create_rcpa_commitment(
     commitment_data: Dict[str, Any],
     current_user: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Create RCPA commitment manually (MR only).
-    
-    Args:
-        commitment_data: Commitment details
-        current_user: Current authenticated MR
-    
-    Returns:
-        dict: Created commitment
-    
-    Raises:
-        HTTPException: If validation fails
+    Create RCPA commitment from a completed visit.
+    Backend auto-populates mr, doctor, location from visit.
+    MR only provides: visit_id, drug_id, committed_quantity, rx_per_month, requested_discount.
     """
-    from app.models.sfe_models import PrescriptionCommitment
+    from app.models.sfe_models import PrescriptionCommitment, ApprovalStatus
     
     db = get_company_database()
     mr_id = current_user["_id"]
     
-    # Validate doctor ID
-    doctor_id = commitment_data["doctor_id"]
-    if not ObjectId.is_valid(doctor_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid doctor ID"
-        )
-    
-    # Get doctor details
-    doctor = await db.doctors.find_one({"_id": ObjectId(doctor_id)})
-    if not doctor:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Doctor not found"
-        )
-    
-    # Validate drug ID
+    visit_id = commitment_data["visit_id"]
     drug_id = commitment_data["drug_id"]
+    
+    # 1. Validate visit
+    if not ObjectId.is_valid(visit_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid visit ID")
+    
+    visit = await db.visits.find_one({"_id": ObjectId(visit_id)})
+    if not visit:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Visit not found")
+    
+    if visit.get("status") != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Visit not completed")
+    
+    if visit.get("mr_id") != mr_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not your visit")
+    
+    # 2. Check duplicate (one RCPA per drug per visit)
     if not ObjectId.is_valid(drug_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid drug ID")
+    
+    existing = await db.prescription_commitments.find_one({"visit_id": visit_id, "drug_id": drug_id})
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid drug ID"
+            detail="Commitment already exists for this drug on this visit"
         )
     
-    # Get drug details
-    product = await db.drugs.find_one({"_id": ObjectId(drug_id)})
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Drug not found"
-        )
+    # 3. Validate drug and get pricing
+    drug = await db.drugs.find_one({"_id": ObjectId(drug_id), "is_active": True})
+    if not drug:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug not found or inactive")
     
-    # Extract drug name (stored in field_values or as flat field)
-    drug_name = product.get("drug_name", "")
-    if not drug_name and product.get("field_values"):
-        for field in product["field_values"]:
-            field_key = field.get("key", "")
-            if field_key == "drug_name":
-                drug_name = field.get("value", "Unknown Drug")
-                break
-            elif field_key in ["name", "product_name", "brand_name"]:
-                drug_name = field.get("value", "Unknown Drug")
+    packaging = drug.get("packaging")
+    if not packaging:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug has no pricing configured")
+    
+    selling_price = packaging["selling_price"]
+    max_discount = packaging["max_discount_percent"]
+    quantity_unit = packaging["sales_unit"]
+    
+    # Extract drug name
+    drug_name = drug.get("drug_name", "")
+    if not drug_name and drug.get("field_values"):
+        for fv in drug["field_values"]:
+            if fv.get("key") == "drug_name":
+                drug_name = fv.get("value", "Unknown Drug")
                 break
     if not drug_name:
         drug_name = "Unknown Drug"
     
-    # Get MR details
-    mr = await db.mrs.find_one({"_id": ObjectId(mr_id)})
+    # 4. Validate discount
+    requested_discount = commitment_data.get("requested_discount", 0.0)
+    if requested_discount > max_discount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Discount exceeds allowed maximum of {max_discount}%"
+        )
     
-    # Build doctor location snapshot (if location ID provided)
-    doctor_location_snapshot = None
-    doctor_location_id = commitment_data.get("doctor_location_id")
-    if doctor_location_id:
-        doctor_locations = doctor.get("locations", [])
-        for loc in doctor_locations:
-            if loc.get("id") == doctor_location_id:
-                doctor_location_snapshot = {
-                    "id": loc["id"],
-                    "type": loc.get("type", "hospital"),
-                    "name": loc.get("name", ""),
-                    "address": loc.get("address", ""),
-                    "country": loc.get("country", ""),
-                    "state": loc.get("state", ""),
-                    "district": loc.get("district", ""),
-                    "city": loc.get("city"),
-                    "area": loc.get("area", ""),
-                    "latitude": loc.get("latitude", 0),
-                    "longitude": loc.get("longitude", 0)
-                }
-                break
+    # 5. Build location snapshot from visit
+    doctor_location = None
+    doctor_location_id = None
+    location = visit.get("location")
+    if isinstance(location, dict):
+        if location.get("type") == "permanent":
+            doctor_location_id = location.get("location_id")
+            doctor_location = {"name": location.get("location_name", "")}
+            # Get full details from doctor
+            doctor_doc = await db.doctors.find_one({"_id": ObjectId(visit["doctor_id"])})
+            if doctor_doc:
+                for dl in doctor_doc.get("locations", []):
+                    if dl.get("id") == doctor_location_id:
+                        doctor_location = {
+                            "name": dl.get("name", ""),
+                            "area": dl.get("area"),
+                            "district": dl.get("district"),
+                            "state": dl.get("state")
+                        }
+                        break
+        elif location.get("type") == "temporary":
+            temp = location.get("temporary_location", {})
+            doctor_location = {"name": temp.get("name", "")}
     
-    # Create commitment
-    # Fetch visit title if visit_id provided
-    visit_title = None
-    visit_id = commitment_data.get("visit_id")
-    if visit_id and ObjectId.is_valid(visit_id):
-        visit_doc = await db.visits.find_one({"_id": ObjectId(visit_id)})
-        if visit_doc:
-            visit_title = visit_doc.get("title")
+    # 6. Calculate
+    committed_quantity = commitment_data["committed_quantity"]
+    committed_revenue = committed_quantity * selling_price
     
+    if requested_discount > 0:
+        approval_status = ApprovalStatus.PENDING
+        net_revenue = None
+    else:
+        approval_status = ApprovalStatus.APPROVED
+        net_revenue = committed_revenue
+    
+    now = datetime.utcnow()
+    
+    # 7. Create commitment
     commitment = PrescriptionCommitment(
+        visit_id=visit_id,
+        visit_title=visit.get("title"),
         mr_id=mr_id,
-        mr_name=mr["name"],
-        doctor_id=doctor_id,
-        doctor_name=doctor["name"],
+        mr_name=visit.get("mr_name", current_user.get("name", "")),
+        doctor_id=visit.get("doctor_id"),
+        doctor_name=visit.get("doctor_name"),
+        doctor_location_id=doctor_location_id,
+        doctor_location=doctor_location,
         drug_id=drug_id,
         drug_name=drug_name,
-        committed_quantity=commitment_data.get("committed_quantity", commitment_data["rx_per_month"]),
+        committed_quantity=committed_quantity,
+        quantity_unit=quantity_unit,
         rx_per_month=commitment_data["rx_per_month"],
-        requested_discount=commitment_data.get("requested_discount", 0.0),
-        doctor_location=doctor_location_snapshot,
-        visit_id=visit_id,
-        visit_title=visit_title,
-        notes=commitment_data.get("notes")
+        selling_price=selling_price,
+        max_discount_percent=max_discount,
+        committed_revenue=committed_revenue,
+        requested_discount=requested_discount,
+        net_revenue=net_revenue,
+        approval_status=approval_status,
+        month=now.month,
+        year=now.year,
+        created_at=now,
+        updated_at=now
     )
     
     result = await db.prescription_commitments.insert_one(commitment.model_dump())
     
-    logger.info(f"MR {mr_id} created RCPA commitment: {doctor_id} -> {drug_id} (qty: {commitment.committed_quantity}, {commitment.rx_per_month}/month)")
+    logger.info(f"MR {mr_id} created RCPA: visit={visit_id} drug={drug_id} qty={committed_quantity} revenue={committed_revenue}")
     
     commitment_dict = commitment.model_dump()
     commitment_dict["id"] = str(result.inserted_id)

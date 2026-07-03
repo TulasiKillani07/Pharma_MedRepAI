@@ -570,7 +570,13 @@ async def initialize_collections():
             "approval_status",
             name="commitment_approval_status_idx"
         )        
-        # Index 5: Index on created_at - Fast sorting by date
+        # Index 5: Unique compound index on (visit_id, drug_id) - One RCPA per drug per visit
+        await database["prescription_commitments"].create_index(
+            [("visit_id", 1), ("drug_id", 1)],
+            unique=True,
+            name="commitment_visit_drug_unique_idx"
+        )        
+        # Index 6: Index on created_at - Fast sorting by date
         await database["prescription_commitments"].create_index(
             "created_at",
             name="commitment_created_idx"

@@ -2,7 +2,7 @@
 Drug and Drug Field Template Request/Response Schemas
 """
 
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -21,7 +21,7 @@ class FieldDefinitionBase(BaseModel):
 
 class FieldDefinitionCreate(FieldDefinitionBase):
     """Schema for creating a dynamic field"""
-    pass
+    is_fixed: bool = Field(default=False, description="If true, field cannot be deactivated")
 
 
 class FieldDefinitionUpdate(BaseModel):
@@ -42,6 +42,15 @@ class FieldDefinitionResponse(FieldDefinitionBase):
     is_active: bool
 
 
+# ============ PACKAGING METADATA ============
+
+class DosagePackagingRule(BaseModel):
+    """Rules for a specific dosage form — what sales units and measurement units are valid"""
+    dosage_form: str
+    sales_units: List[str] = Field(..., description="Valid sales unit options for this dosage form")
+    measurement_units: List[str] = Field(..., description="Valid measurement unit options for this dosage form")
+
+
 # ============ TEMPLATE SCHEMAS ============
 
 class TemplateCreate(BaseModel):
@@ -60,12 +69,45 @@ class TemplateResponse(BaseModel):
     id: str = Field(alias="_id")
     template_name: str
     fields: List[FieldDefinitionResponse]
+    packaging_metadata: List[DosagePackagingRule] = Field(
+        default_factory=list,
+        description="Packaging rules per dosage form. Frontend uses this to filter valid sales_unit and measurement_unit options."
+    )
+    packaging_schema: Optional[Dict] = Field(
+        None,
+        description="Fixed schema describing all packaging fields, their types, and rules. Frontend uses this to render the packaging form."
+    )
     created_at: datetime
     updated_at: datetime
     is_active: bool
 
     class Config:
         populate_by_name = True
+        extra = "allow"  # Allow packaging_metadata and packaging_schema injected at runtime
+
+
+# ============ PACKAGING SCHEMAS ============
+
+class DrugPackaging(BaseModel):
+    """
+    Flat packaging and pricing for a drug.
+    Fixed schema — same fields for every drug type.
+    Frontend rules determine valid sales_unit + measurement_unit per dosage_form.
+    Backend stores whatever values come in — no validation of combinations needed.
+    """
+    sales_unit: str = Field(..., description="Sellable unit — Strip, Bottle, Tube, Vial, etc.")
+    pack_quantity: int = Field(..., ge=1, description="How many measurement_units per sales_unit (e.g. 10 tablets per strip)")
+    measurement_unit: str = Field(..., description="Base unit inside the pack — Tablet, Capsule, ml, g, etc.")
+    selling_price: float = Field(..., ge=0, description="Price per sales_unit — used in all revenue calculations")
+    max_discount_percent: float = Field(..., ge=0, le=100, description="Hard ceiling on discount for RCPA approval")
+    mrp: Optional[float] = Field(None, ge=0, description="Maximum retail price — display only, not used in revenue")
+    sales_units_per_box: Optional[int] = Field(None, ge=1, description="Sales units per box — only if box-level tracking needed")
+    box_pricing_mode: Optional[Literal["auto", "discount", "manual"]] = Field(
+        None,
+        description="auto=selling_price×sales_units_per_box | discount=apply box_discount_percent | manual=use box_price directly"
+    )
+    box_discount_percent: Optional[float] = Field(None, ge=0, le=100, description="Only when box_pricing_mode=discount")
+    box_price: Optional[float] = Field(None, ge=0, description="Only when box_pricing_mode=manual or auto-calculated")
 
 
 # ============ DRUG SCHEMAS ============
@@ -79,14 +121,40 @@ class DrugFieldValueInput(BaseModel):
 
 class DrugCreate(BaseModel):
     """Schema for creating a new drug"""
-    template_id: Optional[str] = None  # Optional - will use default template if not provided
+    template_id: Optional[str] = None
     field_values: List[DrugFieldValueInput]
+    packaging: DrugPackaging = Field(..., description="Packaging and pricing configuration")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "field_values": [
+                    {"field_id": "uuid", "key": "drug_name", "value": "Paracetamol 650"},
+                    {"field_id": "uuid", "key": "symptoms", "value": ["Fever", "Headache"]},
+                    {"field_id": "uuid", "key": "dosage_form", "value": "Tablet"},
+                    {"field_id": "uuid", "key": "manufacturer", "value": "GSK"}
+                ],
+                "packaging": {
+                    "sales_unit": "Strip",
+                    "pack_quantity": 10,
+                    "measurement_unit": "Tablet",
+                    "selling_price": 80,
+                    "mrp": 100,
+                    "max_discount_percent": 10,
+                    "sales_units_per_box": 20,
+                    "box_pricing_mode": "discount",
+                    "box_discount_percent": 10,
+                    "box_price": 1440
+                }
+            }
+        }
 
 
 class DrugUpdate(BaseModel):
     """Schema for updating a drug"""
     field_values: List[DrugFieldValueInput]
-    is_active: Optional[bool] = None  # Allow updating active status
+    packaging: Optional[DrugPackaging] = Field(None, description="Update packaging/pricing (optional — fully replaced if provided)")
+    is_active: Optional[bool] = None
 
 
 class DrugFieldValueResponse(BaseModel):
@@ -94,21 +162,23 @@ class DrugFieldValueResponse(BaseModel):
     field_id: str
     key: str
     value: Any
-    type: Optional[str] = None  # Field data type from template (text, number, array, etc.)
+    type: Optional[str] = None
 
 
 class DrugResponse(BaseModel):
     """Schema for drug response"""
     id: str = Field(alias="_id")
-    template_id: Optional[str] = None  # Optional for backward compatibility
-    field_values: Optional[List[DrugFieldValueResponse]] = None  # Optional for backward compatibility
-    created_at: Optional[datetime] = None  # Optional for backward compatibility
+    template_id: Optional[str] = None
+    field_values: Optional[List[DrugFieldValueResponse]] = None
+    packaging: Optional[DrugPackaging] = Field(None, description="Packaging and pricing configuration")
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     is_active: Optional[bool] = True
+    has_brochure: Optional[bool] = False
 
     class Config:
         populate_by_name = True
-        extra = "allow"  # Allow flat fields like drug_name, symptoms, etc.
+        extra = "allow"
 
 
 class DrugListResponse(BaseModel):

@@ -120,17 +120,10 @@ class ApprovalStatus(str, Enum):
 
 class DoctorLocationSnapshot(BaseModel):
     """Snapshot of doctor's selected location at time of commitment"""
-    id: str = Field(..., description="Location ID")
-    type: str = Field(..., description="Location type: hospital, solo_clinic, polyclinic")
     name: str = Field(..., description="Location name")
-    address: str = Field(..., description="Full address")
-    country: str = Field(..., description="Country")
-    state: str = Field(..., description="State")
-    district: str = Field(..., description="District")
-    city: Optional[str] = Field(None, description="City")
-    area: str = Field(..., description="Area / Locality")
-    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
-    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
+    area: Optional[str] = Field(None, description="Area / Locality")
+    district: Optional[str] = Field(None, description="District")
+    state: Optional[str] = Field(None, description="State")
 
 
 class PrescriptionCommitment(BaseModel):
@@ -142,52 +135,62 @@ class PrescriptionCommitment(BaseModel):
     - mr_id
     - doctor_id
     - drug_id
+    - visit_id + drug_id (unique compound)
     - approval_status
     - created_at
     """
-    # References
-    mr_id: str = Field(..., description="MR user ID")
-    mr_name: str = Field(..., description="MR name")
-    doctor_id: str = Field(..., description="Doctor user ID")
-    doctor_name: str = Field(..., description="Doctor name")
+    # Visit reference
+    visit_id: str = Field(..., description="Visit ID where commitment was made")
+    visit_title: Optional[str] = Field(None, description="Visit title snapshot")
+    
+    # Auto-populated from visit
+    mr_id: str = Field(..., description="MR user ID (from visit)")
+    mr_name: str = Field(..., description="MR name (from visit)")
+    doctor_id: str = Field(..., description="Doctor user ID (from visit)")
+    doctor_name: str = Field(..., description="Doctor name (from visit)")
+    doctor_location_id: Optional[str] = Field(None, description="Location ID from visit")
+    doctor_location: Optional[DoctorLocationSnapshot] = Field(None, description="Location snapshot from visit")
+    
+    # Drug reference
     drug_id: str = Field(..., description="Drug ID")
-    drug_name: str = Field(..., description="Drug name")
+    drug_name: str = Field(..., description="Drug name (from drug document)")
     
     # Commitment details
-    committed_quantity: int = Field(..., ge=1, description="Quantity doctor committed to prescribe")
+    committed_quantity: int = Field(..., ge=1, description="Quantity in sales_units")
+    quantity_unit: str = Field(..., description="Sales unit (Strip/Bottle/Vial from drug.packaging)")
     rx_per_month: int = Field(..., ge=1, description="Expected prescriptions per month")
+    
+    # Pricing snapshot from drug
+    selling_price: float = Field(..., ge=0, description="Price per sales_unit at time of commitment")
+    max_discount_percent: float = Field(..., ge=0, le=100, description="Max allowed discount from drug")
+    committed_revenue: float = Field(..., ge=0, description="committed_quantity × selling_price")
     
     # Discount workflow
     requested_discount: float = Field(default=0.0, ge=0, le=100, description="Discount % requested by MR")
     approved_discount: Optional[float] = Field(None, ge=0, le=100, description="Discount % approved by admin")
+    net_revenue: Optional[float] = Field(None, description="Revenue after discount (null if pending)")
     approval_status: ApprovalStatus = Field(default=ApprovalStatus.PENDING, description="Discount approval status")
     approved_by: Optional[str] = Field(None, description="Admin user ID who approved/rejected")
     approved_at: Optional[datetime] = Field(None, description="When discount was approved/rejected")
     
-    # Doctor location snapshot (copy of selected location at time of commitment)
-    doctor_location: Optional[DoctorLocationSnapshot] = Field(None, description="Snapshot of doctor's visit location")
-    
-    # Metadata
-    visit_id: Optional[str] = Field(None, description="Visit ID where commitment was made")
-    visit_title: Optional[str] = Field(None, description="Visit title (snapshot)")
-    notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
+    # Time tracking
+    month: int = Field(..., ge=1, le=12, description="Commitment month")
+    year: int = Field(..., ge=2020, le=2099, description="Commitment year")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
-    @field_validator('mr_id', 'doctor_id', 'drug_id')
+    @field_validator('mr_id', 'doctor_id', 'drug_id', 'visit_id')
     @classmethod
     def validate_object_id(cls, v: str) -> str:
-        """Validate IDs are valid ObjectId format"""
         try:
             ObjectId(v)
             return v
         except Exception:
             raise ValueError(f'Invalid ObjectId format: {v}')
     
-    @field_validator('visit_id', 'approved_by')
+    @field_validator('approved_by')
     @classmethod
     def validate_optional_object_id(cls, v: Optional[str]) -> Optional[str]:
-        """Validate optional IDs if provided"""
         if v is None:
             return v
         try:

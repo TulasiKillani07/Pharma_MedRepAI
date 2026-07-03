@@ -77,6 +77,7 @@ class DrugInDB(BaseModel):
     """
     template_id: str = Field(..., description="Template ID")
     field_values: List[DrugFieldValue] = Field(default_factory=list, description="Field values")
+    packaging: Optional[dict] = Field(None, description="Structured packaging and pricing (DrugPackaging)")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     is_active: bool = Field(default=True, description="Soft delete flag")

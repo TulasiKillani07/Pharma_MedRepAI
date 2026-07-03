@@ -315,32 +315,64 @@ async def get_mvc_report(
 # RCPA (PRESCRIPTION COMMITMENTS)
 # ============================================================================
 
+@router.get(
+    "/rcpa/eligible-visits",
+    response_model=schemas.EligibleVisitsListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Eligible Visits for RCPA",
+    description="""
+    **Purpose:** Get list of completed visits for the logged-in MR that are eligible for RCPA commitments.
+    
+    **Required Role:** MR only
+    
+    **Only COMPLETED visits** are returned — a visit must be fully checked out with report submitted.
+    
+    **Frontend uses this as the visit dropdown** when MR creates a commitment.
+    """
+)
+async def get_eligible_visits(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    if current_user.get("role") != "MR":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only MRs can access eligible visits")
+    return await service.get_eligible_visits(current_user)
+
+
 @router.post(
     "/rcpa",
     response_model=schemas.RCPACommitmentResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create RCPA Commitment",
     description="""
-    **Purpose:** Log a prescription commitment from a doctor (usually done during or after a visit).
+    **Purpose:** Log a prescription commitment from a completed visit.
     
     **Required Role:** MR only
     
-    **Example Request:**
+    **MR sends only:**
     ```json
     {
-      "doctor_id": "507f1f77bcf86cd799439011",
-      "drug_id": "507f1f77bcf86cd799439021",
+      "visit_id": "...",
+      "drug_id": "...",
+      "committed_quantity": 20,
       "rx_per_month": 15,
-      "visit_id": "507f1f77bcf86cd799439031"
+      "requested_discount": 5
     }
     ```
     
-    **What Happens:**
-    1. System validates doctor and drug exist
-    2. Creates commitment record
-    3. Included in demand forecast calculations
+    **Backend auto-populates** from visit: mr_id, mr_name, doctor_id, doctor_name, doctor_location.
+    **Backend auto-populates** from drug: drug_name, selling_price, max_discount_percent, quantity_unit.
+    **Backend auto-calculates**: committed_revenue = committed_quantity × selling_price.
     
-    **Note:** Commitments are also auto-created during visit completion when MR logs rx_commitment.
+    **Validations:**
+    - Visit must be COMPLETED
+    - Visit must belong to logged-in MR
+    - One RCPA per drug per visit (no duplicates)
+    - requested_discount ≤ max_discount_percent
+    - Drug must be active with packaging configured
+    
+    **Approval logic:**
+    - If requested_discount = 0 → auto-approved, net_revenue = committed_revenue
+    - If requested_discount > 0 → PENDING, net_revenue = null until admin approves
     """
 )
 async def create_rcpa_commitment(

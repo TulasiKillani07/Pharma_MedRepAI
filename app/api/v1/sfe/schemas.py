@@ -459,26 +459,21 @@ class MVCResponse(BaseModel):
 # ============================================================================
 
 class RCPACreateRequest(BaseModel):
-    """Manual RCPA commitment creation"""
-    doctor_id: str = Field(..., description="Doctor ID")
+    """Create RCPA commitment — MR provides only visit + drug + quantity"""
+    visit_id: str = Field(..., description="Completed visit ID")
     drug_id: str = Field(..., description="Drug ID")
-    committed_quantity: int = Field(..., ge=1, le=10000, description="Quantity committed to prescribe")
+    committed_quantity: int = Field(..., ge=1, description="Quantity in sales_units (e.g. 20 strips)")
     rx_per_month: int = Field(..., ge=1, le=1000, description="Expected prescriptions per month")
-    requested_discount: float = Field(default=0.0, ge=0, le=100, description="Discount % requested")
-    doctor_location_id: Optional[str] = Field(None, description="Doctor location ID (for location snapshot)")
-    visit_id: Optional[str] = Field(None, description="Associated visit ID (if from visit)")
-    notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
-    
+    requested_discount: float = Field(default=0.0, ge=0, le=100, description="Discount % requested (0 = no discount)")
+
     class Config:
         json_schema_extra = {
             "example": {
-                "doctor_id": "507f1f77bcf86cd799439011",
+                "visit_id": "507f1f77bcf86cd799439031",
                 "drug_id": "507f1f77bcf86cd799439021",
-                "committed_quantity": 100,
+                "committed_quantity": 20,
                 "rx_per_month": 15,
-                "requested_discount": 5.0,
-                "doctor_location_id": "6a328dee1b17f1eec88e1696",
-                "visit_id": "507f1f77bcf86cd799439031"
+                "requested_discount": 5
             }
         }
 
@@ -510,26 +505,48 @@ class RCPAApproveDiscountRequest(BaseModel):
         }
 
 
+class EligibleVisitResponse(BaseModel):
+    """A completed visit eligible for RCPA commitment"""
+    visit_id: str
+    visit_title: Optional[str] = None
+    doctor_id: str
+    doctor_name: str
+    doctor_location: Optional[dict] = None
+    visit_date: Optional[str] = None
+
+
+class EligibleVisitsListResponse(BaseModel):
+    """List of eligible visits"""
+    total: int
+    visits: List[EligibleVisitResponse]
+
+
 class RCPACommitmentResponse(BaseModel):
     """Single RCPA commitment"""
     id: str
+    visit_id: str
+    visit_title: Optional[str] = None
     mr_id: str
     mr_name: str
     doctor_id: str
     doctor_name: str
+    doctor_location: Optional[dict] = None
     drug_id: str
     drug_name: str
     committed_quantity: int
+    quantity_unit: str
     rx_per_month: int
+    selling_price: float
+    max_discount_percent: float
+    committed_revenue: float
     requested_discount: float = 0.0
     approved_discount: Optional[float] = None
+    net_revenue: Optional[float] = None
     approval_status: str = "PENDING"
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
-    doctor_location: Optional[dict] = None
-    visit_id: Optional[str] = None
-    visit_title: Optional[str] = None
-    notes: Optional[str] = None
+    month: int
+    year: int
     created_at: datetime
     updated_at: Optional[datetime] = None
     
@@ -537,35 +554,33 @@ class RCPACommitmentResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "id": "507f1f77bcf86cd799439041",
+                "visit_id": "507f1f77bcf86cd799439031",
+                "visit_title": "Apollo Hospital - Dr. Sneha - 03 Jul",
                 "mr_id": "507f1f77bcf86cd799439013",
                 "mr_name": "Rajesh Kumar",
                 "doctor_id": "507f1f77bcf86cd799439011",
-                "doctor_name": "Dr. Arjun Sharma",
+                "doctor_name": "Dr. Sneha",
+                "doctor_location": {
+                    "name": "Apollo Hospital",
+                    "area": "Jubilee Hills",
+                    "district": "Hyderabad",
+                    "state": "Telangana"
+                },
                 "drug_id": "507f1f77bcf86cd799439021",
                 "drug_name": "Amlovas 5mg",
-                "committed_quantity": 100,
+                "committed_quantity": 20,
+                "quantity_unit": "Strip",
                 "rx_per_month": 15,
-                "requested_discount": 5.0,
-                "approved_discount": 4.5,
-                "approval_status": "APPROVED",
-                "approved_by": "507f1f77bcf86cd799439099",
-                "approved_at": "2026-05-20T10:00:00",
-                "doctor_location": {
-                    "id": "6a328dee1b17f1eec88e1696",
-                    "type": "hospital",
-                    "name": "Apollo Hospital - Jubilee Hills",
-                    "address": "Road 45, Jubilee Hills",
-                    "country": "India",
-                    "state": "Telangana",
-                    "district": "Hyderabad",
-                    "area": "Jubilee Hills",
-                    "latitude": 17.4401,
-                    "longitude": 78.3489
-                },
-                "visit_id": "507f1f77bcf86cd799439031",
-                "notes": None,
-                "created_at": "2026-05-18T14:30:00",
-                "updated_at": "2026-05-20T10:00:00"
+                "selling_price": 80,
+                "max_discount_percent": 15,
+                "committed_revenue": 1600,
+                "requested_discount": 5,
+                "approved_discount": None,
+                "net_revenue": None,
+                "approval_status": "PENDING",
+                "month": 7,
+                "year": 2026,
+                "created_at": "2026-07-03T10:00:00"
             }
         }
 

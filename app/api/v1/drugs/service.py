@@ -1,5 +1,6 @@
 """
 Drug and Drug Field Template Business Logic
+VERSION_MARKER_2026_07_03_PACKAGING_REFACTOR
 """
 import asyncio
 
@@ -27,6 +28,154 @@ logger = get_medrep_logger(__name__)
 
 
 # ============ HELPER FUNCTIONS ============
+
+def _get_packaging_metadata() -> List[Dict[str, Any]]:
+    """
+    Returns packaging rules per dosage form.
+    Frontend loads this once and uses it to filter sales units and measurement units.
+    These rules are backend-controlled — never editable from API.
+    """
+    return [
+        {
+            "dosage_form": "Tablet",
+            "sales_units": ["Strip", "Bottle", "Blister Pack"],
+            "measurement_units": ["Tablet"]
+        },
+        {
+            "dosage_form": "Capsule",
+            "sales_units": ["Strip", "Bottle"],
+            "measurement_units": ["Capsule"]
+        },
+        {
+            "dosage_form": "Syrup",
+            "sales_units": ["Bottle"],
+            "measurement_units": ["ml"]
+        },
+        {
+            "dosage_form": "Injection",
+            "sales_units": ["Vial", "Ampoule", "Prefilled Syringe"],
+            "measurement_units": ["ml", "mg", "g"]
+        },
+        {
+            "dosage_form": "Cream",
+            "sales_units": ["Tube", "Jar"],
+            "measurement_units": ["g"]
+        },
+        {
+            "dosage_form": "Ointment",
+            "sales_units": ["Tube", "Jar"],
+            "measurement_units": ["g"]
+        },
+        {
+            "dosage_form": "Gel",
+            "sales_units": ["Tube", "Jar"],
+            "measurement_units": ["g"]
+        },
+        {
+            "dosage_form": "Drops",
+            "sales_units": ["Bottle"],
+            "measurement_units": ["ml"]
+        },
+        {
+            "dosage_form": "Lotion",
+            "sales_units": ["Bottle"],
+            "measurement_units": ["ml"]
+        },
+        {
+            "dosage_form": "Powder",
+            "sales_units": ["Sachet", "Bottle", "Box"],
+            "measurement_units": ["g", "mg"]
+        },
+        {
+            "dosage_form": "Inhaler",
+            "sales_units": ["Inhaler"],
+            "measurement_units": ["Dose"]
+        },
+    ]
+
+
+def _get_packaging_schema() -> Dict[str, Any]:
+    """
+    Returns the fixed packaging schema definition.
+    Frontend uses this to know what fields to render in the packaging form,
+    their types, which are required, and validation rules.
+    This is backend-controlled — never editable from API.
+    """
+    return {
+        "is_fixed": True,
+        "fields": {
+            "sales_unit": {
+                "type": "text",
+                "required": True,
+                "description": "What one sellable unit is called — Strip, Bottle, Tube, Vial, etc."
+            },
+            "pack_quantity": {
+                "type": "number",
+                "required": True,
+                "description": "How many measurement_units are in one sales_unit — e.g. 10 tablets per strip"
+            },
+            "measurement_unit": {
+                "type": "text",
+                "required": True,
+                "description": "The base unit inside the pack — Tablet, Capsule, ml, g, etc."
+            },
+            "selling_price": {
+                "type": "number",
+                "required": True,
+                "description": "Price per sales_unit — the only number used in revenue calculation"
+            },
+            "mrp": {
+                "type": "number",
+                "required": False,
+                "description": "Maximum retail price — display and compliance only, never used in revenue calc"
+            },
+            "max_discount_percent": {
+                "type": "number",
+                "required": True,
+                "description": "Hard ceiling on discount that can be approved for this drug in RCPA"
+            },
+            "sales_units_per_box": {
+                "type": "number",
+                "required": False,
+                "description": "How many sales_units make one box — only fill if box-level tracking is needed"
+            },
+            "box_pricing_mode": {
+                "type": "select",
+                "required": False,
+                "options": ["auto", "discount", "manual"],
+                "description": "auto=derive from selling_price×sales_units_per_box | discount=apply box_discount_percent | manual=use box_price directly"
+            },
+            "box_discount_percent": {
+                "type": "number",
+                "required": False,
+                "description": "Only when box_pricing_mode=discount"
+            },
+            "box_price": {
+                "type": "number",
+                "required": False,
+                "description": "Only when box_pricing_mode=manual or auto-calculated result"
+            }
+        }
+    }
+
+
+def _resolve_packaging(packaging: Optional[Dict]) -> Optional[Dict]:
+    """
+    Auto-calculate box_price if box_pricing_mode is 'auto'.
+    Called on every GET response — never modifies stored data.
+    """
+    if not packaging:
+        return packaging
+    
+    mode = packaging.get("box_pricing_mode")
+    units_per_box = packaging.get("sales_units_per_box")
+    selling_price = packaging.get("selling_price")
+    
+    if mode == "auto" and units_per_box and selling_price is not None:
+        packaging["box_price"] = round(selling_price * units_per_box, 2)
+    
+    return packaging
+
 
 def build_flat_fields(field_values: List[Dict]) -> Dict[str, Any]:
     """
@@ -231,85 +380,6 @@ def get_default_fixed_fields() -> List[Dict[str, Any]]:
             "options": None,
             "is_active": True
         },
-        # Packaging fields
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "pack_type",
-            "type": "select",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 13,
-            "options": ["Strip", "Bottle", "Vial", "Ampoule", "Tube", "Sachet", "Box", "Blister Pack"],
-            "is_active": True
-        },
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "units_per_pack",
-            "type": "number",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 14,
-            "options": None,
-            "is_active": True
-        },
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "packs_per_box",
-            "type": "number",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 15,
-            "options": None,
-            "is_active": True
-        },
-        # Pricing fields
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "price_per_drug",
-            "type": "number",
-            "is_fixed": True,
-            "required": False,
-            "visible": True,
-            "order": 16,
-            "options": None,
-            "is_active": True
-        },
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "pack_price",
-            "type": "number",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 17,
-            "options": None,
-            "is_active": True
-        },
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "box_price",
-            "type": "number",
-            "is_fixed": True,
-            "required": False,
-            "visible": True,
-            "order": 18,
-            "options": None,
-            "is_active": True
-        },
-        {
-            "field_id": str(uuid.uuid4()),
-            "key": "mrp",
-            "type": "number",
-            "is_fixed": True,
-            "required": False,
-            "visible": True,
-            "order": 19,
-            "options": None,
-            "is_active": True
-        },
         # Brochure fields (optional, auto-filled by upload endpoint)
         {
             "field_id": str(uuid.uuid4()),
@@ -458,115 +528,20 @@ async def get_template() -> Optional[Dict[str, Any]]:
         })
         changes = True
 
-    # Remove old 'price' field (replaced by price_per_drug)
+    # Remove old 'price' field (replaced by packaging.pricing)
     if "price" in key_to_index:
         fields = [f for f in fields if f["key"] != "price"]
         key_to_index = {f["key"]: i for i, f in enumerate(fields)}
         changes = True
 
-    # Ensure pack_type exists
-    if "pack_type" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "pack_type",
-            "type": "select",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 13,
-            "options": ["Strip", "Bottle", "Vial", "Ampoule", "Tube", "Sachet", "Box", "Blister Pack"],
-            "is_active": True
-        })
-        changes = True
-
-    # Ensure units_per_pack exists
-    if "units_per_pack" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "units_per_pack",
-            "type": "number",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 14,
-            "options": None,
-            "is_active": True
-        })
-        changes = True
-
-    # Ensure packs_per_box exists
-    if "packs_per_box" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "packs_per_box",
-            "type": "number",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 15,
-            "options": None,
-            "is_active": True
-        })
-        changes = True
-
-    # Ensure pack_price exists
-    if "pack_price" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "pack_price",
-            "type": "number",
-            "is_fixed": True,
-            "required": True,
-            "visible": True,
-            "order": 17,
-            "options": None,
-            "is_active": True
-        })
-        changes = True
-
-    # Ensure price_per_drug exists
-    if "price_per_drug" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "price_per_drug",
-            "type": "number",
-            "is_fixed": True,
-            "required": False,
-            "visible": True,
-            "order": 16,
-            "options": None,
-            "is_active": True
-        })
-        changes = True
-
-    # Ensure box_price exists
-    if "box_price" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "box_price",
-            "type": "number",
-            "is_fixed": True,
-            "required": False,
-            "visible": True,
-            "order": 17,
-            "options": None,
-            "is_active": True
-        })
-        changes = True
-
-    # Ensure mrp exists
-    if "mrp" not in key_to_index:
-        fields.append({
-            "field_id": str(uuid_module.uuid4()),
-            "key": "mrp",
-            "type": "number",
-            "is_fixed": True,
-            "required": False,
-            "visible": True,
-            "order": 18,
-            "options": None,
-            "is_active": True
-        })
+    # Remove old flat packaging fields (replaced by structured packaging object)
+    old_packaging_keys = {"pack_type", "units_per_pack", "packs_per_box",
+                          "pack_price", "box_price", "mrp", "price_per_drug", "discount"}
+    before_count = len(fields)
+    fields = [f for f in fields if f["key"] not in old_packaging_keys]
+    if len(fields) < before_count:
+        logger.info(f"Migration: removed {before_count - len(fields)} old packaging fields")
+        key_to_index = {f["key"]: i for i, f in enumerate(fields)}
         changes = True
 
     # Ensure dosage_form has updated options and is required
@@ -588,6 +563,13 @@ async def get_template() -> Optional[Dict[str, Any]]:
         template["updated_at"] = datetime.utcnow()
 
     template["_id"] = str(template["_id"])
+    
+    # Inject packaging_metadata — frontend uses this to filter sales units / measurement units
+    template["packaging_metadata"] = _get_packaging_metadata()
+    
+    # Inject packaging_schema — frontend uses this to know the packaging form fields and rules
+    template["packaging_schema"] = _get_packaging_schema()
+    
     return template
 
 
@@ -762,9 +744,11 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
     normalized_field_values = normalize_field_values(drug_data.field_values, template_fields)
     
     # Create drug using DrugInDB model
+    packaging_dict = drug_data.packaging.model_dump() if drug_data.packaging else None
     drug = DrugInDB(
         template_id=template_id,
         field_values=normalized_field_values,
+        packaging=packaging_dict,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
         is_active=True
@@ -940,6 +924,9 @@ async def get_all_drugs(
             if "field_values" in drug:
                 for fv in drug["field_values"]:
                     fv["type"] = field_type_map.get(fv.get("field_id"))
+            # Auto-calculate box_price if mode is 'auto'
+            if "packaging" in drug and drug["packaging"]:
+                drug["packaging"] = _resolve_packaging(drug["packaging"])
     
     total = await db["drugs"].count_documents(query)
     
@@ -997,6 +984,10 @@ async def get_drug_by_id(drug_id: str) -> Dict[str, Any]:
         if "field_values" in drug:
             for fv in drug["field_values"]:
                 fv["type"] = field_type_map.get(fv.get("field_id"))
+    
+    # Auto-calculate box_price if mode is 'auto'
+    if "packaging" in drug and drug["packaging"]:
+        drug["packaging"] = _resolve_packaging(drug["packaging"])
     
     return drug
 
@@ -1077,6 +1068,10 @@ async def update_drug(drug_id: str, drug_data: DrugUpdate) -> Dict[str, Any]:
         **flat_fields,
         "updated_at": datetime.utcnow()
     }
+    
+    # Update packaging if provided
+    if drug_data.packaging is not None:
+        update_data["packaging"] = drug_data.packaging.model_dump()
     
     # Update is_active if provided
     if drug_data.is_active is not None:
@@ -1516,8 +1511,7 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     # Define fixed field keys
     fixed_fields = [
         "drug_name", "brand_name", "drug_class", "manufacturer", "symptoms", "indications",
-        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url",
-        "pack_type", "units_per_pack", "packs_per_box", "price_per_drug", "pack_price", "box_price", "mrp"
+        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url"
     ]
     
     # Validate required columns (only drug_name and symptoms are truly required)

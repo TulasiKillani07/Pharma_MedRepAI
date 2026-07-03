@@ -37,24 +37,40 @@ async def get_template_endpoint():
     
     **Access:** Admin only
     
-    **Response includes all fields (fixed + dynamic):**
+    **Response includes three sections:**
+    
+    **1. `fields[]`** — All field definitions (fixed + dynamic) with `field_id`, `key`, `type`, `required`, `options`
+    
+    **2. `packaging_metadata`** — Valid `sales_unit` + `measurement_unit` options per `dosage_form`:
+    ```json
+    [
+      { "dosage_form": "Tablet", "sales_units": ["Strip", "Bottle", "Blister Pack"], "measurement_units": ["Tablet"] },
+      { "dosage_form": "Syrup", "sales_units": ["Bottle"], "measurement_units": ["ml"] },
+      { "dosage_form": "Injection", "sales_units": ["Vial", "Ampoule", "Prefilled Syringe"], "measurement_units": ["ml", "mg", "g"] }
+    ]
+    ```
+    
+    **3. `packaging_schema`** — Fixed schema of the packaging object (fields, types, required, descriptions):
     ```json
     {
-        "_id": "template_id",
-        "template_name": "Default Drug Template",
-        "fields": [
-            {"field_id": "uuid", "key": "drug_name", "type": "text", "is_fixed": true, "required": true, "visible": true, "order": 1},
-            {"field_id": "uuid", "key": "symptoms", "type": "array", "is_fixed": true, "required": true, "visible": true, "order": 5},
-            {"field_id": "uuid", "key": "price", "type": "number", "is_fixed": true, "required": false, "visible": true, "order": 13},
-            {"field_id": "uuid", "key": "custom_field", "type": "text", "is_fixed": false, "required": false, "visible": true, "order": 18}
-        ],
-        "is_active": true
+      "is_fixed": true,
+      "fields": {
+        "sales_unit": { "type": "text", "required": true, "description": "..." },
+        "pack_quantity": { "type": "number", "required": true, "description": "..." },
+        "selling_price": { "type": "number", "required": true, "description": "..." },
+        "max_discount_percent": { "type": "number", "required": true, "description": "..." },
+        "box_pricing_mode": { "type": "select", "required": false, "options": ["auto", "discount", "manual"], "description": "..." }
+      }
     }
     ```
     
-    **Field Types:** text, textarea, number, select, boolean, date, array
+    **Frontend flow:**
+    1. Call this endpoint once when the Add Drug page opens
+    2. Render `fields[]` as the main drug form
+    3. Render the packaging section using `packaging_schema`
+    4. When admin selects `dosage_form`, look up `packaging_metadata[dosage_form]` to filter valid `sales_unit` + `measurement_unit` options
     
-    **Auto-migration:** New fixed fields (like `price`) are auto-added to existing templates on first call.
+    **Auto-migration:** New fixed fields are auto-added to existing templates on first call.
     """
     return await service.get_template()
 
@@ -155,17 +171,21 @@ async def bulk_upload_drugs_endpoint(
     
     **CSV Example (Fixed fields only):**
     ```csv
-    drug_name,symptoms,brand_name,drug_class,manufacturer,dosage_form,pack_type,units_per_pack,packs_per_box,price_per_drug,pack_price
-    amlodipine,"Hypertension,Chest Pain",Amlovas,Calcium Channel Blocker,Macleods Pharma,Tablet,Strip,10,10,3.5,35
-    metformin,"Diabetes,Fatigue",Glycomet,Biguanide,USV Limited,Tablet,Strip,15,10,3,45
+    drug_name,symptoms,brand_name,drug_class,manufacturer,dosage_form
+    amlodipine,"Hypertension,Chest Pain",Amlovas,Calcium Channel Blocker,Macleods Pharma,Tablet
+    metformin,"Diabetes,Fatigue",Glycomet,Biguanide,USV Limited,Tablet
     ```
     
-    **CSV Example (With optional pricing):**
+    **CSV Example (With custom fields):**
     ```csv
-    drug_name,symptoms,brand_name,manufacturer,dosage_form,pack_type,units_per_pack,packs_per_box,price_per_drug,pack_price,box_price,mrp
-    amlodipine,"Hypertension,Chest Pain",Amlovas,Macleods Pharma,Tablet,Strip,10,10,3.5,35,350,40
-    metformin,"Diabetes,Fatigue",Glycomet,USV Limited,Tablet,Strip,15,10,3,45,450,50
+    drug_name,symptoms,brand_name,manufacturer,dosage_form,batch_number,expiry_date
+    amlodipine,"Hypertension,Chest Pain",Amlovas,Macleods Pharma,Tablet,BATCH001,2025-12-31
+    metformin,"Diabetes,Fatigue",Glycomet,USV Limited,Tablet,BATCH002,2026-06-30
     ```
+    
+    **Note:** Packaging and pricing are configured separately when creating drugs via `POST /drugs`. CSV bulk upload handles basic drug info fields only.
+    
+    **Important:** Multi-value fields (symptoms, indications, side_effects) must be wrapped in double quotes if they contain commas.
     
     **Important:** Multi-value fields (symptoms, indications, side_effects) must be wrapped in double quotes if they contain commas.
     
@@ -311,32 +331,39 @@ async def create_drug_endpoint(drug_data: DrugCreate, current_user: Dict = Depen
     **Request Body:**
     ```json
     {
-        "template_id": "optional - uses default if not provided",
         "field_values": [
-            {"field_id": "uuid", "key": "drug_name", "value": "Amlodipine"},
-            {"field_id": "uuid", "key": "symptoms", "value": ["Hypertension", "Chest Pain"]},
+            {"field_id": "uuid", "key": "drug_name", "value": "Paracetamol 650"},
+            {"field_id": "uuid", "key": "symptoms", "value": ["Fever", "Headache"]},
             {"field_id": "uuid", "key": "dosage_form", "value": "Tablet"},
-            {"field_id": "uuid", "key": "pack_type", "value": "Strip"},
-            {"field_id": "uuid", "key": "units_per_pack", "value": 10},
-            {"field_id": "uuid", "key": "packs_per_box", "value": 10},
-            {"field_id": "uuid", "key": "pack_price", "value": 35},
-            {"field_id": "uuid", "key": "box_price", "value": 350},
-            {"field_id": "uuid", "key": "mrp", "value": 40}
-        ]
+            {"field_id": "uuid", "key": "manufacturer", "value": "GSK"}
+        ],
+        "packaging": {
+            "sales_unit": "Strip",
+            "pack_quantity": 10,
+            "measurement_unit": "Tablet",
+            "selling_price": 80,
+            "mrp": 100,
+            "max_discount_percent": 10,
+            "sales_units_per_box": 20,
+            "box_pricing_mode": "discount",
+            "box_discount_percent": 10,
+            "box_price": 1440
+        }
     }
     ```
     
-    **Required fields:** drug_name, symptoms, dosage_form, pack_type, units_per_pack, packs_per_box, pack_price
+    **Required field_values:** `drug_name`, `symptoms`, `dosage_form`
     
-    **Pricing fields:**
-    - `price_per_drug`: Price of a single unit (e.g. ₹3.5 per tablet)
-    - `pack_price`: Price per pack (e.g. ₹35 per strip) — **required**
-    - `box_price`: Price per box (e.g. ₹350)
-    - `mrp`: Maximum retail price (e.g. ₹40)
+    **`packaging` is required** — flat object with fixed schema (see `GET /drugs/templates` → `packaging_schema`).
     
-    **Notes:**
-    - Get field_ids from `GET /drugs/templates`
-    - Response includes `type` for each field_value
+    **Valid `sales_unit` + `measurement_unit` per `dosage_form`** — see `GET /drugs/templates` → `packaging_metadata`.
+    
+    **`box_pricing_mode`:**
+    - `auto` — box_price = selling_price × sales_units_per_box
+    - `discount` — apply box_discount_percent to auto price
+    - `manual` — set box_price directly
+    
+    **Get `field_id` values from `GET /drugs/templates`**
     """
     return await service.create_drug(drug_data, current_user)
 
@@ -359,26 +386,45 @@ async def get_drugs_endpoint(
     **Access:** All authenticated users (Admin, Doctor, MR)
     
     **Behavior by Role:**
-    - **Doctors/MRs:** See only active drugs (is_active: true)
-    - **Admins:** See all drugs with is_active field (can filter in frontend)
+    - **Doctors/MRs:** See only active drugs
+    - **Admins:** See all drugs including inactive
     
     **Search Parameters:**
-    - `search`: Full-text search across all fields (drug_name, brand_name, symptoms, indications, etc.)
-    - `drug_name`: Filter by drug name (partial match)
-    - `manufacturer`: Filter by manufacturer (partial match)
-    - `dosage_form`: Filter by dosage form (exact: Tablet, Capsule, etc.)
-    - `symptom`: Filter drugs that treat this symptom
-    - `indication`: Filter drugs by indication
+    - `search`: Full-text search across all fields
+    - `drug_name`: Partial match on drug name
+    - `manufacturer`: Partial match on manufacturer
+    - `dosage_form`: Exact match (Tablet, Capsule, Syrup, etc.)
+    - `symptom`: Partial match in symptoms array
+    - `indication`: Partial match in indications array
     
-    **Examples:**
-    - `GET /api/v1/drugs?search=fever` — drugs related to fever
-    - `GET /api/v1/drugs?drug_name=para` — drugs with "para" in name
-    - `GET /api/v1/drugs?symptom=headache` — drugs for headache
-    - `GET /api/v1/drugs?dosage_form=Tablet&manufacturer=GSK` — tablets by GSK
-    
-    **Response:**
-    - Doctors/MRs: Only active drugs
-    - Admins: All drugs with is_active field for frontend filtering
+    **Response includes `packaging` object:**
+    ```json
+    {
+      "drugs": [
+        {
+          "_id": "...",
+          "field_values": [
+            {"field_id": "...", "key": "drug_name", "value": "amlodipine", "type": "text"},
+            {"field_id": "...", "key": "symptoms", "value": ["Hypertension"], "type": "array"}
+          ],
+          "packaging": {
+            "sales_unit": "Strip",
+            "pack_quantity": 10,
+            "measurement_unit": "Tablet",
+            "sales_units_per_box": 20,
+            "pricing": {
+              "selling_price": 80,
+              "mrp": 100,
+              "box_pricing": {"mode": "auto", "box_price": 1600}
+            }
+          },
+          "is_active": true,
+          "has_brochure": false
+        }
+      ],
+      "total": 1
+    }
+    ```
     """
     # Get user role
     user_role = current_user.get("role", "")
@@ -427,12 +473,19 @@ async def get_drug_endpoint(
             {"field_id": "f2", "key": "brand_name", "value": "amlovas", "type": "text"},
             {"field_id": "f3", "key": "symptoms", "value": ["Hypertension", "Chest Pain"], "type": "array"},
             {"field_id": "f4", "key": "manufacturer", "value": "Macleods Pharma", "type": "text"},
-            {"field_id": "f5", "key": "dosage_form", "value": "Tablet", "type": "select"},
-            {"field_id": "f6", "key": "price", "value": 250, "type": "number"}
+            {"field_id": "f5", "key": "dosage_form", "value": "Tablet", "type": "select"}
         ],
-        "drug_name": "amlodipine",
-        "symptoms": ["Hypertension", "Chest Pain"],
-        "price": 250,
+        "packaging": {
+            "sales_unit": "Strip",
+            "pack_quantity": 10,
+            "measurement_unit": "Tablet",
+            "sales_units_per_box": 20,
+            "pricing": {
+                "selling_price": 80,
+                "mrp": 100,
+                "box_pricing": {"mode": "auto", "box_price": 1600}
+            }
+        },
         "is_active": true,
         "has_brochure": false,
         "created_at": "2026-06-29T06:30:00",
@@ -459,7 +512,7 @@ async def get_drug_endpoint(
 @router.put("/{drug_id}", response_model=DrugResponse, dependencies=[Depends(require_admin)])
 async def update_drug_endpoint(drug_id: str, drug_data: DrugUpdate):
     """
-    Update a drug — merges field values and can update is_active status.
+    Update a drug — merges field values and can update packaging/pricing and is_active status.
     
     **Access:** Admin only
     
@@ -467,19 +520,29 @@ async def update_drug_endpoint(drug_id: str, drug_data: DrugUpdate):
     ```json
     {
         "field_values": [
-            {"field_id": "f1", "key": "price", "value": 300},
-            {"field_id": "f2", "key": "dosage_strength", "value": "10mg"}
+            {"field_id": "f1", "key": "dosage_strength", "value": "10mg"}
         ],
+        "packaging": {
+            "sales_unit": "Strip",
+            "pack_quantity": 10,
+            "measurement_unit": "Tablet",
+            "sales_units_per_box": 20,
+            "pricing": {
+                "selling_price": 90,
+                "mrp": 110,
+                "box_pricing": {"mode": "discount", "discount_percent": 10, "box_price": 1620}
+            }
+        },
         "is_active": true
     }
     ```
     
     **Behavior:**
-    - `field_values` are **merged** (not replaced) — only provided fields are updated, others kept
-    - Flat fields and search_text are rebuilt after merge
-    - `is_active` is optional — set `false` to soft-delete, `true` to restore
+    - `field_values` are **merged** — only sent fields are updated, others kept
+    - `packaging` is fully replaced if provided, otherwise kept as-is
+    - `is_active: false` → soft delete; `is_active: true` → reactivate
     
-    **Response:** Updated drug with all field_values including `type` for each field.
+    **Response:** Updated drug with all field_values + packaging.
     """
     return await service.update_drug(drug_id, drug_data)
 
