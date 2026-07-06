@@ -321,13 +321,41 @@ async def get_mvc_report(
     status_code=status.HTTP_200_OK,
     summary="Get Eligible Visits for RCPA",
     description="""
-    **Purpose:** Get list of completed visits for the logged-in MR that are eligible for RCPA commitments.
+    **Purpose:** Get completed visits for the logged-in MR — used as the visit dropdown on the Rx Commitment page.
     
     **Required Role:** MR only
     
-    **Only COMPLETED visits** are returned — a visit must be fully checked out with report submitted.
+    **Returns only COMPLETED visits** — a visit must have gone through check-in → check-out → report submission.
     
-    **Frontend uses this as the visit dropdown** when MR creates a commitment.
+    **Frontend calls this when the Rx Commitment page loads** (page refresh, new tab, direct URL — all call this).
+    
+    **Response:**
+    ```json
+    {
+      "total": 5,
+      "visits": [
+        {
+          "visit_id": "507f1f77bcf86cd799439031",
+          "visit_title": "Apollo Hospital - Dr. Sneha - 03 Jul",
+          "doctor_id": "507f1f77bcf86cd799439011",
+          "doctor_name": "Dr. Sneha",
+          "doctor_location": {
+            "name": "Apollo Hospital",
+            "area": "Jubilee Hills",
+            "district": "Hyderabad",
+            "state": "Telangana"
+          },
+          "visit_date": "2026-07-03"
+        }
+      ]
+    }
+    ```
+    
+    **Frontend flow:**
+    1. Page loads → call this + `GET /drugs` in parallel
+    2. Show visit dropdown from this response
+    3. Show drug dropdown from drugs response (each drug has `packaging` with `sales_unit`, `selling_price`, `max_discount_percent`)
+    4. When MR selects drug → immediately show packaging info (no extra API call)
     """
 )
 async def get_eligible_visits(
@@ -344,35 +372,76 @@ async def get_eligible_visits(
     status_code=status.HTTP_201_CREATED,
     summary="Create RCPA Commitment",
     description="""
-    **Purpose:** Log a prescription commitment from a completed visit.
+    **Purpose:** MR logs a prescription commitment from a completed visit.
     
     **Required Role:** MR only
     
-    **MR sends only:**
+    **Request — MR sends only 5 fields:**
     ```json
     {
-      "visit_id": "...",
-      "drug_id": "...",
+      "visit_id": "507f1f77bcf86cd799439031",
+      "drug_id": "507f1f77bcf86cd799439021",
       "committed_quantity": 20,
       "rx_per_month": 15,
       "requested_discount": 5
     }
     ```
     
-    **Backend auto-populates** from visit: mr_id, mr_name, doctor_id, doctor_name, doctor_location.
-    **Backend auto-populates** from drug: drug_name, selling_price, max_discount_percent, quantity_unit.
-    **Backend auto-calculates**: committed_revenue = committed_quantity × selling_price.
+    **Backend auto-populates from visit:**
+    - `mr_id`, `mr_name`
+    - `doctor_id`, `doctor_name`
+    - `doctor_location` (snapshot from visit location)
+    - `visit_title`
     
-    **Validations:**
-    - Visit must be COMPLETED
-    - Visit must belong to logged-in MR
-    - One RCPA per drug per visit (no duplicates)
-    - requested_discount ≤ max_discount_percent
-    - Drug must be active with packaging configured
+    **Backend auto-populates from drug:**
+    - `drug_name`
+    - `selling_price` (from drug.packaging)
+    - `max_discount_percent` (from drug.packaging)
+    - `quantity_unit` (sales_unit from drug.packaging — e.g. "Strip")
     
-    **Approval logic:**
-    - If requested_discount = 0 → auto-approved, net_revenue = committed_revenue
-    - If requested_discount > 0 → PENDING, net_revenue = null until admin approves
+    **Backend auto-calculates:**
+    - `committed_revenue` = committed_quantity × selling_price
+    - `approval_status` = "APPROVED" if no discount, "PENDING" if discount > 0
+    - `net_revenue` = committed_revenue if auto-approved, null if pending
+    
+    **Response:**
+    ```json
+    {
+      "id": "...",
+      "visit_id": "...",
+      "visit_title": "Apollo Hospital - Dr. Sneha - 03 Jul",
+      "mr_id": "...",
+      "mr_name": "Rajesh Kumar",
+      "doctor_id": "...",
+      "doctor_name": "Dr. Sneha",
+      "doctor_location": {"name": "Apollo Hospital", "area": "Jubilee Hills", "district": "Hyderabad", "state": "Telangana"},
+      "drug_id": "...",
+      "drug_name": "Amlovas 5mg",
+      "committed_quantity": 20,
+      "quantity_unit": "Strip",
+      "rx_per_month": 15,
+      "selling_price": 80,
+      "max_discount_percent": 15,
+      "committed_revenue": 1600,
+      "requested_discount": 5,
+      "approved_discount": null,
+      "net_revenue": null,
+      "approval_status": "PENDING",
+      "month": 7,
+      "year": 2026,
+      "created_at": "2026-07-03T10:00:00"
+    }
+    ```
+    
+    **Validations (400 errors):**
+    - Visit must be COMPLETED → "Visit not completed"
+    - Visit must belong to MR → "Not your visit"
+    - One per drug per visit → "Commitment already exists for this drug on this visit"
+    - Discount ≤ max → "Discount exceeds allowed maximum of X%"
+    - Drug must be active → "Drug not found or inactive"
+    - Drug must have packaging → "Drug has no pricing configured"
+    
+    **Multiple drugs per visit:** Allowed. Each visit can have commitments for multiple drugs. Duplicate rule is `visit_id + drug_id` unique.
     """
 )
 async def create_rcpa_commitment(
@@ -438,19 +507,37 @@ async def get_rcpa_commitments(
     status_code=status.HTTP_200_OK,
     summary="Update RCPA Commitment",
     description="""
-    **Purpose:** Update an existing prescription commitment.
+    **Purpose:** Edit an existing commitment — change drug, quantity, rx_per_month, or discount.
     
     **Required Role:** MR (own) or Admin (any)
     
     **Updatable Fields:**
-    - `rx_per_month`: New prescription volume
-    - `notes`: Additional notes
+    - `drug_id` — Change drug (re-fetches pricing, validates no duplicate)
+    - `committed_quantity` — Update quantity in sales_units
+    - `rx_per_month` — Update prescriptions/month
+    - `requested_discount` — Update discount (resets approval if > 0)
     
-    **Example Request:**
+    **Backend auto-recalculates:**
+    - `committed_revenue` = committed_quantity × selling_price
+    - If discount changes to 0 → auto-approved
+    - If discount changes to > 0 → PENDING (approval reset)
+    - If drug changes → validates new drug has packaging, no duplicate
+    
+    **Example — Change quantity + discount:**
     ```json
     {
+      "committed_quantity": 25,
+      "requested_discount": 8
+    }
+    ```
+    
+    **Example — Change drug entirely:**
+    ```json
+    {
+      "drug_id": "new_drug_id_here",
+      "committed_quantity": 30,
       "rx_per_month": 20,
-      "notes": "Doctor confirmed after follow-up"
+      "requested_discount": 5
     }
     ```
     """

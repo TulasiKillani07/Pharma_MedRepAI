@@ -961,63 +961,111 @@ async def update_rcpa_commitment(
     current_user: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Update RCPA commitment (MR who created it, or Admin).
-    
-    Args:
-        commitment_id: Commitment ID
-        update_data: Fields to update
-        current_user: Current authenticated user
-    
-    Returns:
-        dict: Success message
-    
-    Raises:
-        HTTPException: If validation fails
+    Update RCPA commitment — supports changing drug, quantity, rx_per_month, discount.
+    Recalculates revenue and resets approval if discount changed.
     """
+    from app.models.sfe_models import ApprovalStatus
+    
     db = get_company_database()
     user_role = current_user.get("role")
     user_id = current_user["_id"]
     
-    # Validate commitment ID
     if not ObjectId.is_valid(commitment_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid commitment ID"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid commitment ID")
     
-    # Get commitment
     commitment = await db.prescription_commitments.find_one({"_id": ObjectId(commitment_id)})
     if not commitment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Commitment not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")
     
-    # Check authorization
+    # Authorization
     if user_role != "ADMIN" and commitment["mr_id"] != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own commitments"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only update your own commitments")
     
-    # Prepare update
-    update_fields = {}
+    update_fields = {"updated_at": datetime.utcnow()}
+    
+    # If drug_id is changing, re-fetch drug pricing
+    new_drug_id = update_data.get("drug_id")
+    selling_price = commitment.get("selling_price", 0)
+    max_discount = commitment.get("max_discount_percent", 0)
+    quantity_unit = commitment.get("quantity_unit", "")
+    
+    if new_drug_id and new_drug_id != commitment.get("drug_id"):
+        if not ObjectId.is_valid(new_drug_id):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid drug ID")
+        
+        # Check duplicate: same visit + new drug
+        existing = await db.prescription_commitments.find_one({
+            "visit_id": commitment["visit_id"],
+            "drug_id": new_drug_id,
+            "_id": {"$ne": ObjectId(commitment_id)}
+        })
+        if existing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Commitment already exists for this drug on this visit")
+        
+        drug = await db.drugs.find_one({"_id": ObjectId(new_drug_id), "is_active": True})
+        if not drug:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug not found or inactive")
+        
+        packaging = drug.get("packaging")
+        if not packaging:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug has no pricing configured")
+        
+        selling_price = packaging["selling_price"]
+        max_discount = packaging["max_discount_percent"]
+        quantity_unit = packaging["sales_unit"]
+        
+        # Get drug name
+        drug_name = drug.get("drug_name", "")
+        if not drug_name and drug.get("field_values"):
+            for fv in drug["field_values"]:
+                if fv.get("key") == "drug_name":
+                    drug_name = fv.get("value", "Unknown Drug")
+                    break
+        
+        update_fields["drug_id"] = new_drug_id
+        update_fields["drug_name"] = drug_name or "Unknown Drug"
+        update_fields["selling_price"] = selling_price
+        update_fields["max_discount_percent"] = max_discount
+        update_fields["quantity_unit"] = quantity_unit
+    
+    # Update quantity
+    committed_quantity = update_data.get("committed_quantity") or commitment.get("committed_quantity", 1)
+    if "committed_quantity" in update_data and update_data["committed_quantity"] is not None:
+        update_fields["committed_quantity"] = committed_quantity
+    
+    # Update rx_per_month
     if "rx_per_month" in update_data and update_data["rx_per_month"] is not None:
         update_fields["rx_per_month"] = update_data["rx_per_month"]
-    if "committed_quantity" in update_data and update_data["committed_quantity"] is not None:
-        update_fields["committed_quantity"] = update_data["committed_quantity"]
-    if "notes" in update_data and update_data["notes"] is not None:
-        update_fields["notes"] = update_data["notes"]
     
-    if not update_fields:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No fields to update"
-        )
+    # Recalculate revenue
+    committed_revenue = committed_quantity * selling_price
+    update_fields["committed_revenue"] = committed_revenue
     
-    update_fields["updated_at"] = datetime.utcnow()
+    # Update discount
+    requested_discount = update_data.get("requested_discount")
+    if requested_discount is not None:
+        if requested_discount > max_discount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Discount exceeds allowed maximum of {max_discount}%"
+            )
+        update_fields["requested_discount"] = requested_discount
+        
+        # Reset approval if discount changed
+        if requested_discount > 0:
+            update_fields["approval_status"] = ApprovalStatus.PENDING.value
+            update_fields["net_revenue"] = None
+            update_fields["approved_discount"] = None
+            update_fields["approved_by"] = None
+            update_fields["approved_at"] = None
+        else:
+            update_fields["approval_status"] = ApprovalStatus.APPROVED.value
+            update_fields["net_revenue"] = committed_revenue
+            update_fields["approved_discount"] = None
     
-    # Update commitment
+    if len(update_fields) <= 1:  # only updated_at
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
+    
     await db.prescription_commitments.update_one(
         {"_id": ObjectId(commitment_id)},
         {"$set": update_fields}
@@ -1025,18 +1073,19 @@ async def update_rcpa_commitment(
     
     logger.info(f"User {user_id} updated RCPA commitment {commitment_id}")
     
-    return {
-        "message": "Commitment updated successfully"
-    }
+    return {"message": "Commitment updated successfully"}
 
 
 async def approve_rcpa_discount(
     commitment_id: str,
     approved_discount: float,
-    admin_user: Dict[str, Any]
+    admin_user: Dict[str, Any],
+    approved_quantity: Optional[int] = None
 ) -> Dict[str, str]:
     """
     Admin approves a discount request on a commitment.
+    Optionally adjusts quantity. Calculates net_revenue.
+    net_revenue = approved_quantity × selling_price × (1 - approved_discount/100)
     """
     db = get_company_database()
     
@@ -1053,20 +1102,29 @@ async def approve_rcpa_discount(
             detail=f"Commitment already {commitment.get('approval_status')}"
         )
     
+    # Use approved_quantity if provided, otherwise use committed_quantity
+    final_quantity = approved_quantity if approved_quantity else commitment["committed_quantity"]
+    selling_price = commitment.get("selling_price", 0)
+    
+    # net_revenue = approved_quantity × selling_price × (1 - discount/100)
+    net_revenue = round(final_quantity * selling_price * (1 - approved_discount / 100), 2)
+    
     await db.prescription_commitments.update_one(
         {"_id": ObjectId(commitment_id)},
         {"$set": {
             "approval_status": "APPROVED",
             "approved_discount": approved_discount,
+            "approved_quantity": final_quantity,
+            "net_revenue": net_revenue,
             "approved_by": admin_user["_id"],
             "approved_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }}
     )
     
-    logger.info(f"Admin {admin_user['_id']} approved discount for commitment {commitment_id}: {approved_discount}%")
+    logger.info(f"Admin {admin_user['_id']} approved commitment {commitment_id}: discount={approved_discount}%, qty={final_quantity}, net_revenue={net_revenue}")
     
-    return {"message": f"Discount approved: {approved_discount}%"}
+    return {"message": f"Approved: {approved_discount}% discount, qty={final_quantity}, net_revenue=₹{net_revenue}"}
 
 
 async def reject_rcpa_discount(

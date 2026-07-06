@@ -479,16 +479,19 @@ class RCPACreateRequest(BaseModel):
 
 
 class RCPAUpdateRequest(BaseModel):
-    """Update existing RCPA commitment"""
+    """Update existing RCPA commitment — all commitment fields editable"""
+    drug_id: Optional[str] = Field(None, description="Change drug")
+    committed_quantity: Optional[int] = Field(None, ge=1, description="Updated quantity in sales_units")
     rx_per_month: Optional[int] = Field(None, ge=1, le=1000, description="Updated prescriptions per month")
-    committed_quantity: Optional[int] = Field(None, ge=1, le=10000, description="Updated quantity")
-    notes: Optional[str] = Field(None, max_length=500, description="Additional notes")
+    requested_discount: Optional[float] = Field(None, ge=0, le=100, description="Updated discount request")
     
     class Config:
         json_schema_extra = {
             "example": {
+                "drug_id": "507f1f77bcf86cd799439021",
+                "committed_quantity": 25,
                 "rx_per_month": 20,
-                "committed_quantity": 150
+                "requested_discount": 8
             }
         }
 

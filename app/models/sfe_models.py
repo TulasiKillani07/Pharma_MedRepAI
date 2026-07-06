@@ -168,6 +168,7 @@ class PrescriptionCommitment(BaseModel):
     # Discount workflow
     requested_discount: float = Field(default=0.0, ge=0, le=100, description="Discount % requested by MR")
     approved_discount: Optional[float] = Field(None, ge=0, le=100, description="Discount % approved by admin")
+    approved_quantity: Optional[int] = Field(None, ge=1, description="Quantity approved by finance (may differ from committed)")
     net_revenue: Optional[float] = Field(None, description="Revenue after discount (null if pending)")
     approval_status: ApprovalStatus = Field(default=ApprovalStatus.PENDING, description="Discount approval status")
     approved_by: Optional[str] = Field(None, description="Admin user ID who approved/rejected")

@@ -18,6 +18,9 @@ from app.api.v1.notifications.helpers import (
     notify_visit_cancelled
 )
 from app.models.visit_model import VisitInDB, VisitStatus
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 from app.utils.serializers import convert_objectids_to_strings, serialize_mongo_document
@@ -1318,6 +1321,29 @@ async def submit_visit_report(
             severity=LogSeverity.INFO,
             request=request
         )
+    
+    # Auto-create follow-up visit if follow_up_date is provided
+    follow_up_date = report_data.get("follow_up_date")
+    if follow_up_date:
+        followup_date_obj = follow_up_date if isinstance(follow_up_date, date) else follow_up_date.date() if isinstance(follow_up_date, datetime) else None
+        if followup_date_obj:
+            followup_visit = VisitInDB(
+                mr_id=visit["mr_id"],
+                mr_name=visit["mr_name"],
+                doctor_id=visit["doctor_id"],
+                doctor_name=visit["doctor_name"],
+                title=f"Follow-up: {visit.get('title', visit.get('purpose', 'Visit'))}",
+                scheduled_date=followup_date_obj,
+                scheduled_time=visit.get("scheduled_time", "10:00"),
+                purpose=f"Follow-up from visit on {visit.get('scheduled_date', datetime.utcnow()).strftime('%Y-%m-%d') if hasattr(visit.get('scheduled_date', ''), 'strftime') else str(visit.get('scheduled_date', ''))}",
+                location=visit["location"],
+                notes="Auto-scheduled follow-up from visit report",
+                status=VisitStatus.SCHEDULED
+            )
+            followup_doc = followup_visit.model_dump()
+            followup_doc["scheduled_date"] = datetime.combine(followup_date_obj, datetime.min.time())
+            await company_db.visits.insert_one(followup_doc)
+            logger.info(f"Auto-created follow-up visit for {visit['doctor_name']} on {followup_date_obj}")
     
     # NEW: Trigger location analysis if temporary location
     location = visit.get("location")
