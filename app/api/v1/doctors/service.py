@@ -43,8 +43,8 @@ async def create_doctor(
     classification: str,
     hospital: Optional[str],
     license_number: Optional[str],
-    address: Optional[str],
-    current_user: Dict[str, Any]
+    address: Optional[str] = None,
+    current_user: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Create a new doctor account.
@@ -825,8 +825,8 @@ async def create_doctor_request(
     classification: str,
     hospital: Optional[str],
     license_number: Optional[str],
-    address: Optional[str],
-    current_user: Dict[str, Any]
+    address: Optional[str] = None,
+    current_user: Dict[str, Any] = None
 ) -> Dict[str, Any]:
     """
     Create a doctor addition request (MR only).

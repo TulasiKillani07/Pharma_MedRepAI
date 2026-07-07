@@ -497,13 +497,15 @@ class RCPAUpdateRequest(BaseModel):
 
 
 class RCPAApproveDiscountRequest(BaseModel):
-    """Approve or reject discount request"""
+    """Approve discount — optionally adjust quantity"""
     approved_discount: float = Field(..., ge=0, le=100, description="Approved discount %")
+    approved_quantity: Optional[int] = Field(None, ge=1, description="Adjusted quantity (if different from committed)")
     
     class Config:
         json_schema_extra = {
             "example": {
-                "approved_discount": 4.5
+                "approved_discount": 4.5,
+                "approved_quantity": 18
             }
         }
 

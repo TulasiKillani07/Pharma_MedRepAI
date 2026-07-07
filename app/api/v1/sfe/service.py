@@ -824,12 +824,9 @@ async def create_rcpa_commitment(
     committed_quantity = commitment_data["committed_quantity"]
     committed_revenue = committed_quantity * selling_price
     
-    if requested_discount > 0:
-        approval_status = ApprovalStatus.PENDING
-        net_revenue = None
-    else:
-        approval_status = ApprovalStatus.APPROVED
-        net_revenue = committed_revenue
+    # All commitments start as PENDING — admin must approve every one
+    approval_status = ApprovalStatus.PENDING
+    net_revenue = None
     
     now = datetime.utcnow()
     
@@ -1051,17 +1048,12 @@ async def update_rcpa_commitment(
             )
         update_fields["requested_discount"] = requested_discount
         
-        # Reset approval if discount changed
-        if requested_discount > 0:
-            update_fields["approval_status"] = ApprovalStatus.PENDING.value
-            update_fields["net_revenue"] = None
-            update_fields["approved_discount"] = None
-            update_fields["approved_by"] = None
-            update_fields["approved_at"] = None
-        else:
-            update_fields["approval_status"] = ApprovalStatus.APPROVED.value
-            update_fields["net_revenue"] = committed_revenue
-            update_fields["approved_discount"] = None
+        # Reset approval — all changes require admin re-approval
+        update_fields["approval_status"] = ApprovalStatus.PENDING.value
+        update_fields["net_revenue"] = None
+        update_fields["approved_discount"] = None
+        update_fields["approved_by"] = None
+        update_fields["approved_at"] = None
     
     if len(update_fields) <= 1:  # only updated_at
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields to update")
@@ -1174,7 +1166,7 @@ async def get_pending_discount_approvals(
     db = get_company_database()
     
     commitments = await db.prescription_commitments.find(
-        {"approval_status": "PENDING", "requested_discount": {"$gt": 0}}
+        {"approval_status": "PENDING"}
     ).sort("created_at", -1).to_list(length=None)
     
     for c in commitments:

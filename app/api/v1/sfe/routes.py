@@ -588,7 +588,8 @@ async def approve_rcpa_discount(
     result = await service.approve_rcpa_discount(
         commitment_id=commitment_id,
         approved_discount=request_data.approved_discount,
-        admin_user=current_user
+        admin_user=current_user,
+        approved_quantity=request_data.approved_quantity
     )
     return result
 
