@@ -803,7 +803,7 @@ async def create_rcpa_commitment(
     if isinstance(location, dict):
         if location.get("type") == "permanent":
             doctor_location_id = location.get("location_id")
-            doctor_location = {"name": location.get("location_name", "")}
+            doctor_location = {"name": location.get("location_name", ""), "type": None}
             # Get full details from doctor
             doctor_doc = await db.doctors.find_one({"_id": ObjectId(visit["doctor_id"])})
             if doctor_doc:
@@ -811,6 +811,7 @@ async def create_rcpa_commitment(
                     if dl.get("id") == doctor_location_id:
                         doctor_location = {
                             "name": dl.get("name", ""),
+                            "type": dl.get("type"),
                             "area": dl.get("area"),
                             "district": dl.get("district"),
                             "state": dl.get("state")
@@ -818,7 +819,7 @@ async def create_rcpa_commitment(
                         break
         elif location.get("type") == "temporary":
             temp = location.get("temporary_location", {})
-            doctor_location = {"name": temp.get("name", "")}
+            doctor_location = {"name": temp.get("name", ""), "type": "temporary"}
     
     # 6. Calculate
     committed_quantity = commitment_data["committed_quantity"]

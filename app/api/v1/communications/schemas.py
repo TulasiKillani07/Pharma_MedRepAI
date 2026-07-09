@@ -21,9 +21,9 @@ class CommunicationTargetingRequest(BaseModel):
     - states: "Telangana", "Andhra Pradesh"
     - territories: "Hyderabad", "Visakhapatnam"
     """
-    zones: Optional[List[Literal["South"]]] = Field(default=[], description="Target zones (only South available)")
-    states: Optional[List[Literal["Telangana", "Andhra Pradesh"]]] = Field(default=[], description="Target states")
-    territories: Optional[List[Literal["Hyderabad", "Visakhapatnam"]]] = Field(default=[], description="Target territories")
+    zones: Optional[List[str]] = Field(default=[], description="Target zones")
+    states: Optional[List[str]] = Field(default=[], description="Target states")
+    territories: Optional[List[str]] = Field(default=[], description="Target territories")
     specific_mrs: Optional[List[str]] = Field(default=[], description="Target specific MR IDs")
     
     class Config:

@@ -121,6 +121,7 @@ class ApprovalStatus(str, Enum):
 class DoctorLocationSnapshot(BaseModel):
     """Snapshot of doctor's selected location at time of commitment"""
     name: str = Field(..., description="Location name")
+    type: Optional[str] = Field(None, description="Location type: hospital, solo_clinic, polyclinic")
     area: Optional[str] = Field(None, description="Area / Locality")
     district: Optional[str] = Field(None, description="District")
     state: Optional[str] = Field(None, description="State")

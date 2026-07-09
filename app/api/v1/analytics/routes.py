@@ -91,6 +91,7 @@ async def region_analytics(
     year: Optional[int] = Query(None, ge=2020, le=2099),
     state: Optional[str] = Query(None, description="Filter by state (for district/area drill-down)"),
     district: Optional[str] = Query(None, description="Filter by district (for area drill-down)"),
+    location_type: Optional[str] = Query(None, description="Filter by location type: hospital, solo_clinic, polyclinic"),
     _=Depends(require_admin)
 ):
     """
@@ -99,11 +100,14 @@ async def region_analytics(
     - `level=state` → Revenue by state
     - `level=district&state=Telangana` → Districts within Telangana
     - `level=area&district=Hyderabad` → Areas within Hyderabad
-    - `level=hospital&district=Hyderabad` → Hospitals within Hyderabad
+    - `level=hospital` → All locations by name
+    - `level=hospital&location_type=solo_clinic` → Only solo clinics
+    - `level=hospital&location_type=hospital` → Only hospitals
+    - `level=hospital&location_type=polyclinic` → Only polyclinics
     
     Each returns: name, commitments, committed_revenue, net_revenue, doctors, mrs
     """
-    return await service.get_region_analytics(level, month, year, state, district)
+    return await service.get_region_analytics(level, month, year, state, district, location_type)
 
 
 @router.get("/trends", response_model=TrendsResponse, summary="Monthly Trends")
@@ -121,3 +125,29 @@ async def trends(
     Used for line/bar charts.
     """
     return await service.get_trends(months)
+
+
+
+@router.get("/regions/doctors", summary="Doctors by Location (Revenue Ranking)")
+async def doctors_by_location(
+    location: str = Query(..., description="Location name (e.g. Apollo Hospital)"),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2020, le=2099),
+    _=Depends(require_admin)
+):
+    """
+    **Which doctors generated the most revenue at a specific location?**
+    
+    ```
+    GET /analytics/regions/doctors?location=Apollo Hospital&month=7&year=2026
+    ```
+    
+    Returns doctors ranked by revenue at that location:
+    ```json
+    [
+      { "doctor_id": "...", "doctor_name": "Dr. Sneha", "commitments": 5, "committed_revenue": 400000, "net_revenue": 380000 },
+      { "doctor_id": "...", "doctor_name": "Dr. Arjun", "commitments": 3, "committed_revenue": 200000, "net_revenue": 190000 }
+    ]
+    ```
+    """
+    return await service.get_doctors_by_location(location, month, year)

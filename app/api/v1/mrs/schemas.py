@@ -4,7 +4,7 @@ Defines the structure of data for MR operations.
 """
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, List, Literal
+from typing import Optional, List
 from datetime import datetime
 from app.core.validators import PhoneValidator, NameValidator, EmailValidator, TerritoryValidator
 
@@ -26,9 +26,9 @@ class MRCreateRequest(BaseModel):
     phone: str = Field(..., description="Phone number: 9876543210 or +919876543210")
     
     # Geographic fields (required for communications targeting) - Fixed values with dropdowns
-    zone: Literal["South"] = Field(default="South", description="Zone (currently only South supported)")
-    state: Literal["Telangana", "Andhra Pradesh"] = Field(..., description="State")
-    territory: Literal["Hyderabad", "Visakhapatnam"] = Field(..., description="Territory")
+    zone: str = Field(..., description="Zone (e.g. South, North, East, West)")
+    state: str = Field(..., description="State (e.g. Telangana, Karnataka, Maharashtra)")
+    territory: str = Field(..., description="Territory / City (e.g. Hyderabad, Bangalore)")
     
     assigned_doctors: Optional[List[str]] = Field(default=[], description="List of assigned doctor IDs")
     assigned_drugs: Optional[List[str]] = Field(default=[], description="List of assigned drug/product IDs")
@@ -74,9 +74,9 @@ class MRUpdateRequest(BaseModel):
     """
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = None
-    zone: Optional[Literal["South"]] = None
-    state: Optional[Literal["Telangana", "Andhra Pradesh"]] = None
-    territory: Optional[Literal["Hyderabad", "Visakhapatnam"]] = None
+    zone: Optional[str] = None
+    state: Optional[str] = None
+    territory: Optional[str] = None
     assigned_doctors: Optional[List[str]] = None
     assigned_drugs: Optional[List[str]] = None
     is_active: Optional[bool] = None

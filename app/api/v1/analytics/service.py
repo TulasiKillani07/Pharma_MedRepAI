@@ -237,8 +237,9 @@ async def get_doctor_analytics(month: Optional[int], year: Optional[int]) -> Lis
 
 
 async def get_region_analytics(level: str, month: Optional[int], year: Optional[int],
-                                state: Optional[str] = None, district: Optional[str] = None) -> List[Dict]:
-    """Layer 2 — Region drill-down (state → district → area)"""
+                                state: Optional[str] = None, district: Optional[str] = None,
+                                location_type: Optional[str] = None) -> List[Dict]:
+    """Layer 2 — Region drill-down (state → district → area → hospital)"""
     db = _get_db()
     query = _month_query(month, year)
 
@@ -246,6 +247,8 @@ async def get_region_analytics(level: str, month: Optional[int], year: Optional[
         query["doctor_location.state"] = state
     if district:
         query["doctor_location.district"] = district
+    if location_type:
+        query["doctor_location.type"] = location_type
 
     commitments = await db.prescription_commitments.find(query).to_list(length=None)
 
@@ -322,3 +325,33 @@ async def get_trends(months: int = 6) -> Dict[str, List]:
         "commitment_trend": commitment_trend,
         "approval_trend": approval_trend
     }
+
+
+async def get_doctors_by_location(location_name: str, month: Optional[int], year: Optional[int]) -> List[Dict]:
+    """Which doctors generated most revenue at a specific location"""
+    db = _get_db()
+    query = _month_query(month, year)
+    query["doctor_location.name"] = location_name
+
+    commitments = await db.prescription_commitments.find(query).to_list(length=None)
+
+    doc_map = {}
+    for c in commitments:
+        did = c.get("doctor_id", "unknown")
+        if did not in doc_map:
+            doc_map[did] = {
+                "doctor_id": did,
+                "doctor_name": c.get("doctor_name", "Unknown"),
+                "commitments": 0,
+                "committed_revenue": 0,
+                "net_revenue": 0
+            }
+        d = doc_map[did]
+        d["commitments"] += 1
+        d["committed_revenue"] += c.get("committed_revenue", 0)
+        if c.get("net_revenue"):
+            d["net_revenue"] += c["net_revenue"]
+
+    result = list(doc_map.values())
+    result.sort(key=lambda x: x["committed_revenue"], reverse=True)
+    return result
