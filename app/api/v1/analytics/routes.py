@@ -84,6 +84,25 @@ async def doctor_analytics(
     return await service.get_doctor_analytics(month, year)
 
 
+@router.get("/location-doctors", summary="Doctors by Location (Revenue Ranking)")
+async def doctors_by_location(
+    location: str = Query(..., description="Location name (e.g. Apollo Hospital)"),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = Query(None, ge=2020, le=2099),
+    _=Depends(require_admin)
+):
+    """
+    **Which doctors generated the most revenue at a specific location?**
+    
+    ```
+    GET /analytics/regions/doctors?location=Apollo Hospital&month=7&year=2026
+    ```
+    
+    Returns doctors ranked by revenue at that location.
+    """
+    return await service.get_doctors_by_location(location, month, year)
+
+
 @router.get("/regions", response_model=List[RegionAnalyticsItem], summary="Region Analytics (Drill-down)")
 async def region_analytics(
     level: str = Query("state", description="Drill-down level: state, district, area, hospital"),
@@ -125,29 +144,3 @@ async def trends(
     Used for line/bar charts.
     """
     return await service.get_trends(months)
-
-
-
-@router.get("/regions/doctors", summary="Doctors by Location (Revenue Ranking)")
-async def doctors_by_location(
-    location: str = Query(..., description="Location name (e.g. Apollo Hospital)"),
-    month: Optional[int] = Query(None, ge=1, le=12),
-    year: Optional[int] = Query(None, ge=2020, le=2099),
-    _=Depends(require_admin)
-):
-    """
-    **Which doctors generated the most revenue at a specific location?**
-    
-    ```
-    GET /analytics/regions/doctors?location=Apollo Hospital&month=7&year=2026
-    ```
-    
-    Returns doctors ranked by revenue at that location:
-    ```json
-    [
-      { "doctor_id": "...", "doctor_name": "Dr. Sneha", "commitments": 5, "committed_revenue": 400000, "net_revenue": 380000 },
-      { "doctor_id": "...", "doctor_name": "Dr. Arjun", "commitments": 3, "committed_revenue": 200000, "net_revenue": 190000 }
-    ]
-    ```
-    """
-    return await service.get_doctors_by_location(location, month, year)
