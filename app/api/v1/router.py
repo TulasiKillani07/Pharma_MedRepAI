@@ -95,3 +95,7 @@ api_router.include_router(sfe_router, tags=["SFE - Sales Force Effectiveness"])
 # RCPA Analytics routes (Admin only - revenue, drugs, MRs, doctors, regions, trends)
 from app.api.v1.analytics.routes import router as analytics_router
 api_router.include_router(analytics_router, prefix="/analytics", tags=["Analytics - RCPA"])
+
+# Integration APIs (Service JWT only — backend-to-backend with DRX)
+from app.api.v1.integration.routes import router as integration_router
+api_router.include_router(integration_router, prefix="/integration", tags=["Integration (Service-to-Service)"])

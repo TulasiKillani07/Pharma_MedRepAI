@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"  # Algorithm for JWT encoding
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # Token expires after 60 minutes
     
+    # Service-to-Service JWT Secret (isolated from user JWTs)
+    SERVICE_JWT_SECRET: str = "mrx-service-jwt-secret-change-in-production-min-32-chars"
+    
+    # Inbound Service Auth — DRX calling MRX
+    # Only one trusted caller (DRX). Verified from env, no DB collection needed.
+    # Store bcrypt hash of the secret, not plaintext.
+    INBOUND_CLIENT_ID: str = "drx_doctor_platform"
+    INBOUND_CLIENT_SECRET_HASH: str = ""  # bcrypt hash of the inbound client secret
+    
     # Application Configuration
     APP_NAME: str = "MedRepAI"
     APP_VERSION: str = "1.0.0"
@@ -62,6 +71,11 @@ class Settings(BaseSettings):
     TEMP_LOCATION_CLUSTER_RADIUS: int = 50  # Clustering radius for temporary locations in meters
     TEMP_LOCATION_MIN_USAGE_COUNT: int = 5  # Minimum visits before suggesting location
     REJECTED_LOCATION_COOLDOWN_DAYS: int = 180  # Days before re-suggesting rejected location
+    
+    # DRX (Doctor Platform) Integration
+    DRX_URL: str = "http://localhost:8002"  # DRX base URL
+    DRX_CLIENT_ID: Optional[str] = None  # Generated during org onboarding on DRX
+    DRX_CLIENT_SECRET: Optional[str] = None  # Generated during org onboarding on DRX
     
     class Config:
         """
