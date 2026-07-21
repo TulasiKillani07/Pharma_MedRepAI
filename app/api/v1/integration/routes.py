@@ -87,17 +87,17 @@ async def get_service_token(request: ServiceTokenRequest):
     **Why hash?** Even if .env is leaked, the actual secret isn't exposed.
     """
     # Verify client_id
-    if request.client_id != settings.INBOUND_CLIENT_ID:
+    if request.client_id != settings.DRX_TO_MRX_CLIENT_ID:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # Verify client_secret against stored hash (like password verification)
-    if not verify_password(request.client_secret, settings.INBOUND_CLIENT_SECRET_HASH):
+    if not verify_password(request.client_secret, settings.DRX_TO_MRX_SECRET_HASH):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # Generate service token
     token = create_service_token(
         organization_id="drx",
-        organization_name="DRX Doctor Platform",
+        organization_name="DRX",
         client_id=request.client_id
     )
 
@@ -152,7 +152,7 @@ async def list_drugs_integration(
     return {
         "total": total,
         "drugs": drugs,
-        "organization": org_context["organization_name"]
+        "caller": org_context["client_id"]
     }
 
 
@@ -225,7 +225,7 @@ async def list_cme_integration(
     return {
         "total": total,
         "events": events,
-        "organization": org_context["organization_name"]
+        "caller": org_context["client_id"]
     }
 
 

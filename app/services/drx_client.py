@@ -55,12 +55,12 @@ class DRXClient:
 
     @property
     def base_url(self) -> str:
-        return settings.DRX_URL.rstrip("/")
+        return settings.MRX_TO_DRX_URL.rstrip("/")
 
     @property
     def is_configured(self) -> bool:
         """Check if DRX credentials are configured."""
-        return bool(settings.DRX_CLIENT_ID and settings.DRX_CLIENT_SECRET)
+        return bool(settings.MRX_TO_DRX_CLIENT_ID and settings.MRX_TO_DRX_SECRET)
 
     def _is_token_valid(self) -> bool:
         """Check if cached token is still valid (with buffer)."""
@@ -83,8 +83,8 @@ class DRXClient:
         async with httpx.AsyncClient(timeout=10) as client:
             try:
                 response = await client.post(url, json={
-                    "client_id": settings.DRX_CLIENT_ID,
-                    "client_secret": settings.DRX_CLIENT_SECRET
+                    "client_id": settings.MRX_TO_DRX_CLIENT_ID,
+                    "client_secret": settings.MRX_TO_DRX_SECRET
                 })
             except httpx.ConnectError:
                 raise DRXClientError(f"Cannot connect to DRX at {self.base_url}", status_code=503)

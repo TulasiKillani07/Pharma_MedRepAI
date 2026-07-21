@@ -25,11 +25,9 @@ class Settings(BaseSettings):
     # Service-to-Service JWT Secret (isolated from user JWTs)
     SERVICE_JWT_SECRET: str = "mrx-service-jwt-secret-change-in-production-min-32-chars"
     
-    # Inbound Service Auth — DRX calling MRX
-    # Only one trusted caller (DRX). Verified from env, no DB collection needed.
-    # Store bcrypt hash of the secret, not plaintext.
-    INBOUND_CLIENT_ID: str = "drx_doctor_platform"
-    INBOUND_CLIENT_SECRET_HASH: str = ""  # bcrypt hash of the inbound client secret
+    # DRX calls ME (inbound) — I verify these
+    DRX_TO_MRX_CLIENT_ID: str = "drx_doctor_platform"
+    DRX_TO_MRX_SECRET_HASH: str = ""  # bcrypt hash of the inbound client secret
     
     # Application Configuration
     APP_NAME: str = "MedRepAI"
@@ -72,10 +70,10 @@ class Settings(BaseSettings):
     TEMP_LOCATION_MIN_USAGE_COUNT: int = 5  # Minimum visits before suggesting location
     REJECTED_LOCATION_COOLDOWN_DAYS: int = 180  # Days before re-suggesting rejected location
     
-    # DRX (Doctor Platform) Integration
-    DRX_URL: str = "http://localhost:8002"  # DRX base URL
-    DRX_CLIENT_ID: Optional[str] = None  # Generated during org onboarding on DRX
-    DRX_CLIENT_SECRET: Optional[str] = None  # Generated during org onboarding on DRX
+    # I call DRX (outbound) — I send these
+    MRX_TO_DRX_URL: str = "http://localhost:8002"
+    MRX_TO_DRX_CLIENT_ID: Optional[str] = None
+    MRX_TO_DRX_SECRET: Optional[str] = None
     
     class Config:
         """

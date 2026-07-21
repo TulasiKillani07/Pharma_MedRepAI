@@ -29,8 +29,7 @@ def create_service_token(organization_id: str, organization_name: str, client_id
     """
     now = datetime.utcnow()
     payload = {
-        "organization_id": organization_id,
-        "organization_name": organization_name,
+        "iss": "drx",
         "client_id": client_id,
         "token_type": "service",
         "iat": now,
@@ -56,7 +55,7 @@ async def require_service_auth(
     """
     Middleware for MRX integration APIs.
     Validates Service JWT only — rejects Admin/MR JWTs.
-    Attaches organization context to the request.
+    Attaches caller context to the request.
 
     This middleware protects: /api/v1/integration/*
     """
@@ -70,7 +69,6 @@ async def require_service_auth(
         )
 
     return {
-        "organization_id": payload["organization_id"],
-        "organization_name": payload["organization_name"],
+        "iss": payload.get("iss", "unknown"),
         "client_id": payload["client_id"]
     }
