@@ -137,15 +137,26 @@ async def list_drugs_integration(
         query["drug_name"] = {"$regex": search, "$options": "i"}
 
     drugs = await db.drugs.find(query, {
-        "_id": 0,
         "drug_name": 1,
         "generic_name": 1,
+        "brand_name": 1,
+        "manufacturer": 1,
         "therapeutic_category": 1,
         "dosage_form": 1,
         "strength": 1,
+        "route_of_administration": 1,
+        "indication": 1,
+        "contraindications": 1,
+        "side_effects": 1,
         "packaging": 1,
-        "brochure_url": 1
+        "brochure_url": 1,
+        "prescription_required": 1,
+        "schedule": 1
     }).skip(skip).limit(limit).to_list(length=limit)
+
+    # Convert _id to string id
+    for drug in drugs:
+        drug["id"] = str(drug.pop("_id"))
 
     total = await db.drugs.count_documents(query)
 
