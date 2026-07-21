@@ -212,24 +212,28 @@ async def list_cme_integration(
     """
     db = get_database()
 
-    query = {"is_active": True}
+    query = {}
     if status_filter:
         query["status"] = status_filter
 
     events = await db.cme_events.find(query, {
-        "_id": 0,
         "title": 1,
         "description": 1,
         "event_date": 1,
-        "end_date": 1,
-        "venue": 1,
-        "city": 1,
-        "state": 1,
-        "specialization": 1,
+        "event_time": 1,
+        "event_type": 1,
+        "event_mode": 1,
+        "platform": 1,
+        "meeting_link": 1,
+        "venue_name": 1,
+        "address": 1,
+        "speaker": 1,
         "status": 1,
-        "max_participants": 1,
-        "registered_count": 1
+        "max_attendees": 1,
     }).sort("event_date", -1).skip(skip).limit(limit).to_list(length=limit)
+
+    for event in events:
+        event["id"] = str(event.pop("_id"))
 
     total = await db.cme_events.count_documents(query)
 
