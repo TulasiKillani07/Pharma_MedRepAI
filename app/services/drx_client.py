@@ -80,7 +80,7 @@ class DRXClient:
 
         url = f"{self.base_url}/drx/api/v1/integration/auth/service-token"
 
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             try:
                 response = await client.post(url, json={
                     "client_id": settings.MRX_TO_DRX_CLIENT_ID,
@@ -131,7 +131,7 @@ class DRXClient:
         url = f"{self.base_url}{path}"
         headers = {"Authorization": f"Bearer {token}"}
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             try:
                 response = await client.request(
                     method=method,

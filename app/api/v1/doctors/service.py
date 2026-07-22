@@ -142,7 +142,7 @@ async def create_doctor(
             _logger.info(f"Syncing doctor {email} to DRX...")
             drx_result = await asyncio.wait_for(
                 drx_client.register_doctor(name=name, email=email, phone=phone),
-                timeout=10
+                timeout=30
             )
             if drx_result and drx_result.get("doctor_gid"):
                 await company_db.doctors.update_one(
