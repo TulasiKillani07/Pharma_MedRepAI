@@ -71,14 +71,14 @@ class DRXClient:
     async def _request_token(self) -> str:
         """
         Request a new Service JWT from DRX.
-        POST {DRX_URL}/api/v1/integration/auth/service-token
+        POST {DRX_URL}/drx/api/v1/integration/auth/service-token
         """
         if not self.is_configured:
             raise DRXClientError(
                 "DRX integration not configured. Set DRX_URL, DRX_CLIENT_ID, DRX_CLIENT_SECRET in .env"
             )
 
-        url = f"{self.base_url}/api/v1/integration/auth/service-token"
+        url = f"{self.base_url}/drx/api/v1/integration/auth/service-token"
 
         async with httpx.AsyncClient(timeout=10) as client:
             try:
@@ -166,29 +166,29 @@ class DRXClient:
     async def search_doctors(self, query: str = "") -> Dict[str, Any]:
         """
         Search doctors on DRX.
-        GET /api/v1/integration/doctors/search?q=<query>
+        GET /drx/api/v1/integration/doctors/search?q=<query>
         
         Returns: {"total": int, "doctors": [...], "organization": str}
         """
-        return await self._request("GET", "/api/v1/integration/doctors/search", params={"q": query})
+        return await self._request("GET", "/drx/api/v1/integration/doctors/search", params={"q": query})
 
     async def get_doctor(self, doctor_gid: str) -> Dict[str, Any]:
         """
         Get doctor profile by GID from DRX.
-        GET /api/v1/integration/doctors/{doctor_gid}
+        GET /drx/api/v1/integration/doctors/{doctor_gid}
         
         Returns: Doctor profile dict (no password_hash, no internal _id)
         """
-        return await self._request("GET", f"/api/v1/integration/doctors/{doctor_gid}")
+        return await self._request("GET", f"/drx/api/v1/integration/doctors/{doctor_gid}")
 
     async def register_doctor(self, name: str, email: str, phone: str) -> Dict[str, Any]:
         """
         Register a doctor on DRX. If email exists, returns existing GID (no duplicate).
-        POST /api/v1/integration/doctors/register
+        POST /drx/api/v1/integration/doctors/register
         
         Returns: {"status": "created"|"exists", "doctor_gid": "PRXDOC...", "message": "..."}
         """
-        return await self._request("POST", "/api/v1/integration/doctors/register", json_body={
+        return await self._request("POST", "/drx/api/v1/integration/doctors/register", json_body={
             "name": name,
             "email": email,
             "phone": phone
