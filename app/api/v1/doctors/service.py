@@ -164,21 +164,21 @@ async def create_doctor(
         severity=LogSeverity.INFO
     )
     
-    # Send invitation email with credentials
-    try:
-        await send_invitation_email(
-            to_email=email,
-            name=name,
-            role="doctor",
-            email=email,
-            password=plain_password
-        )
-    except Exception as e:
-        # Log email error but don't fail the creation
-        from app.utils.logger import get_medrep_logger
-        logger = get_medrep_logger(__name__)
-        logger.error(f"Failed to send invitation email to {email}: {str(e)}")
-    
+    # Send invitation email in background (don't block response)
+    async def _send_email():
+        try:
+            await send_invitation_email(
+                to_email=email,
+                name=name,
+                role="doctor",
+                email=email,
+                password=plain_password
+            )
+        except Exception:
+            pass
+
+    asyncio.create_task(_send_email())
+
     return {
         "message": "Doctor added successfully",
         "doctor_id": str(result.inserted_id),
