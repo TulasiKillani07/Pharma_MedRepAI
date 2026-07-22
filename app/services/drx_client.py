@@ -181,6 +181,19 @@ class DRXClient:
         """
         return await self._request("GET", f"/api/v1/integration/doctors/{doctor_gid}")
 
+    async def register_doctor(self, name: str, email: str, phone: str) -> Dict[str, Any]:
+        """
+        Register a doctor on DRX. If email exists, returns existing GID (no duplicate).
+        POST /api/v1/integration/doctors/register
+        
+        Returns: {"status": "created"|"exists", "doctor_gid": "PRXDOC...", "message": "..."}
+        """
+        return await self._request("POST", "/api/v1/integration/doctors/register", json_body={
+            "name": name,
+            "email": email,
+            "phone": phone
+        })
+
     async def health_check(self) -> Dict[str, Any]:
         """
         Verify DRX connectivity and credentials.

@@ -609,6 +609,41 @@ async def initialize_collections():
     except Exception as e:
         logger.warning(f"Index creation issue: {e}")
     
+    # ========================================================================
+    # Service-to-Service Authentication (Integration)
+    # ========================================================================
+
+    # Create service_clients collection — stores credentials for external platforms (DRX)
+    try:
+        if "service_clients" not in existing_collections:
+            await database.create_collection("service_clients")
+
+        # Index 1: Unique index on client_id — one entry per client
+        await database["service_clients"].create_index(
+            "client_id",
+            unique=True,
+            name="service_client_id_unique_idx"
+        )
+
+        # Index 2: Index on status — fast active client lookup
+        await database["service_clients"].create_index(
+            "status",
+            name="service_client_status_idx"
+        )
+    except Exception as e:
+        logger.warning(f"Index creation issue: {e}")
+
+    # ── doctors.doctor_uid — unique identifier per doctor ──
+    try:
+        await database["doctors"].create_index(
+            "doctor_uid",
+            unique=True,
+            sparse=True,  # sparse=True so existing docs without this field are not affected
+            name="doctor_uid_unique_idx"
+        )
+    except Exception as e:
+        logger.warning(f"Index creation issue: {e}")
+
     logger.info("Collections and indexes initialized successfully")
 
 

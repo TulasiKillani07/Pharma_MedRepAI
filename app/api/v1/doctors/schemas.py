@@ -115,10 +115,9 @@ class DoctorUpdateRequest(BaseModel):
 
 
 class DoctorResponse(BaseModel):
-    """
-    Schema for doctor response (without password).
-    """
-    id: str = Field(..., description="Doctor's unique ID")
+    """Schema for doctor response (without password)."""
+    id: str = Field(..., description="Doctor's MongoDB ID")
+    doctor_uid: Optional[str] = Field(None, description="Global unique doctor identifier (PRXDOC + 6 digits)")
     name: str
     email: EmailStr
     phone: str
@@ -128,8 +127,8 @@ class DoctorResponse(BaseModel):
     license_number: Optional[str] = None
     address: Optional[str] = None
     is_active: bool
-    added_by: Optional[dict] = Field(None, description="Who added this doctor: {role, id, name, department}")
-    approved_by: Optional[dict] = Field(None, description="Who approved (if MR request): {role, id, name, department}")
+    added_by: Optional[dict] = Field(None, description="Who added this doctor")
+    approved_by: Optional[dict] = Field(None, description="Who approved (if MR request)")
     created_at: datetime
     
     class Config:
@@ -196,19 +195,10 @@ class MessageResponse(BaseModel):
 
 
 class DoctorCreateResponse(BaseModel):
-    """
-    Response for doctor creation.
-    """
+    """Response for doctor creation."""
     message: str
     doctor_id: str
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "message": "Doctor added successfully",
-                "doctor_id": "507f1f77bcf86cd799439011"
-            }
-        }
+    doctor_uid: Optional[str] = Field(None, description="Global unique doctor identifier (PRXDOC + 6 digits)")
 
 
 class DoctorUpdateResponse(BaseModel):

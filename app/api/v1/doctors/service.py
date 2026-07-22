@@ -78,23 +78,30 @@ async def create_doctor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
+
     # Use default password if not provided
     if not password:
-        password = generate_random_password()  # Generate strong random password
-    
+        password = generate_random_password()
+
     # Store plain password for email (before hashing)
     plain_password = password
-    
+
     # Hash password
     password_hash = hash_password(password)
-    
-    # Get admin info from JWT token (no database query needed!)
+
+    # Get admin info from JWT token
     admin_name = current_user.get("full_name", "Admin")
     admin_department = current_user.get("department", "general")
-    
+
+    # Generate unique doctor_uid
+    from app.models.doctor_model import generate_doctor_uid
+    doctor_uid = generate_doctor_uid()
+    while await company_db.doctors.find_one({"doctor_uid": doctor_uid}):
+        doctor_uid = generate_doctor_uid()
+
     # RULE 1: INSERT with Pydantic Model
     doctor = DoctorInDB(
+        doctor_uid=doctor_uid,
         name=name,
         email=email,
         password_hash=password_hash,
@@ -124,6 +131,20 @@ async def create_doctor(
     
     # Insert into database
     result = await company_db.doctors.insert_one(doctor.model_dump())
+
+    # Register doctor on DRX (async, don't fail if DRX is down)
+    try:
+        from app.services.drx_client import drx_client
+        if drx_client.is_configured:
+            drx_result = await drx_client.register_doctor(name=name, email=email, phone=phone)
+            if drx_result and drx_result.get("doctor_gid"):
+                # Store DRX GID on MRX doctor for cross-reference
+                await company_db.doctors.update_one(
+                    {"_id": result.inserted_id},
+                    {"$set": {"drx_doctor_gid": drx_result["doctor_gid"]}}
+                )
+    except Exception:
+        pass  # DRX registration is best-effort, don't block MRX flow
     
     # Log activity
     await log_activity(
@@ -157,7 +178,8 @@ async def create_doctor(
     
     return {
         "message": "Doctor added successfully",
-        "doctor_id": str(result.inserted_id)
+        "doctor_id": str(result.inserted_id),
+        "doctor_uid": doctor_uid
     }
 
 
@@ -693,9 +715,16 @@ async def bulk_upload_doctors(
             # Get admin info from JWT token (no database query needed!)
             admin_name = current_user.get("full_name", "Admin")
             admin_department = current_user.get("department", "general")
-            
+
+            # Generate unique doctor_uid
+            from app.models.doctor_model import generate_doctor_uid
+            bulk_doctor_uid = generate_doctor_uid()
+            while await company_db.doctors.find_one({"doctor_uid": bulk_doctor_uid}):
+                bulk_doctor_uid = generate_doctor_uid()
+
             # RULE 1: INSERT with Pydantic Model
             doctor = DoctorInDB(
+                doctor_uid=bulk_doctor_uid,
                 name=name,
                 email=email,
                 password_hash=password_hash,
@@ -1078,9 +1107,16 @@ async def approve_doctor_request(
     # Get admin info from JWT token (no database query needed!)
     admin_name = current_user.get("full_name", "Admin")
     admin_department = current_user.get("department", "general")
-    
+
+    # Generate unique doctor_uid
+    from app.models.doctor_model import generate_doctor_uid
+    approved_doctor_uid = generate_doctor_uid()
+    while await company_db.doctors.find_one({"doctor_uid": approved_doctor_uid}):
+        approved_doctor_uid = generate_doctor_uid()
+
     # RULE 1: INSERT with Pydantic Model
     doctor = DoctorInDB(
+        doctor_uid=approved_doctor_uid,
         name=request["name"],
         email=request["email"],
         password_hash=password_hash,

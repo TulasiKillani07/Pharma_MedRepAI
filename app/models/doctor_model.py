@@ -58,13 +58,22 @@ class LocationSuggestion(BaseModel):
     admin_action: Optional[dict] = Field(None, description="Admin action details: {action_by, action_at, notes}")
 
 
+import random
+import secrets
+
+
+def generate_doctor_uid() -> str:
+    """Generate unique Doctor UID: PRXDOC + 6 random digits"""
+    return f"PRXDOC{random.randint(100000, 999999)}"
+
+
 class DoctorBase(BaseModel):
     """Base schema for Doctor with common fields"""
     email: EmailStr
-    name: str  # Changed from full_name to match DB structure
+    name: str
     phone: str
     specialization: str
-    classification: str  # Doctor classification (A/B/C) for SFE tracking
+    classification: str
     hospital: Optional[str] = None
     license_number: Optional[str] = None
     address: Optional[str] = None
@@ -72,6 +81,7 @@ class DoctorBase(BaseModel):
 
 class DoctorInDB(DoctorBase):
     """Schema for doctor stored in database"""
+    doctor_uid: str = Field(default_factory=generate_doctor_uid, description="Unique doctor identifier (e.g. PRXDOC482915). Immutable.")
     password_hash: str
     is_active: bool = True
     is_password_changed: bool = False  # Track if user changed their password
