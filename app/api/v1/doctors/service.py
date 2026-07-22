@@ -132,11 +132,14 @@ async def create_doctor(
     # Insert into database
     result = await company_db.doctors.insert_one(doctor.model_dump())
 
-    # Register doctor on DRX (best-effort, 10s timeout — won't block response significantly)
+    # Register doctor on DRX (best-effort, 10s timeout)
     try:
         from app.services.drx_client import drx_client
+        from app.utils.logger import get_medrep_logger
+        _logger = get_medrep_logger(__name__)
         if drx_client.is_configured:
             import asyncio
+            _logger.info(f"Syncing doctor {email} to DRX...")
             drx_result = await asyncio.wait_for(
                 drx_client.register_doctor(name=name, email=email, phone=phone),
                 timeout=10
@@ -146,8 +149,17 @@ async def create_doctor(
                     {"_id": result.inserted_id},
                     {"$set": {"drx_doctor_gid": drx_result["doctor_gid"]}}
                 )
-    except Exception:
-        pass  # DRX sync failed — doctor still created on MRX
+                _logger.info(f"Doctor {email} synced to DRX: {drx_result['doctor_gid']}")
+            else:
+                _logger.warning(f"DRX sync returned no GID for {email}: {drx_result}")
+        else:
+            pass
+    except asyncio.TimeoutError:
+        from app.utils.logger import get_medrep_logger
+        get_medrep_logger(__name__).warning(f"DRX sync timed out for {email}")
+    except Exception as e:
+        from app.utils.logger import get_medrep_logger
+        get_medrep_logger(__name__).error(f"DRX sync failed for {email}: {e}")
     
     # Log activity
     await log_activity(
@@ -164,20 +176,13 @@ async def create_doctor(
         severity=LogSeverity.INFO
     )
     
-    # Send invitation email in background (don't block response)
-    async def _send_email():
-        try:
-            await send_invitation_email(
-                to_email=email,
-                name=name,
-                role="doctor",
-                email=email,
-                password=plain_password
-            )
-        except Exception:
-            pass
-
-    asyncio.create_task(_send_email())
+    # Send invitation email in background (DISABLED — Gmail SMTP times out on Render)
+    # async def _send_email():
+    #     try:
+    #         await send_invitation_email(to_email=email, name=name, role="doctor", email=email, password=plain_password)
+    #     except Exception:
+    #         pass
+    # asyncio.create_task(_send_email())
 
     return {
         "message": "Doctor added successfully",
