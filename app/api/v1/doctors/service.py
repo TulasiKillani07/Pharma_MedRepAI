@@ -132,22 +132,22 @@ async def create_doctor(
     # Insert into database
     result = await company_db.doctors.insert_one(doctor.model_dump())
 
-    # Register doctor on DRX in background (don't block the response)
-    import asyncio
-    async def _sync_to_drx():
-        try:
-            from app.services.drx_client import drx_client
-            if drx_client.is_configured:
-                drx_result = await drx_client.register_doctor(name=name, email=email, phone=phone)
-                if drx_result and drx_result.get("doctor_gid"):
-                    await company_db.doctors.update_one(
-                        {"_id": result.inserted_id},
-                        {"$set": {"drx_doctor_gid": drx_result["doctor_gid"]}}
-                    )
-        except Exception:
-            pass
-
-    asyncio.create_task(_sync_to_drx())
+    # Register doctor on DRX (best-effort, 10s timeout — won't block response significantly)
+    try:
+        from app.services.drx_client import drx_client
+        if drx_client.is_configured:
+            import asyncio
+            drx_result = await asyncio.wait_for(
+                drx_client.register_doctor(name=name, email=email, phone=phone),
+                timeout=10
+            )
+            if drx_result and drx_result.get("doctor_gid"):
+                await company_db.doctors.update_one(
+                    {"_id": result.inserted_id},
+                    {"$set": {"drx_doctor_gid": drx_result["doctor_gid"]}}
+                )
+    except Exception:
+        pass  # DRX sync failed — doctor still created on MRX
     
     # Log activity
     await log_activity(
