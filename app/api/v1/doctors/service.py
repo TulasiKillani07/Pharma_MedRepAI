@@ -79,6 +79,14 @@ async def create_doctor(
             detail="Email already registered"
         )
 
+    # Check if phone already exists
+    existing_phone = await company_db.doctors.find_one({"phone": phone})
+    if existing_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone number already registered"
+        )
+
     # Use default password if not provided
     if not password:
         password = generate_random_password()

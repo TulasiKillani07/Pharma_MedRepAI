@@ -244,6 +244,135 @@ async def list_cme_integration(
     }
 
 
+@router.post("/cme/register", summary="Register Doctor for CME (Service API)")
+async def register_cme_integration(
+    request: dict,
+    org_context=Depends(require_service_auth)
+):
+    """
+    **Purpose:** DRX registers a doctor for a CME event. MRX owns the registration.
+
+    **Access:** Service JWT only (backend-to-backend)
+
+    **Request Body:**
+    ```json
+    {
+      "doctor_gid": "PRXDOC482915",
+      "doctor_name": "Dr. Arjun Mehta",
+      "event_id": "6a605fe9f22a70a3c51b62c9"
+    }
+    ```
+
+    **Response:**
+    ```json
+    { "status": "registered", "message": "Doctor registered for CME event" }
+    ```
+    """
+    db = get_database()
+
+    doctor_gid = request.get("doctor_gid", "")
+    doctor_name = request.get("doctor_name", "")
+    event_id = request.get("event_id", "")
+
+    if not doctor_gid or not event_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="doctor_gid and event_id are required")
+
+    if not ObjectId.is_valid(event_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid event_id")
+
+    # Validate event exists
+    event = await db.cme_events.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CME event not found")
+
+    # Check duplicate registration
+    existing = await db.cme_registrations.find_one({
+        "cme_id": event_id,
+        "doctor_gid": doctor_gid
+    })
+    if existing:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already registered for this event")
+
+    # Check capacity
+    if event.get("max_attendees"):
+        count = await db.cme_registrations.count_documents({"cme_id": event_id, "registration_status": "registered"})
+        if count >= event["max_attendees"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Event is full — no capacity")
+
+    # Store registration
+    registration = {
+        "cme_id": event_id,
+        "doctor_gid": doctor_gid,
+        "doctor_name": doctor_name,
+        "registration_status": "registered",
+        "registered_at": datetime.utcnow(),
+        "registered_via": "drx",
+        "created_at": datetime.utcnow()
+    }
+    result = await db.cme_registrations.insert_one(registration)
+
+    return {
+        "status": "registered",
+        "registration_id": str(result.inserted_id),
+        "message": f"Doctor registered for '{event.get('title', '')}'"
+    }
+
+
+@router.get("/cme/my-registrations", summary="Get Doctor's CME Registrations (Service API)")
+async def get_my_cme_integration(
+    doctor_gid: str = Query(..., description="Doctor GID"),
+    org_context=Depends(require_service_auth)
+):
+    """
+    **Purpose:** DRX fetches a doctor's CME registrations from MRX.
+
+    **Access:** Service JWT only (backend-to-backend)
+
+    **Response:**
+    ```json
+    {
+      "total": 3,
+      "registrations": [
+        {
+          "id": "...",
+          "cme_id": "...",
+          "event_title": "Cardiology Update 2026",
+          "event_date": "2026-08-15",
+          "registration_status": "registered",
+          "registered_at": "2026-07-22T10:00:00"
+        }
+      ]
+    }
+    ```
+    """
+    db = get_database()
+
+    registrations = await db.cme_registrations.find(
+        {"doctor_gid": doctor_gid}
+    ).sort("registered_at", -1).to_list(length=100)
+
+    results = []
+    for reg in registrations:
+        # Get event details
+        event = None
+        if ObjectId.is_valid(reg.get("cme_id", "")):
+            event = await db.cme_events.find_one({"_id": ObjectId(reg["cme_id"])})
+
+        results.append({
+            "id": str(reg["_id"]),
+            "cme_id": reg.get("cme_id"),
+            "event_title": event.get("title", "") if event else "",
+            "event_date": event.get("event_date") if event else None,
+            "event_time": event.get("event_time", "") if event else "",
+            "event_mode": event.get("event_mode") if event else None,
+            "status": event.get("status", "") if event else "",
+            "registration_status": reg.get("registration_status", ""),
+            "registered_at": reg.get("registered_at")
+        })
+
+    return {"total": len(results), "registrations": results}
+
+
 # ══════════════════════════════════════════════════════════════
 # Outbound — MRX calling DRX (Admin utility endpoints)
 # ══════════════════════════════════════════════════════════════
