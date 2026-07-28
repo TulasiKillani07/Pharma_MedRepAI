@@ -43,7 +43,14 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
     5. Return token and user info
     """
     db = get_database()
-    
+
+    # Block doctor login — doctors now use DRX platform
+    if role == UserRole.DOCTOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Doctor login is no longer available on MRX. Please use the DRX Doctor Platform."
+        )
+
     # Get the correct collection based on role
     collection_name = get_collection_name(role)
     collection = db[collection_name]

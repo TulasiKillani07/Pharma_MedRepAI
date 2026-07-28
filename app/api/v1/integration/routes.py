@@ -19,6 +19,7 @@ Outbound (MRX → DRX):
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
 from bson import ObjectId
 from app.config import settings
 from app.database import get_database
@@ -371,6 +372,64 @@ async def get_my_cme_integration(
         })
 
     return {"total": len(results), "registrations": results}
+
+
+@router.get("/dashboard", summary="Dashboard Data for Doctor (Service API)")
+async def get_dashboard_integration(
+    doctor_gid: str = Query(None, description="Doctor GID (optional, for doctor-specific data)"),
+    org_context=Depends(require_service_auth)
+):
+    """
+    **Purpose:** Single endpoint for DRX to get all pharma-owned dashboard data in one call.
+
+    **Access:** Service JWT only (backend-to-backend)
+
+    **Response:**
+    ```json
+    {
+      "recent_drugs": [...],
+      "upcoming_cme": [...],
+      "stats": {
+        "total_drugs": 45,
+        "total_cme_events": 10,
+        "upcoming_cme_count": 3
+      }
+    }
+    ```
+    """
+    db = get_database()
+
+    # Recent drugs (last 5 added)
+    recent_drugs = await db.drugs.find(
+        {"is_active": True},
+        {"drug_name": 1, "generic_name": 1, "therapeutic_category": 1, "dosage_form": 1, "strength": 1}
+    ).sort("created_at", -1).limit(5).to_list(length=5)
+
+    for drug in recent_drugs:
+        drug["id"] = str(drug.pop("_id"))
+
+    # Upcoming CME events (next 5)
+    upcoming_cme = await db.cme_events.find(
+        {"status": "upcoming"}
+    ).sort("event_date", 1).limit(5).to_list(length=5)
+
+    for event in upcoming_cme:
+        event["id"] = str(event.pop("_id"))
+
+    # Stats
+    total_drugs = await db.drugs.count_documents({"is_active": True})
+    total_cme = await db.cme_events.count_documents({})
+    upcoming_count = await db.cme_events.count_documents({"status": "upcoming"})
+
+    return {
+        "recent_drugs": recent_drugs,
+        "upcoming_cme": upcoming_cme,
+        "stats": {
+            "total_drugs": total_drugs,
+            "total_cme_events": total_cme,
+            "upcoming_cme_count": upcoming_count
+        }
+    }
 
 
 # ══════════════════════════════════════════════════════════════

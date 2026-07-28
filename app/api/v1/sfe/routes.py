@@ -368,7 +368,7 @@ async def get_eligible_visits(
 
 @router.post(
     "/rcpa",
-    response_model=schemas.RCPACommitmentResponse,
+    
     status_code=status.HTTP_201_CREATED,
     summary="Create RCPA Commitment",
     description="""
@@ -466,7 +466,7 @@ async def create_rcpa_commitment(
 
 @router.get(
     "/rcpa",
-    response_model=schemas.RCPAListResponse,
+    
     status_code=status.HTTP_200_OK,
     summary="Get RCPA Commitments",
     description="""
@@ -623,7 +623,7 @@ async def reject_rcpa_discount(
 
 @router.get(
     "/rcpa/pending-approvals",
-    response_model=schemas.RCPAListResponse,
+    
     status_code=status.HTTP_200_OK,
     summary="Get Pending Discount Approvals (Admin Only)",
     description="""
@@ -641,7 +641,7 @@ async def get_pending_approvals(
 
 @router.get(
     "/rcpa/summary",
-    response_model=schemas.RCPASummaryResponse,
+    
     status_code=status.HTTP_200_OK,
     summary="Get RCPA Summary (Admin Only)",
     description="""

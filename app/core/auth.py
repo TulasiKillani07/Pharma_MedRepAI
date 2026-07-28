@@ -149,18 +149,6 @@ async def require_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
     return await require_role(UserRole.ADMIN, current_user)
 
 
-async def require_doctor(current_user: Dict = Depends(get_current_user)) -> Dict:
-    """
-    Require DOCTOR role.
-    
-    Example:
-        @router.post("/posts")
-        async def create_post(current_user = Depends(require_doctor)):
-            return {"message": "Only doctors can create posts"}
-    """
-    return await require_role(UserRole.DOCTOR, current_user)
-
-
 async def require_mr(current_user: Dict = Depends(get_current_user)) -> Dict:
     """
     Require MR role.
@@ -173,20 +161,4 @@ async def require_mr(current_user: Dict = Depends(get_current_user)) -> Dict:
     return await require_role(UserRole.MR, current_user)
 
 
-async def require_doctor_or_admin(current_user: Dict = Depends(get_current_user)) -> Dict:
-    """
-    Require DOCTOR or ADMIN role (for network features).
-    Blocks MRs from accessing network features.
-    
-    Example:
-        @router.post("/network/connections/send")
-        async def send_connection(current_user = Depends(require_doctor_or_admin)):
-            return {"message": "Only doctors and admins can use network features"}
-    """
-    user_role = current_user.get("role")
-    if user_role not in [UserRole.DOCTOR.value, UserRole.ADMIN.value]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Network features are only available for doctors",
-        )
-    return current_user
+

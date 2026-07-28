@@ -29,7 +29,7 @@ async def get_my_profile(current_user: Dict) -> Dict[str, Any]:
     
     # Get user from appropriate collection
     if role == "DOCTOR":
-        user = await db["doctors"].find_one({"_id": ObjectId(user_id)})
+        raise HTTPException(status_code=403, detail="Doctors use DRX platform for profile management")
     elif role == "MR":
         user = await db["mrs"].find_one({"_id": ObjectId(user_id)})
     elif role in ["ADMIN", "MANAGER"]:
@@ -53,19 +53,7 @@ async def get_my_profile(current_user: Dict) -> Dict[str, Any]:
     }
     
     # Add role-specific fields
-    if role == "DOCTOR":
-        profile["bio"] = user.get("bio")
-        profile["avatar_url"] = user.get("avatar_url")
-        profile["location"] = user.get("location")
-        profile["experience_years"] = user.get("experience_years")
-        profile["specialization"] = user.get("specialization")
-        profile["hospital"] = user.get("hospital")
-        profile["license_number"] = user.get("license_number")
-        profile["territory"] = None
-        profile["admin_bio"] = None
-        profile["admin_avatar_url"] = None
-        
-    elif role == "MR":
+    if role == "MR":
         profile["bio"] = user.get("bio")
         profile["avatar_url"] = user.get("avatar_url")
         profile["location"] = user.get("location")
@@ -128,33 +116,8 @@ async def update_my_profile(
     
     # Role-specific handling
     if role == "DOCTOR":
-        if update_data.get("full_name") is not None:
-            update_doc["name"] = update_data["full_name"]
-        
-        if update_data.get("bio") is not None:
-            update_doc["bio"] = update_data["bio"]
-        
-        if "avatar_url" in update_data:
-            update_doc["avatar_url"] = update_data["avatar_url"]
-        
-        if update_data.get("location") is not None:
-            update_doc["location"] = update_data["location"]
-        
-        if update_data.get("experience_years") is not None:
-            update_doc["experience_years"] = update_data["experience_years"]
-        
-        if update_data.get("specialization") is not None:
-            update_doc["specialization"] = update_data["specialization"]
-        
-        if update_data.get("hospital") is not None:
-            update_doc["hospital"] = update_data["hospital"]
-        
-        # Reject MR/Admin fields
-        if update_data.get("territory") is not None:
-            raise HTTPException(status_code=400, detail="Doctors cannot update territory field")
-        if any(k.startswith("company_") or k.startswith("admin_") for k in update_data.keys()):
-            raise HTTPException(status_code=400, detail="Doctors cannot update company/admin fields")
-    
+        raise HTTPException(status_code=403, detail="Doctors use DRX platform for profile management")
+
     elif role == "MR":
         if update_data.get("full_name") is not None:
             update_doc["name"] = update_data["full_name"]

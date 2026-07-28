@@ -99,13 +99,13 @@ class CMEEventResponse(BaseModel):
     """Schema for CME event response"""
     id: str = Field(alias="_id")
     title: str
-    description: Optional[str]
-    event_date: datetime
-    event_time: str
-    event_type: str
-    max_attendees: Optional[int]
+    description: Optional[str] = None
+    event_date: Optional[datetime] = None
+    event_time: Optional[str] = None
+    event_type: Optional[str] = None
+    max_attendees: Optional[int] = None
     
-    # Event Mode (optional for backward compatibility with old data)
+    # Event Mode
     event_mode: Optional[str] = None
     
     # Online mode fields
@@ -117,14 +117,14 @@ class CMEEventResponse(BaseModel):
     venue_name: Optional[str] = None
     address: Optional[str] = None
     
-    # Legacy field (for old data)
+    # Legacy field
     location: Optional[str] = None
     
-    speaker: str
-    status: str
-    event_recording: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    speaker: Optional[str] = None
+    status: Optional[str] = None
+    event_recording: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         populate_by_name = True

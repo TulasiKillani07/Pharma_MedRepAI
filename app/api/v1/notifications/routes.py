@@ -2,7 +2,7 @@
 Notifications API Endpoints
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from typing import Dict
 from app.core.auth import get_current_user
 from app.api.v1.notifications.schemas import (
@@ -19,12 +19,19 @@ from app.api.v1.notifications import service
 router = APIRouter()
 
 
+async def require_admin_or_mr(current_user: Dict = Depends(get_current_user)) -> Dict:
+    """Only ADMIN and MR can access notifications on MRX. Doctors use DRX."""
+    if current_user.get("role") not in ["ADMIN", "MR", "MANAGER"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Doctors use DRX for notifications")
+    return current_user
+
+
 @router.get("", response_model=NotificationListResponse)
 async def get_notifications_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Notifications per page"),
     unread_only: bool = Query(False, description="Show only unread notifications"),
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin_or_mr)
 ):
     """
     Get paginated notifications for current user.
@@ -115,7 +122,7 @@ async def get_notifications_endpoint(
 
 @router.get("/unread-count", response_model=UnreadCountResponse)
 async def get_unread_count_endpoint(
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin_or_mr)
 ):
     """
     Get count of unread notifications.
@@ -154,7 +161,7 @@ async def get_unread_count_endpoint(
 @router.put("/{notification_id}/read", response_model=MarkReadResponse)
 async def mark_as_read_endpoint(
     notification_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin_or_mr)
 ):
     """
     Mark a notification as read.
@@ -187,7 +194,7 @@ async def mark_as_read_endpoint(
 
 @router.put("/read-all", response_model=MarkAllReadResponse)
 async def mark_all_as_read_endpoint(
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin_or_mr)
 ):
     """
     Mark all notifications as read.
@@ -215,7 +222,7 @@ async def mark_all_as_read_endpoint(
 
 @router.delete("/clear-all", response_model=ClearAllResponse)
 async def clear_all_notifications_endpoint(
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin_or_mr)
 ):
     """
     Delete all notifications.
@@ -247,7 +254,7 @@ async def clear_all_notifications_endpoint(
 @router.delete("/{notification_id}", response_model=DeleteResponse)
 async def delete_notification_endpoint(
     notification_id: str,
-    current_user: Dict = Depends(get_current_user)
+    current_user: Dict = Depends(require_admin_or_mr)
 ):
     """
     Delete a notification.
