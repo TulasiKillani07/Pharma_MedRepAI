@@ -65,3 +65,16 @@ async def shutdown_event():
 app.include_router(api_router, prefix="/mrx/api/v1")
 
 
+# Root route — prevents 404 when browsers hit the base URL
+@app.get("/", include_in_schema=False)
+async def root():
+    return {"service": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/docs"}
+
+
+# Favicon — prevents 404 from browser favicon requests
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    from fastapi.responses import Response
+    return Response(status_code=204)
+
+
