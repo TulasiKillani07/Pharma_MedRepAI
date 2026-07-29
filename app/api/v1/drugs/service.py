@@ -246,72 +246,42 @@ def normalize_field_values(field_values: List[Any], template_fields: Dict[str, A
 
 
 def get_default_fixed_fields() -> List[Dict[str, Any]]:
-    """Returns the 45 default fixed fields for drug template (42 visible + 3 hidden brochure fields)"""
+    """Returns the default fixed fields for drug template (21 mandatory visible + 3 hidden brochure)"""
     return [
-        # ── Identity & Classification ──
+        # ── Identity & Classification (7 mandatory) ──
         {"field_id": str(uuid.uuid4()), "key": "drug_name", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 1, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "brand_name", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 2, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "generic_name", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 3, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "manufacturer", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 4, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "drug_class", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 5, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "therapeutic_category", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 6, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "prescription_type", "type": "select", "is_fixed": True, "required": False, "visible": True, "order": 7, "options": ["Rx", "OTC", "Schedule H", "Schedule H1", "Schedule X"], "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "prescription_type", "type": "select", "is_fixed": True, "required": True, "visible": True, "order": 7, "options": ["Rx", "OTC", "Schedule H", "Schedule H1", "Schedule X"], "is_active": True},
 
-        # ── Composition & Form ──
+        # ── Composition & Form (4 mandatory) ──
         {"field_id": str(uuid.uuid4()), "key": "composition", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 8, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "dosage_form", "type": "select", "is_fixed": True, "required": True, "visible": True, "order": 9, "options": ["Tablet", "Capsule", "Syrup", "Injection", "Drops", "Cream", "Ointment", "Gel", "Powder", "Lotion", "Inhaler", "Suspension", "Solution", "Suppository", "Patch"], "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "strength", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 10, "options": None, "is_active": True},
         {"field_id": str(uuid.uuid4()), "key": "route", "type": "select", "is_fixed": True, "required": True, "visible": True, "order": 11, "options": ["Oral", "Intravenous", "Intramuscular", "Subcutaneous", "Topical", "Inhalation", "Rectal", "Sublingual", "Transdermal", "Ophthalmic", "Otic", "Nasal"], "is_active": True},
 
-        # ── Dosage & Administration ──
-        {"field_id": str(uuid.uuid4()), "key": "adult_dosage", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 12, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "pediatric_dosage", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 13, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "renal_dose_adjustment", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 14, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "hepatic_dose_adjustment", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 15, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "missed_dose_instructions", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 16, "options": None, "is_active": True},
+        # ── Clinical Information (3 mandatory) ──
+        {"field_id": str(uuid.uuid4()), "key": "indications", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 12, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "symptoms", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 13, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "mechanism_of_action", "type": "textarea", "is_fixed": True, "required": True, "visible": True, "order": 14, "options": None, "is_active": True},
 
-        # ── Clinical Information ──
-        {"field_id": str(uuid.uuid4()), "key": "indications", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 17, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "symptoms", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 18, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "mechanism_of_action", "type": "textarea", "is_fixed": True, "required": True, "visible": True, "order": 19, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "pharmacokinetics", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 20, "options": None, "is_active": True},
+        # ── Safety & Interactions (4 mandatory) ──
+        {"field_id": str(uuid.uuid4()), "key": "contraindications", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 15, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "warnings_precautions", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 16, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "side_effects", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 17, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "drug_interactions", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 18, "options": None, "is_active": True},
 
-        # ── Safety & Interactions ──
-        {"field_id": str(uuid.uuid4()), "key": "contraindications", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 21, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "warnings_precautions", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 22, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "side_effects", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 23, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "drug_interactions", "type": "array", "is_fixed": True, "required": True, "visible": True, "order": 24, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "drug_food_interactions", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 25, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "pregnancy_lactation", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 26, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "monitoring_parameters", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 27, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "overdose_management", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 28, "options": None, "is_active": True},
-
-        # ── Packaging & Pricing ──
-        {"field_id": str(uuid.uuid4()), "key": "packaging", "type": "select", "is_fixed": True, "required": True, "visible": True, "order": 29, "options": ["Strip", "Bottle", "Tube", "Vial", "Ampoule", "Sachet", "Blister", "Box", "Jar", "Can"], "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "pack_size", "type": "text", "is_fixed": True, "required": False, "visible": True, "order": 30, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "mrp", "type": "number", "is_fixed": True, "required": True, "visible": True, "order": 31, "options": None, "is_active": True},
-
-        # ── Market & Availability ──
-        {"field_id": str(uuid.uuid4()), "key": "launch_date", "type": "date", "is_fixed": True, "required": False, "visible": True, "order": 32, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "availability", "type": "select", "is_fixed": True, "required": False, "visible": True, "order": 33, "options": ["Available", "Out of Stock", "Discontinued", "Limited Supply"], "is_active": True},
-
-        # ── Evidence & Literature ──
-        {"field_id": str(uuid.uuid4()), "key": "clinical_evidence_summary", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 34, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "medical_literature", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 35, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "reference_url", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 36, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "faqs", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 37, "options": None, "is_active": True},
-
-        # ── Regulatory ──
-        {"field_id": str(uuid.uuid4()), "key": "approval_status", "type": "select", "is_fixed": True, "required": False, "visible": True, "order": 38, "options": ["Approved", "Pending", "Withdrawn", "Under Review"], "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "regulatory_authority", "type": "text", "is_fixed": True, "required": False, "visible": True, "order": 39, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "approval_date", "type": "date", "is_fixed": True, "required": False, "visible": True, "order": 40, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "black_box_warning", "type": "textarea", "is_fixed": True, "required": False, "visible": True, "order": 41, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "storage_conditions", "type": "text", "is_fixed": True, "required": False, "visible": True, "order": 42, "options": None, "is_active": True},
+        # ── Reference & Regulatory (2 mandatory) ──
+        {"field_id": str(uuid.uuid4()), "key": "reference_url", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 19, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "storage_conditions", "type": "text", "is_fixed": True, "required": True, "visible": True, "order": 20, "options": None, "is_active": True},
 
         # ── Brochure (hidden, auto-filled by upload endpoint) ──
-        {"field_id": str(uuid.uuid4()), "key": "brochure_url", "type": "text", "is_fixed": True, "required": False, "visible": False, "order": 43, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "brochure_public_id", "type": "text", "is_fixed": True, "required": False, "visible": False, "order": 44, "options": None, "is_active": True},
-        {"field_id": str(uuid.uuid4()), "key": "brochure_uploaded_at", "type": "text", "is_fixed": True, "required": False, "visible": False, "order": 45, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "brochure_url", "type": "text", "is_fixed": True, "required": False, "visible": False, "order": 21, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "brochure_public_id", "type": "text", "is_fixed": True, "required": False, "visible": False, "order": 22, "options": None, "is_active": True},
+        {"field_id": str(uuid.uuid4()), "key": "brochure_uploaded_at", "type": "text", "is_fixed": True, "required": False, "visible": False, "order": 23, "options": None, "is_active": True},
     ]
 
 
@@ -393,10 +363,10 @@ async def get_template() -> Optional[Dict[str, Any]]:
         "manufacturer": {"type": "text", "required": True, "is_fixed": True},
         "drug_class": {"type": "text", "required": True, "is_fixed": True},
         "therapeutic_category": {"type": "text", "required": True, "is_fixed": True},
+        "prescription_type": {"type": "select", "required": True, "is_fixed": True},
         "strength": {"type": "text", "required": True, "is_fixed": True},
         "reference_url": {"type": "text", "required": True, "is_fixed": True},
-        "mrp": {"type": "number", "required": True, "is_fixed": True},
-        "packaging": {"type": "select", "required": True, "is_fixed": True},
+        "storage_conditions": {"type": "text", "required": True, "is_fixed": True},
     }
     for key, corrections in type_corrections.items():
         if key in key_to_index:
@@ -409,7 +379,14 @@ async def get_template() -> Optional[Dict[str, Any]]:
     # Remove old deprecated fields
     deprecated_keys = {"price", "pack_type", "units_per_pack", "packs_per_box",
                        "pack_price", "box_price", "price_per_drug", "discount",
-                       "dosage_strength"}
+                       "dosage_strength", "missed_dose_instructions", "pharmacokinetics",
+                       "drug_food_interactions", "black_box_warning", "regulatory_authority",
+                       "approval_date", "medical_literature",
+                       "packaging", "mrp", "pack_size",
+                       "adult_dosage", "pediatric_dosage", "renal_dose_adjustment",
+                       "hepatic_dose_adjustment", "pregnancy_lactation", "monitoring_parameters",
+                       "overdose_management", "launch_date", "availability",
+                       "clinical_evidence_summary", "faqs", "approval_status"}
     before_count = len(fields)
     fields = [f for f in fields if f["key"] not in deprecated_keys]
     if len(fields) < before_count:
@@ -1299,39 +1276,47 @@ async def download_drug_brochure(drug_id: str):
 # ============ BULK UPLOAD SERVICES ============
 
 async def download_drug_template() -> StreamingResponse:
-    """Generate and download CSV template with 12 fixed fields"""
+    """Generate and download CSV template with current fixed fields (excludes hidden brochure fields and packaging)"""
     
-    # Define the 12 fixed field columns
-    columns = [
-        "drug_name",
-        "brand_name",
-        "drug_class",
-        "manufacturer",
-        "symptoms",
-        "indications",
-        "mechanism_of_action",
-        "dosage_strength",
-        "dosage_form",
-        "route",
-        "side_effects",
-        "reference_url"
-    ]
+    # Get visible fields only (no brochure, no packaging — those are handled separately)
+    columns = [f["key"] for f in get_default_fixed_fields() if f["visible"]]
     
-    # Create DataFrame with a sample row to show expected format
+    # Create sample row
     sample_row = {
-        "drug_name": "Paracetamol",
+        "drug_name": "Paracetamol 500mg",
         "brand_name": "Crocin",
-        "drug_class": "Analgesic",
+        "generic_name": "Paracetamol",
         "manufacturer": "GSK Pharmaceuticals",
-        "symptoms": "Fever, Headache, Body Pain",
-        "indications": "Mild to moderate pain, Fever reduction",
-        "mechanism_of_action": "Inhibits prostaglandin synthesis in the CNS",
-        "dosage_strength": "500mg",
+        "drug_class": "Analgesic / Antipyretic",
+        "therapeutic_category": "Pain & Fever Management",
+        "prescription_type": "OTC",
+        "composition": "Paracetamol IP 500mg",
         "dosage_form": "Tablet",
+        "strength": "500mg",
         "route": "Oral",
-        "side_effects": "Nausea, Skin rash (rare)",
-        "reference_url": "https://www.drugs.com/paracetamol.html"
+        "adult_dosage": "1-2 tablets every 4-6 hours, max 8 tablets/day",
+        "pediatric_dosage": "10-15 mg/kg every 4-6 hours",
+        "renal_dose_adjustment": "",
+        "hepatic_dose_adjustment": "Reduce dose in hepatic impairment",
+        "indications": "Mild to moderate pain, Fever reduction",
+        "symptoms": "Fever, Headache, Body Pain, Toothache",
+        "mechanism_of_action": "Inhibits prostaglandin synthesis in the CNS",
+        "contraindications": "Severe hepatic impairment, Hypersensitivity to paracetamol",
+        "warnings_precautions": "Hepatotoxicity at high doses, Avoid with alcohol",
+        "side_effects": "Nausea, Skin rash (rare), Hepatotoxicity (overdose)",
+        "drug_interactions": "Warfarin (increased INR), Carbamazepine (hepatotoxicity risk)",
+        "pregnancy_lactation": "Category B - Generally safe in pregnancy",
+        "monitoring_parameters": "",
+        "overdose_management": "N-acetylcysteine within 8 hours of ingestion",
+        "launch_date": "",
+        "availability": "Available",
+        "reference_url": "https://www.drugs.com/paracetamol.html",
+        "clinical_evidence_summary": "",
+        "faqs": "",
+        "approval_status": "Approved",
+        "storage_conditions": "Store below 25°C in a dry place",
     }
+    
     df = pd.DataFrame([sample_row], columns=columns)
     
     # Convert to CSV

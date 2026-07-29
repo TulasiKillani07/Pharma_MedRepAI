@@ -11,11 +11,12 @@ from app.core.validators import PhoneValidator, NameValidator, EmailValidator
 class LoginRequest(BaseModel):
     """
     Schema for login request.
-    User selects role in UI, then enters email and password.
+    User selects role (ADMIN or MR) and enters credentials.
+    DOCTOR role is blocked — doctors use DRX platform.
     """
     email: EmailStr = Field(..., description="User's email address")
     password: str = Field(..., min_length=8, description="User's password")
-    role: UserRole = Field(..., description="User role: ADMIN, DOCTOR, or MR")
+    role: UserRole = Field(..., description="User role: ADMIN or MR (DOCTOR returns 403)")
     
     # Validators
     @field_validator('email')
@@ -26,9 +27,9 @@ class LoginRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "email": "doctor@example.com",
-                "password": "SecurePass123",
-                "role": "DOCTOR"
+                "email": "admin@xyzpharma.com",
+                "password": "Welcome@123",
+                "role": "ADMIN"
             }
         }
 
@@ -51,9 +52,9 @@ class TokenResponse(BaseModel):
                 "expires_in": 3600,
                 "user": {
                     "id": "507f1f77bcf86cd799439011",
-                    "email": "doctor@example.com",
-                    "full_name": "Dr. John Doe",
-                    "role": "DOCTOR"
+                    "email": "admin@xyzpharma.com",
+                    "full_name": "Admin User",
+                    "role": "ADMIN"
                 }
             }
         }
@@ -175,7 +176,7 @@ class ForgotPasswordRequest(BaseModel):
     User provides email and role to receive OTP.
     """
     email: EmailStr = Field(..., description="User's email address")
-    role: UserRole = Field(..., description="User role: ADMIN, DOCTOR, or MR")
+    role: UserRole = Field(..., description="User role: ADMIN or MR (DOCTOR blocked — use DRX)")
     
     @field_validator('email')
     @classmethod
@@ -185,8 +186,8 @@ class ForgotPasswordRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "email": "doctor@example.com",
-                "role": "DOCTOR"
+                "email": "admin@xyzpharma.com",
+                "role": "ADMIN"
             }
         }
 
@@ -212,7 +213,7 @@ class ResetPasswordWithOTPRequest(BaseModel):
     Schema for resetting password with OTP.
     """
     email: EmailStr = Field(..., description="User's email address")
-    role: UserRole = Field(..., description="User role: ADMIN, DOCTOR, or MR")
+    role: UserRole = Field(..., description="User role: ADMIN or MR (DOCTOR blocked — use DRX)")
     otp: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
     new_password: str = Field(..., min_length=8, max_length=72, description="New password (8-72 characters)")
     confirm_password: str = Field(..., description="Confirm new password")
@@ -245,8 +246,8 @@ class ResetPasswordWithOTPRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "email": "doctor@example.com",
-                "role": "DOCTOR",
+                "email": "admin@xyzpharma.com",
+                "role": "ADMIN",
                 "otp": "123456",
                 "new_password": "MyNewSecurePass123!",
                 "confirm_password": "MyNewSecurePass123!"

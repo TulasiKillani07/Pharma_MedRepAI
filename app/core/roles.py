@@ -10,10 +10,13 @@ class UserRole(str, Enum):
     """
     User roles in the system.
     Each role corresponds to a separate MongoDB collection.
+    
+    Note: DOCTOR role exists for admin management of doctor records.
+    Doctors cannot login on MRX — they use DRX Doctor Platform.
     """
     ADMIN = "ADMIN"      # Company Admin - manages everything
-    DOCTOR = "DOCTOR"    # Doctor - views drugs, creates posts, chats
-    MR = "MR"            # Medical Representative - promotes drugs, chats with doctors
+    DOCTOR = "DOCTOR"    # Doctor - managed by admin, cannot login (uses DRX)
+    MR = "MR"            # Medical Representative - promotes drugs, visits doctors
 
 
 # Mapping of roles to their MongoDB collection names

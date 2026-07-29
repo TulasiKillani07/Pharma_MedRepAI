@@ -36,7 +36,7 @@ async def get_notifications_endpoint(
     """
     Get paginated notifications for current user.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Admin, MR, Manager only (Doctors use DRX)
     
     **Purpose:**
     Retrieve notifications with pagination and filtering.
@@ -127,7 +127,7 @@ async def get_unread_count_endpoint(
     """
     Get count of unread notifications.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Admin, MR, Manager only (Doctors use DRX)
     
     **Purpose:**
     Get the number of unread notifications for displaying badge count.
@@ -166,7 +166,7 @@ async def mark_as_read_endpoint(
     """
     Mark a notification as read.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Admin, MR, Manager only (Doctors use DRX)
     
     **Purpose:**
     Mark a specific notification as read when user clicks on it.
@@ -199,7 +199,7 @@ async def mark_all_as_read_endpoint(
     """
     Mark all notifications as read.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Admin, MR, Manager only (Doctors use DRX)
     
     **Purpose:**
     Mark all unread notifications as read at once.
@@ -227,7 +227,7 @@ async def clear_all_notifications_endpoint(
     """
     Delete all notifications.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Admin, MR, Manager only (Doctors use DRX)
     
     **Purpose:**
     Delete all notifications for current user at once.
@@ -259,7 +259,7 @@ async def delete_notification_endpoint(
     """
     Delete a notification.
     
-    **Access:** Doctor, MR, Admin, Manager
+    **Access:** Admin, MR, Manager only (Doctors use DRX)
     
     **Purpose:**
     Delete a specific notification from user's list.

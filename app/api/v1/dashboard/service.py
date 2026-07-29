@@ -297,10 +297,3 @@ async def get_mr_dashboard(mr_id: str) -> Dict[str, Any]:
         "upcoming_visits": upcoming_visits,
         "recent_visits": recent_visits
     }
-
-
-
-async def get_doctor_dashboard(doctor_id: str) -> Dict[str, Any]:
-    """Doctor dashboard moved to DRX platform."""
-    from fastapi import HTTPException
-    raise HTTPException(status_code=403, detail="Doctor dashboard is now on DRX platform")
