@@ -306,7 +306,12 @@ async def register_cme_integration(
         "registered_via": "drx",
         "created_at": datetime.utcnow()
     }
-    result = await db.cme_registrations.insert_one(registration)
+    try:
+        result = await db.cme_registrations.insert_one(registration)
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "E11000" in str(e):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already registered for this event")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Registration failed: {str(e)}")
 
     return {
         "status": "registered",

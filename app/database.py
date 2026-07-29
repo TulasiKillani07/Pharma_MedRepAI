@@ -311,29 +311,40 @@ async def initialize_collections():
     # Create cme_registrations collection if it doesn't exist
     try:
         if "cme_registrations" not in existing_collections:
-            await database.create_collection("cme_registrations")        
-        # Index 1: Compound unique index on (cme_id, doctor_id) - Prevent duplicate registrations
+            await database.create_collection("cme_registrations")
+
+        # Drop old stale index that used doctor_id (integration uses doctor_gid)
+        try:
+            await database["cme_registrations"].drop_index("registration_unique_idx")
+        except Exception:
+            pass
+        try:
+            await database["cme_registrations"].drop_index("registration_doctor_idx")
+        except Exception:
+            pass
+
+        # Index 1: Compound unique index on (cme_id, doctor_gid) - Prevent duplicate registrations
         await database["cme_registrations"].create_index(
-            [("cme_id", 1), ("doctor_id", 1)],
+            [("cme_id", 1), ("doctor_gid", 1)],
             unique=True,
-            name="registration_unique_idx"
-        )        
+            name="registration_unique_gid_idx"
+        )
         # Index 2: Index on cme_id - Fast retrieval of all registrations for an event
         await database["cme_registrations"].create_index(
             "cme_id",
             name="registration_cme_idx"
-        )        
-        # Index 3: Index on doctor_id - Fast retrieval of doctor's registrations
+        )
+        # Index 3: Index on doctor_gid - Fast retrieval of doctor's registrations
         await database["cme_registrations"].create_index(
-            "doctor_id",
-            name="registration_doctor_idx"
-        )        
+            "doctor_gid",
+            name="registration_doctor_gid_idx"
+        )
         # Index 4: Compound index on (cme_id, registration_status) - Fast filtering
         await database["cme_registrations"].create_index(
             [("cme_id", 1), ("registration_status", 1)],
             name="registration_cme_status_idx"
-        )        
-    except Exception as e:        
+        )
+    except Exception as e:
         logger.warning(f"Index creation issue: {e}")        
     # Create communications collection if it doesn't exist
     try:
