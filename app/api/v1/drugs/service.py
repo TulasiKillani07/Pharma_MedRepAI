@@ -653,6 +653,19 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
         severity=LogSeverity.INFO
     )
     
+    # Push notification to DRX doctors (fire-and-forget)
+    try:
+        from app.services.drx_client import drx_client
+        if drx_client.is_configured:
+            await drx_client._request("POST", "/drx/api/v1/integration/notifications/push", json_body={
+                "title": "New Drug Launched",
+                "message": f"{drug_name} is now available",
+                "type": "new_drug",
+                "metadata": {"drug_id": str(result.inserted_id), "drug_name": drug_name, "manufacturer": manufacturer}
+            })
+    except Exception:
+        pass  # DRX notification is best-effort, never blocks drug creation
+    
     return drug_doc
 
 

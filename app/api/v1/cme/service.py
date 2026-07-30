@@ -87,6 +87,24 @@ async def create_cme_event(event_data: CMEEventCreate, current_user: Dict) -> Di
         severity=LogSeverity.INFO
     )
     
+    # Push notification to DRX doctors (fire-and-forget)
+    try:
+        from app.services.drx_client import drx_client
+        if drx_client.is_configured:
+            await drx_client._request("POST", "/drx/api/v1/integration/notifications/push", json_body={
+                "title": "New CME Event",
+                "message": f"{event_data.title} on {event_data.event_date.strftime('%b %d, %Y')}",
+                "type": "new_cme_event",
+                "metadata": {
+                    "event_id": str(result.inserted_id),
+                    "event_title": event_data.title,
+                    "event_date": event_data.event_date.strftime("%Y-%m-%d"),
+                    "event_mode": event_data.event_mode
+                }
+            })
+    except Exception:
+        pass  # DRX notification is best-effort, never blocks CME creation
+    
     # Return the created event
     return await get_cme_event_by_id(str(result.inserted_id))
 
