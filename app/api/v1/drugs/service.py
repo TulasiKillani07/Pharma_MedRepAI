@@ -787,7 +787,12 @@ async def get_all_drugs(
                     fv["type"] = field_type_map.get(fv.get("field_id"))
             # Auto-calculate box_price if mode is 'auto'
             if "packaging" in drug and drug["packaging"]:
-                drug["packaging"] = _resolve_packaging(drug["packaging"])
+                if isinstance(drug["packaging"], dict):
+                    drug["packaging"] = _resolve_packaging(drug["packaging"])
+                else:
+                    # Old data has packaging as string — move to packaging_type field, clear packaging
+                    drug["packaging_type"] = drug["packaging"]
+                    drug["packaging"] = None
     
     total = await db["drugs"].count_documents(query)
     
@@ -848,7 +853,11 @@ async def get_drug_by_id(drug_id: str) -> Dict[str, Any]:
     
     # Auto-calculate box_price if mode is 'auto'
     if "packaging" in drug and drug["packaging"]:
-        drug["packaging"] = _resolve_packaging(drug["packaging"])
+        if isinstance(drug["packaging"], dict):
+            drug["packaging"] = _resolve_packaging(drug["packaging"])
+        else:
+            drug["packaging_type"] = drug["packaging"]
+            drug["packaging"] = None
     
     return drug
 
@@ -1377,11 +1386,8 @@ async def bulk_upload_drugs(file: UploadFile, current_user: Dict) -> Dict[str, A
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
     
-    # Define fixed field keys
-    fixed_fields = [
-        "drug_name", "brand_name", "drug_class", "manufacturer", "symptoms", "indications",
-        "mechanism_of_action", "dosage_strength", "dosage_form", "route", "side_effects", "reference_url"
-    ]
+    # Define fixed field keys (current template - no packaging fields)
+    fixed_fields = [f["key"] for f in get_default_fixed_fields() if f["visible"]]
     
     # Validate required columns (only drug_name and symptoms are truly required)
     required_columns = ["drug_name", "symptoms"]
