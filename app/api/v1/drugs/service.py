@@ -164,7 +164,7 @@ def _resolve_packaging(packaging: Optional[Dict]) -> Optional[Dict]:
     Auto-calculate box_price if box_pricing_mode is 'auto'.
     Called on every GET response — never modifies stored data.
     """
-    if not packaging:
+    if not packaging or not isinstance(packaging, dict):
         return packaging
     
     mode = packaging.get("box_pricing_mode")

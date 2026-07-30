@@ -434,6 +434,313 @@ async def get_dashboard_integration(
 
 
 # ══════════════════════════════════════════════════════════════
+# Drug View Tracking (DRX pushes doctor views to MRX)
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/drug-views", summary="Record Drug View (Service API)")
+async def record_drug_view(
+    request: dict,
+    org_context=Depends(require_service_auth)
+):
+    """
+    **Purpose:** DRX pushes drug view events so MRX admin can see analytics.
+
+    **Access:** Service JWT only (backend-to-backend)
+
+    **Request Body:**
+    ```json
+    {
+      "drug_id": "6a69e619...",
+      "drug_name": "Paracetamol 500mg",
+      "doctor_gid": "PRXDOC596352",
+      "doctor_name": "Dr. Sneha Reddy"
+    }
+    ```
+
+    **Response:**
+    ```json
+    { "status": "recorded" }
+    ```
+    """
+    db = get_database()
+
+    drug_id = request.get("drug_id", "")
+    drug_name = request.get("drug_name", "")
+    doctor_gid = request.get("doctor_gid", "")
+    doctor_name = request.get("doctor_name", "")
+
+    if not drug_id or not doctor_gid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="drug_id and doctor_gid are required")
+
+    await db.drug_views.insert_one({
+        "drug_id": drug_id,
+        "drug_name": drug_name,
+        "doctor_gid": doctor_gid,
+        "doctor_name": doctor_name,
+        "viewed_at": datetime.utcnow()
+    })
+
+    return {"status": "recorded"}
+
+
+@router.get("/drug-views/analytics", summary="Drug View Analytics (Admin)")
+async def get_drug_view_analytics(
+    drug_id: Optional[str] = Query(None, description="Filter by specific drug"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(require_admin)
+):
+    """
+    **Purpose:** Admin sees which drugs are most viewed, how many doctors viewed them, and who.
+
+    **Access:** Admin only
+
+    **Response:**
+    ```json
+    {
+      "analytics": [
+        {
+          "drug_id": "6a69e619...",
+          "drug_name": "Paracetamol 500mg",
+          "total_views": 45,
+          "unique_doctors": 12,
+          "doctors": [
+            { "doctor_gid": "PRXDOC596352", "doctor_name": "Dr. Sneha Reddy", "view_count": 5, "last_viewed": "2026-07-30T10:00:00" }
+          ]
+        }
+      ]
+    }
+    ```
+    """
+    db = get_database()
+
+    if drug_id:
+        # Analytics for a specific drug
+        pipeline = [
+            {"$match": {"drug_id": drug_id}},
+            {"$group": {
+                "_id": {"doctor_gid": "$doctor_gid", "doctor_name": "$doctor_name"},
+                "view_count": {"$sum": 1},
+                "last_viewed": {"$max": "$viewed_at"}
+            }},
+            {"$sort": {"view_count": -1}}
+        ]
+        results = await db.drug_views.aggregate(pipeline).to_list(length=200)
+
+        total_views = await db.drug_views.count_documents({"drug_id": drug_id})
+        # Get drug name from first view
+        sample = await db.drug_views.find_one({"drug_id": drug_id})
+        drug_name = sample.get("drug_name", "") if sample else ""
+
+        doctors = [
+            {
+                "doctor_gid": r["_id"]["doctor_gid"],
+                "doctor_name": r["_id"]["doctor_name"],
+                "view_count": r["view_count"],
+                "last_viewed": r["last_viewed"]
+            }
+            for r in results
+        ]
+
+        return {
+            "analytics": [{
+                "drug_id": drug_id,
+                "drug_name": drug_name,
+                "total_views": total_views,
+                "unique_doctors": len(doctors),
+                "doctors": doctors
+            }]
+        }
+    else:
+        # Top drugs by view count
+        pipeline = [
+            {"$group": {
+                "_id": {"drug_id": "$drug_id", "drug_name": "$drug_name"},
+                "total_views": {"$sum": 1},
+                "unique_doctors": {"$addToSet": "$doctor_gid"}
+            }},
+            {"$project": {
+                "drug_id": "$_id.drug_id",
+                "drug_name": "$_id.drug_name",
+                "total_views": 1,
+                "unique_doctors": {"$size": "$unique_doctors"}
+            }},
+            {"$sort": {"total_views": -1}},
+            {"$limit": limit}
+        ]
+        results = await db.drug_views.aggregate(pipeline).to_list(length=limit)
+
+        analytics = [
+            {
+                "drug_id": r["drug_id"],
+                "drug_name": r["drug_name"],
+                "total_views": r["total_views"],
+                "unique_doctors": r["unique_doctors"]
+            }
+            for r in results
+        ]
+
+        return {"analytics": analytics}
+
+
+# ══════════════════════════════════════════════════════════════
+# CME View Tracking + Analytics
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/cme-views", summary="Record CME Event View (Service API)")
+async def record_cme_view(
+    request: dict,
+    org_context=Depends(require_service_auth)
+):
+    """
+    **Purpose:** DRX pushes CME event view events so MRX admin can see analytics.
+
+    **Access:** Service JWT only (backend-to-backend)
+
+    **Request Body:**
+    ```json
+    {
+      "event_id": "6a605fe9...",
+      "event_title": "Cardiology Update 2026",
+      "doctor_gid": "PRXDOC596352",
+      "doctor_name": "Dr. Sneha Reddy"
+    }
+    ```
+    """
+    db = get_database()
+
+    event_id = request.get("event_id", "")
+    event_title = request.get("event_title", "")
+    doctor_gid = request.get("doctor_gid", "")
+    doctor_name = request.get("doctor_name", "")
+
+    if not event_id or not doctor_gid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="event_id and doctor_gid are required")
+
+    await db.cme_views.insert_one({
+        "event_id": event_id,
+        "event_title": event_title,
+        "doctor_gid": doctor_gid,
+        "doctor_name": doctor_name,
+        "viewed_at": datetime.utcnow()
+    })
+
+    return {"status": "recorded"}
+
+
+@router.get("/cme-analytics", summary="CME Event Analytics (Admin)")
+async def get_cme_analytics(
+    event_id: Optional[str] = Query(None, description="Filter by specific CME event"),
+    limit: int = Query(20, ge=1, le=100),
+    current_user=Depends(require_admin)
+):
+    """
+    **Purpose:** Admin sees CME engagement — views, registrations, doctor names.
+
+    **Access:** Admin only
+
+    **Query:** `event_id` (optional) — if provided, shows detail for one event
+
+    **Response (all events):**
+    ```json
+    {
+      "analytics": [
+        {
+          "event_id": "6a605fe9...",
+          "event_title": "Cardiology Update 2026",
+          "total_views": 30,
+          "unique_viewers": 15,
+          "total_registrations": 8,
+          "registered_doctors": [
+            { "doctor_gid": "PRXDOC596352", "doctor_name": "Dr. Sneha Reddy", "registered_at": "..." }
+          ]
+        }
+      ]
+    }
+    ```
+    """
+    db = get_database()
+
+    if event_id:
+        # Analytics for a specific event
+        total_views = await db.cme_views.count_documents({"event_id": event_id})
+
+        # Unique viewers
+        viewers_pipeline = [
+            {"$match": {"event_id": event_id}},
+            {"$group": {
+                "_id": {"doctor_gid": "$doctor_gid", "doctor_name": "$doctor_name"},
+                "view_count": {"$sum": 1},
+                "last_viewed": {"$max": "$viewed_at"}
+            }},
+            {"$sort": {"view_count": -1}}
+        ]
+        viewers = await db.cme_views.aggregate(viewers_pipeline).to_list(length=200)
+
+        # Registrations
+        registrations = await db.cme_registrations.find(
+            {"cme_id": event_id}
+        ).sort("registered_at", -1).to_list(length=200)
+
+        # Get event title
+        sample = await db.cme_views.find_one({"event_id": event_id})
+        event_title = sample.get("event_title", "") if sample else ""
+        if not event_title and ObjectId.is_valid(event_id):
+            event = await db.cme_events.find_one({"_id": ObjectId(event_id)})
+            event_title = event.get("title", "") if event else ""
+
+        return {
+            "analytics": [{
+                "event_id": event_id,
+                "event_title": event_title,
+                "total_views": total_views,
+                "unique_viewers": len(viewers),
+                "viewers": [
+                    {"doctor_gid": v["_id"]["doctor_gid"], "doctor_name": v["_id"]["doctor_name"], "view_count": v["view_count"], "last_viewed": v["last_viewed"]}
+                    for v in viewers
+                ],
+                "total_registrations": len(registrations),
+                "registered_doctors": [
+                    {"doctor_gid": r.get("doctor_gid", ""), "doctor_name": r.get("doctor_name", ""), "registered_at": r.get("registered_at")}
+                    for r in registrations
+                ]
+            }]
+        }
+    else:
+        # All events ranked by engagement
+        # Views per event
+        views_pipeline = [
+            {"$group": {
+                "_id": {"event_id": "$event_id", "event_title": "$event_title"},
+                "total_views": {"$sum": 1},
+                "unique_viewers": {"$addToSet": "$doctor_gid"}
+            }},
+            {"$project": {
+                "event_id": "$_id.event_id",
+                "event_title": "$_id.event_title",
+                "total_views": 1,
+                "unique_viewers": {"$size": "$unique_viewers"}
+            }},
+            {"$sort": {"total_views": -1}},
+            {"$limit": limit}
+        ]
+        view_results = await db.cme_views.aggregate(views_pipeline).to_list(length=limit)
+
+        # Enrich with registration counts
+        analytics = []
+        for v in view_results:
+            reg_count = await db.cme_registrations.count_documents({"cme_id": v["event_id"]})
+            analytics.append({
+                "event_id": v["event_id"],
+                "event_title": v["event_title"],
+                "total_views": v["total_views"],
+                "unique_viewers": v["unique_viewers"],
+                "total_registrations": reg_count
+            })
+
+        return {"analytics": analytics}
+
+
+# ══════════════════════════════════════════════════════════════
 # Outbound — MRX calling DRX (Admin utility endpoints)
 # ══════════════════════════════════════════════════════════════
 
