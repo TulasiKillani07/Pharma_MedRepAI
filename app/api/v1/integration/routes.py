@@ -137,19 +137,29 @@ async def list_drugs_integration(
     if search:
         query["drug_name"] = {"$regex": search, "$options": "i"}
 
-    # Return all fields except internal brochure fields
-    drugs = await db.drugs.find(query, {
-        "brochure_public_id": 0,
-        "brochure_uploaded_at": 0,
-        "search_text": 0
-    }).skip(skip).limit(limit).to_list(length=limit)
+    # List: return only card-level fields
+    projection = {
+        "drug_name": 1,
+        "brand_name": 1,
+        "generic_name": 1,
+        "manufacturer": 1,
+        "dosage_form": 1,
+        "strength": 1,
+        "therapeutic_category": 1,
+        "packaging": 1,
+        "brochure_url": 1,
+        "created_at": 1,
+    }
+
+    drugs = await db.drugs.find(query, projection).skip(skip).limit(limit).to_list(length=limit)
 
     # Convert _id to string id
     for drug in drugs:
         drug["id"] = str(drug.pop("_id"))
-        # Remove field_values if flat fields exist (avoid duplication)
-        if "drug_name" in drug and "field_values" in drug:
-            drug.pop("field_values", None)
+        # Handle packaging
+        if "packaging" in drug and drug["packaging"] and not isinstance(drug["packaging"], dict):
+            drug["packaging_type"] = drug["packaging"]
+            drug["packaging"] = None
 
     total = await db.drugs.count_documents(query)
 

@@ -376,7 +376,7 @@ async def get_template() -> Optional[Dict[str, Any]]:
                     fields[idx][attr] = val
                     changes = True
 
-    # Remove old deprecated fields
+    # Remove old deprecated fields (only if they are fixed — never remove user-added dynamic fields)
     deprecated_keys = {"price", "pack_type", "units_per_pack", "packs_per_box",
                        "pack_price", "box_price", "price_per_drug", "discount",
                        "dosage_strength", "missed_dose_instructions", "pharmacokinetics",
@@ -388,9 +388,9 @@ async def get_template() -> Optional[Dict[str, Any]]:
                        "overdose_management", "launch_date", "availability",
                        "clinical_evidence_summary", "faqs", "approval_status"}
     before_count = len(fields)
-    fields = [f for f in fields if f["key"] not in deprecated_keys]
+    fields = [f for f in fields if not (f["key"] in deprecated_keys and f.get("is_fixed", False))]
     if len(fields) < before_count:
-        logger.info(f"Migration: removed {before_count - len(fields)} deprecated fields")
+        logger.info(f"Migration: removed {before_count - len(fields)} deprecated fixed fields")
         changes = True
 
     # Update dosage_form options
@@ -742,7 +742,23 @@ async def get_all_drugs(
     if indication:
         query["indications"] = {"$regex": indication.lower(), "$options": "i"}
     
-    cursor = db["drugs"].find(query).skip(skip).limit(limit)
+    # List endpoint: return only card-level fields (lightweight)
+    projection = {
+        "drug_name": 1,
+        "brand_name": 1,
+        "generic_name": 1,
+        "manufacturer": 1,
+        "dosage_form": 1,
+        "strength": 1,
+        "therapeutic_category": 1,
+        "is_active": 1,
+        "packaging": 1,
+        "has_brochure": 1,
+        "brochure_url": 1,
+        "created_at": 1,
+    }
+
+    cursor = db["drugs"].find(query, projection).skip(skip).limit(limit)
     drugs = await cursor.to_list(length=limit)
     
     for drug in drugs:
@@ -777,22 +793,17 @@ async def get_all_drugs(
                 if fv.get("key") not in ["brochure_url", "brochure_public_id", "brochure_uploaded_at"]
             ]
     
-    # Enrich field_values with type from template
-    template = await db["drug_field_templates"].find_one({"is_active": True})
-    if template:
-        field_type_map = {f["field_id"]: f["type"] for f in template.get("fields", [])}
-        for drug in drugs:
-            if "field_values" in drug:
-                for fv in drug["field_values"]:
-                    fv["type"] = field_type_map.get(fv.get("field_id"))
-            # Auto-calculate box_price if mode is 'auto'
-            if "packaging" in drug and drug["packaging"]:
-                if isinstance(drug["packaging"], dict):
-                    drug["packaging"] = _resolve_packaging(drug["packaging"])
-                else:
-                    # Old data has packaging as string — move to packaging_type field, clear packaging
-                    drug["packaging_type"] = drug["packaging"]
-                    drug["packaging"] = None
+    # For list: just handle packaging type and remove brochure internals
+    for drug in drugs:
+        # Handle packaging
+        if "packaging" in drug and drug["packaging"]:
+            if isinstance(drug["packaging"], dict):
+                drug["packaging"] = _resolve_packaging(drug["packaging"])
+            else:
+                drug["packaging_type"] = drug["packaging"]
+                drug["packaging"] = None
+        # Remove brochure URL from list (has_brochure flag is enough)
+        drug.pop("brochure_url", None)
     
     total = await db["drugs"].count_documents(query)
     
