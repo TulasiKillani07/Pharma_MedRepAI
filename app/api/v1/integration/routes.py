@@ -219,9 +219,14 @@ async def get_drug_integration(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Drug not found")
 
     drug["id"] = str(drug.pop("_id"))
-    # Remove field_values if flat fields exist (avoid duplication)
-    if "drug_name" in drug and "field_values" in drug:
-        drug.pop("field_values", None)
+
+    # Enrich field_values with type from template (same as MRX admin endpoint)
+    if "field_values" in drug:
+        template = await db.drug_field_templates.find_one({"is_active": True})
+        if template:
+            field_type_map = {f["field_id"]: f["type"] for f in template.get("fields", [])}
+            for fv in drug["field_values"]:
+                fv["type"] = field_type_map.get(fv.get("field_id"))
 
     return drug
 

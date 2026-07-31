@@ -189,11 +189,12 @@ async def get_my_registrations(
                 "cme_venue_name": event.get("venue_name"),
                 "cme_address": event.get("address"),
                 "cme_speaker": event.get("speaker"),
-                "doctor_id": reg["doctor_id"],
+                "doctor_id": reg.get("doctor_id") or reg.get("doctor_gid", ""),
+                "doctor_gid": reg.get("doctor_gid", ""),
                 "doctor_name": reg.get("doctor_name", ""),
                 "registration_status": reg["registration_status"],
                 "registration_passcode": reg.get("registration_passcode"),
-                "registered_at": reg["registered_at"]
+                "registered_at": reg.get("registered_at")
             })
     
     total = await db["cme_registrations"].count_documents(query)
@@ -241,11 +242,11 @@ async def get_registration_status(event_id: str, current_user: Dict) -> Optional
         "cme_venue_name": event.get("venue_name") if event else None,
         "cme_address": event.get("address") if event else None,
         "cme_speaker": event.get("speaker") if event else None,
-        "doctor_id": registration["doctor_id"],
+        "doctor_id": registration.get("doctor_id") or registration.get("doctor_gid", ""),
         "doctor_name": registration.get("doctor_name", ""),
         "registration_status": registration["registration_status"],
         "registration_passcode": registration.get("registration_passcode"),
-        "registered_at": registration["registered_at"]
+        "registered_at": registration.get("registered_at")
     }
 
 
@@ -290,11 +291,12 @@ async def get_event_registrations(
             "cme_venue_name": event.get("venue_name"),
             "cme_address": event.get("address"),
             "cme_speaker": event.get("speaker"),
-            "doctor_id": reg["doctor_id"],
+            "doctor_id": reg.get("doctor_id") or reg.get("doctor_gid", ""),
+            "doctor_gid": reg.get("doctor_gid", ""),
             "doctor_name": reg.get("doctor_name", ""),
             "registration_status": reg["registration_status"],
             "registration_passcode": reg.get("registration_passcode"),
-            "registered_at": reg["registered_at"]
+            "registered_at": reg.get("registered_at")
         })
     
     total = await db["cme_registrations"].count_documents(query)
@@ -369,11 +371,11 @@ async def get_registration_by_id(registration_id: str) -> Dict[str, Any]:
         "cme_venue_name": event.get("venue_name") if event else None,
         "cme_address": event.get("address") if event else None,
         "cme_speaker": event.get("speaker") if event else None,
-        "doctor_id": registration["doctor_id"],
+        "doctor_id": registration.get("doctor_id") or registration.get("doctor_gid", ""),
         "doctor_name": registration.get("doctor_name", ""),
         "registration_status": registration["registration_status"],
         "registration_passcode": registration.get("registration_passcode"),
-        "registered_at": registration["registered_at"]
+        "registered_at": registration.get("registered_at")
     }
 
 
