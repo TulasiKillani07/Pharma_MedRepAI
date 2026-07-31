@@ -212,7 +212,7 @@ async def get_drug_integration(
 
     drug = await db.drugs.find_one(
         {"_id": ObjectId(drug_id), "is_active": True},
-        {"brochure_public_id": 0, "brochure_uploaded_at": 0, "search_text": 0}
+        {"brochure_public_id": 0, "brochure_uploaded_at": 0, "search_text": 0, "template_id": 0}
     )
 
     if not drug:
@@ -318,6 +318,12 @@ async def register_cme_integration(
     # Validate event exists
     event = await db.cme_events.find_one({"_id": ObjectId(event_id)})
     if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CME event not found")
+
+    # Only allow registration for upcoming or ongoing events
+    event_status = event.get("status", "").lower()
+    if event_status in ("completed", "cancelled"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Cannot register — event is {event_status}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CME event not found")
 
     # Check duplicate registration
