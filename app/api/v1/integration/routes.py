@@ -123,13 +123,36 @@ async def list_drugs_integration(
     org_context=Depends(require_service_auth)
 ):
     """
-    **Purpose:** List drugs in this MRX instance (used by DRX to show drugs to doctors).
+    **Purpose:** List drugs (lightweight card data for DRX doctor view).
 
     **Access:** Service JWT only (backend-to-backend)
 
     **Query:** `search` — partial match on drug_name
 
-    **Response:** List of drugs with packaging info.
+    **Response (card-level):**
+    ```json
+    {
+      "total": 47,
+      "drugs": [
+        {
+          "id": "6a69e619...",
+          "drug_name": "Amlodipine 5mg",
+          "brand_name": "Amlong",
+          "generic_name": "Amlodipine Besylate",
+          "manufacturer": "Macro Labs",
+          "dosage_form": "Tablet",
+          "strength": "5mg",
+          "therapeutic_category": "Cardiovascular",
+          "packaging": { ... } or null,
+          "brochure_url": "https://..." or null,
+          "created_at": "2026-07-30T10:00:00"
+        }
+      ],
+      "caller": "drx_doctor_platform"
+    }
+    ```
+
+    **Note:** Full detail via GET /integration/drugs/{drug_id}
     """
     db = get_database()
 
@@ -176,11 +199,11 @@ async def get_drug_integration(
     org_context=Depends(require_service_auth)
 ):
     """
-    **Purpose:** Get single drug details (used by DRX for doctor prescription view).
+    **Purpose:** Get full drug detail (all fields, packaging). Tracks doctor view for analytics.
 
     **Access:** Service JWT only (backend-to-backend)
 
-    **Response:** Drug detail with packaging info.
+    **Response:** Full drug document (all flat fields + packaging). No field_values duplication.
     """
     db = get_database()
 

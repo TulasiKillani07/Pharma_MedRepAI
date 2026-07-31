@@ -378,13 +378,20 @@ async def get_registration_by_id(registration_id: str) -> Dict[str, Any]:
 
 
 async def get_registered_doctor_ids(event_id: str) -> List[str]:
-    """Get list of doctor IDs registered for an event (helper for notifications)"""
+    """Get list of doctor IDs/GIDs registered for an event (helper for notifications)"""
     db = get_database()
     
     cursor = db["cme_registrations"].find({
         "cme_id": event_id,
         "registration_status": "registered"
-    }, {"doctor_id": 1})
+    }, {"doctor_id": 1, "doctor_gid": 1})
     
     registrations = await cursor.to_list(None)
-    return [reg["doctor_id"] for reg in registrations]
+    # Support both doctor_id (old) and doctor_gid (integration)
+    result = []
+    for reg in registrations:
+        if reg.get("doctor_id"):
+            result.append(reg["doctor_id"])
+        elif reg.get("doctor_gid"):
+            result.append(reg["doctor_gid"])
+    return result

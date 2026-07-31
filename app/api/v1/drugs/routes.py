@@ -381,50 +381,36 @@ async def get_drugs_endpoint(
     indication: str = Query(None, description="Filter by indication (partial match)")
 ):
     """
-    Get all drugs with search and filters.
-    
-    **Access:** All authenticated users (Admin, Doctor, MR)
-    
-    **Behavior by Role:**
-    - **Doctors/MRs:** See only active drugs
-    - **Admins:** See all drugs including inactive
-    
-    **Search Parameters:**
-    - `search`: Full-text search across all fields
-    - `drug_name`: Partial match on drug name
-    - `manufacturer`: Partial match on manufacturer
-    - `dosage_form`: Exact match (Tablet, Capsule, Syrup, etc.)
-    - `symptom`: Partial match in symptoms array
-    - `indication`: Partial match in indications array
-    
-    **Response includes `packaging` object:**
+    **Purpose:** Get drug list (lightweight card data only). Use GET /drugs/{id} for full detail.
+
+    **Access:** Admin, MR (Doctors use DRX)
+
+    **Query Params:** search, drug_name, manufacturer, dosage_form, symptom, indication
+
+    **Response (card-level only):**
     ```json
     {
+      "total": 47,
       "drugs": [
         {
-          "_id": "...",
-          "field_values": [
-            {"field_id": "...", "key": "drug_name", "value": "amlodipine", "type": "text"},
-            {"field_id": "...", "key": "symptoms", "value": ["Hypertension"], "type": "array"}
-          ],
-          "packaging": {
-            "sales_unit": "Strip",
-            "pack_quantity": 10,
-            "measurement_unit": "Tablet",
-            "sales_units_per_box": 20,
-            "pricing": {
-              "selling_price": 80,
-              "mrp": 100,
-              "box_pricing": {"mode": "auto", "box_price": 1600}
-            }
-          },
+          "_id": "6a69e619...",
+          "drug_name": "Amlodipine 5mg",
+          "brand_name": "Amlong",
+          "generic_name": "Amlodipine Besylate",
+          "manufacturer": "Macro Labs",
+          "dosage_form": "Tablet",
+          "strength": "5mg",
+          "therapeutic_category": "Cardiovascular",
+          "packaging": { "sales_unit": "Strip", "selling_price": 30, ... } or null,
           "is_active": true,
-          "has_brochure": false
+          "has_brochure": false,
+          "created_at": "2026-07-30T10:00:00"
         }
-      ],
-      "total": 1
+      ]
     }
     ```
+
+    **Note:** Full detail (field_values, all fields, packaging) is in GET /drugs/{drug_id}.
     """
     # Get user role
     user_role = current_user.get("role", "")
@@ -455,45 +441,61 @@ async def get_drug_endpoint(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Get drug by ID.
-    
-    **Access:** All authenticated users (Admin, Doctor, MR)
-    
-    **Behavior by Role:**
-    - **Doctors/MRs:** Can only view active drugs (404 if inactive)
-    - **Admins:** Can view any drug (active or inactive)
-    
-    **Response:**
+    **Purpose:** Get full drug detail by ID. Returns all fields, field_values, and packaging.
+
+    **Access:** Admin, MR
+
+    **Response (full detail):**
     ```json
     {
-        "_id": "drug123",
-        "template_id": "template456",
-        "field_values": [
-            {"field_id": "f1", "key": "drug_name", "value": "amlodipine", "type": "text"},
-            {"field_id": "f2", "key": "brand_name", "value": "amlovas", "type": "text"},
-            {"field_id": "f3", "key": "symptoms", "value": ["Hypertension", "Chest Pain"], "type": "array"},
-            {"field_id": "f4", "key": "manufacturer", "value": "Macleods Pharma", "type": "text"},
-            {"field_id": "f5", "key": "dosage_form", "value": "Tablet", "type": "select"}
-        ],
-        "packaging": {
-            "sales_unit": "Strip",
-            "pack_quantity": 10,
-            "measurement_unit": "Tablet",
-            "sales_units_per_box": 20,
-            "pricing": {
-                "selling_price": 80,
-                "mrp": 100,
-                "box_pricing": {"mode": "auto", "box_price": 1600}
-            }
-        },
-        "is_active": true,
-        "has_brochure": false,
-        "created_at": "2026-06-29T06:30:00",
-        "updated_at": "2026-06-29T06:30:00"
+      "_id": "6a69e619...",
+      "template_id": "6a5f50...",
+      "drug_name": "Amlodipine 5mg",
+      "brand_name": "Amlong",
+      "generic_name": "Amlodipine Besylate",
+      "manufacturer": "Macro Labs",
+      "drug_class": "Calcium Channel Blocker",
+      "therapeutic_category": "Cardiovascular",
+      "prescription_type": "Rx",
+      "composition": ["Amlodipine Besylate IP eq. to Amlodipine 5mg"],
+      "dosage_form": "Tablet",
+      "strength": "5mg",
+      "route": "Oral",
+      "indications": ["Hypertension", "Angina Pectoris"],
+      "symptoms": ["High BP", "Chest Pain"],
+      "mechanism_of_action": "Blocks L-type calcium channels...",
+      "contraindications": ["Severe aortic stenosis", "Cardiogenic shock"],
+      "warnings_precautions": ["Use with caution in hepatic impairment"],
+      "side_effects": ["Peripheral edema", "Dizziness", "Flushing"],
+      "drug_interactions": ["Simvastatin", "CYP3A4 inhibitors"],
+      "reference_url": "https://www.drugs.com/amlodipine.html",
+      "storage_conditions": "Store below 30°C",
+      "field_values": [
+        {"field_id": "uuid1", "key": "drug_name", "value": "Amlodipine 5mg", "type": "text"},
+        {"field_id": "uuid2", "key": "symptoms", "value": ["High BP", "Chest Pain"], "type": "array"},
+        ...
+      ],
+      "packaging": {
+        "sales_unit": "Strip",
+        "pack_quantity": 10,
+        "measurement_unit": "Tablet",
+        "selling_price": 30,
+        "max_discount_percent": 10,
+        "mrp": 35,
+        "sales_units_per_box": 20,
+        "box_pricing_mode": "auto",
+        "box_price": 600
+      },
+      "is_active": true,
+      "has_brochure": false,
+      "created_at": "2026-07-30T10:00:00",
+      "updated_at": "2026-07-30T10:00:00"
     }
     ```
-    
-    **Note:** Each field_value includes `type` from the template (text, number, array, textarea, select, boolean, date).
+
+    **Array fields:** composition, indications, symptoms, contraindications, warnings_precautions, side_effects, drug_interactions
+
+    **Note:** Use `field_values` for edit form (has field_id mapping to template). Flat fields for display.
     """
     # Get user role
     user_role = current_user.get("role", "")
