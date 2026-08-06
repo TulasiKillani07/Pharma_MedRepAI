@@ -771,12 +771,15 @@ async def create_rcpa_commitment(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug not found or inactive")
     
     packaging = drug.get("packaging")
-    if not packaging:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug has no pricing configured")
+    if not packaging or not isinstance(packaging, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug has no pricing configured. Please set packaging info first.")
     
+    if not packaging.get("selling_price"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug packaging is missing selling_price. Please update the drug's pricing.")
+
     selling_price = packaging["selling_price"]
-    max_discount = packaging["max_discount_percent"]
-    quantity_unit = packaging["sales_unit"]
+    max_discount = packaging.get("max_discount_percent", 0)
+    quantity_unit = packaging.get("sales_unit", "")
     
     # Extract drug name
     drug_name = drug.get("drug_name", "")
@@ -1005,12 +1008,15 @@ async def update_rcpa_commitment(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug not found or inactive")
         
         packaging = drug.get("packaging")
-        if not packaging:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug has no pricing configured")
+        if not packaging or not isinstance(packaging, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug has no pricing configured. Please set packaging info first.")
         
+        if not packaging.get("selling_price"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Drug packaging is missing selling_price.")
+
         selling_price = packaging["selling_price"]
-        max_discount = packaging["max_discount_percent"]
-        quantity_unit = packaging["sales_unit"]
+        max_discount = packaging.get("max_discount_percent", 0)
+        quantity_unit = packaging.get("sales_unit", "")
         
         # Get drug name
         drug_name = drug.get("drug_name", "")

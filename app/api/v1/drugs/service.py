@@ -795,13 +795,14 @@ async def get_all_drugs(
     
     # For list: just handle packaging type and remove brochure internals
     for drug in drugs:
-        # Handle packaging
-        if "packaging" in drug and drug["packaging"]:
-            if isinstance(drug["packaging"], dict):
-                drug["packaging"] = _resolve_packaging(drug["packaging"])
-            else:
-                drug["packaging_type"] = drug["packaging"]
-                drug["packaging"] = None
+        # Handle packaging — normalize any non-dict value to None
+        pkg = drug.get("packaging")
+        if not isinstance(pkg, dict):
+            if pkg:  # non-empty string → store as packaging_type
+                drug["packaging_type"] = pkg
+            drug["packaging"] = None
+        else:
+            drug["packaging"] = _resolve_packaging(pkg)
         # Remove brochure URL from list (has_brochure flag is enough)
         drug.pop("brochure_url", None)
     
@@ -862,13 +863,14 @@ async def get_drug_by_id(drug_id: str) -> Dict[str, Any]:
             for fv in drug["field_values"]:
                 fv["type"] = field_type_map.get(fv.get("field_id"))
     
-    # Auto-calculate box_price if mode is 'auto'
-    if "packaging" in drug and drug["packaging"]:
-        if isinstance(drug["packaging"], dict):
-            drug["packaging"] = _resolve_packaging(drug["packaging"])
-        else:
-            drug["packaging_type"] = drug["packaging"]
-            drug["packaging"] = None
+    # Auto-calculate box_price if mode is 'auto', normalize non-dict packaging to None
+    pkg = drug.get("packaging")
+    if not isinstance(pkg, dict):
+        if pkg:
+            drug["packaging_type"] = pkg
+        drug["packaging"] = None
+    else:
+        drug["packaging"] = _resolve_packaging(pkg)
     
     return drug
 

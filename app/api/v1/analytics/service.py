@@ -256,13 +256,13 @@ async def get_region_analytics(level: str, month: Optional[int], year: Optional[
     for c in commitments:
         loc = c.get("doctor_location") or {}
         if level == "state":
-            key = loc.get("state", "Unknown")
+            key = loc.get("state") or "Unknown"
         elif level == "district":
-            key = loc.get("district", "Unknown")
+            key = loc.get("district") or "Unknown"
         elif level == "area":
-            key = loc.get("area", "Unknown")
+            key = loc.get("area") or "Unknown"
         else:
-            key = loc.get("name", "Unknown")
+            key = loc.get("name") or "Unknown"
 
         if key not in region_map:
             region_map[key] = {
