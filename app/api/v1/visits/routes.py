@@ -256,7 +256,7 @@ async def get_active_visit_endpoint(
     
     **Frontend Usage:**
     - If active_visit exists: Show timer, disable other check-in buttons, show "Check Out" button
-    - If pending_reports > 0: Show banner "⚠️ {count} pending report(s) — submit now"
+    - If pending_reports > 0: Show banner "[WARNING] {count} pending report(s) — submit now"
     - If pending_reports >= 2: Disable all check-in buttons until reports submitted
     """
     # Check if user is MR

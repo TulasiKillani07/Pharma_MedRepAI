@@ -291,7 +291,7 @@ async def get_mcr_report(
     **Difference from MCR:**
     - **MCR**: Did you visit the doctor at least once? (Yes/No)
     - **MVC**: Did you visit the doctor enough times? (Frequency compliance)
-    - Example: Doctor needs 4 visits, got 2 → MCR counts as "visited" (✓), MVC counts as "under-covered" (✗)
+    - Example: Doctor needs 4 visits, got 2 → MCR counts as "visited" (done), MVC counts as "under-covered" (✗)
     """
 )
 async def get_mvc_report(
