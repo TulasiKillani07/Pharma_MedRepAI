@@ -21,9 +21,13 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="""# MedRep AI - Pharmaceutical Sales Force Automation Platform
 
-## Authentication
+## Authentication Architecture
 
-MRX uses **Proxzar** as its sole authentication provider. Local email/password login has been deprecated.
+MRX uses **Proxzar** (`https://oauth2.proxzar.ai`) as its **sole authentication provider**.
+
+There is no MRX-issued user JWT. All authentication is via Proxzar-issued RS256 tokens verified against the Proxzar JWKS endpoint.
+
+---
 
 ### How to authenticate:
 
@@ -33,31 +37,89 @@ MRX uses **Proxzar** as its sole authentication provider. Local email/password l
    Authorization: Bearer <Proxzar JWT>
    ```
 
-### Token requirements:
+### Token structure:
 
-| Claim | Expected value |
-|-------|---------------|
+```json
+{
+  "sub": "rahul_mehta",
+  "iss": "https://oauth2.proxzar.ai",
+  "aud": ["DRX", "MRX", "TMS"],
+  "role": "MR",
+  "exp": 1787140344
+}
+```
+
+### Token verification (performed by MRX):
+
+| Check | Expected |
+|-------|----------|
+| Signature | RS256 verified via Proxzar JWKS |
 | `iss` | `https://oauth2.proxzar.ai` |
 | `aud` | Must include `MRX` |
-| `sub` | Your global username (e.g. `rahul_mehta`) |
-| `role` | `ADMIN`, `MR`, or `DOCTOR` (depending on endpoint) |
+| `kid` | Must match a key in JWKS |
+| `exp` | Must not be expired |
+| `sub` | Global username (looked up in MRX database) |
 
-### MRX user-facing roles:
+---
 
-- **ADMIN** — Full platform access (dashboard, doctors, MRs, drugs, CME, analytics)
-- **MR** — Medical Representative access (visits, assigned doctors, RCPA)
+## Roles & Access
 
-> `DOCTOR` tokens are rejected on MRX user-facing endpoints. Doctors use the DRX platform.
+### User-facing endpoints (`/auth/me`, `/doctors`, `/mrs`, `/drugs`, `/visits`, etc.):
 
-### Integration endpoints (DRX ↔ MRX):
+| Role | Access | Collection |
+|------|--------|------------|
+| `ADMIN` | Full platform access | `company_admins.username` |
+| `MR` | Medical Representative access | `mrs.username` |
+| `DOCTOR` | **Rejected** (doctors use DRX) | — |
 
-Integration endpoints (`/integration/*`) accept **all three roles** (`ADMIN`, `MR`, `DOCTOR`) via Proxzar JWT, as well as Service JWT for background calls.
+### Integration endpoints (`/integration/*`):
 
-This allows DRX to forward a doctor's Proxzar token to MRX for drug/CME viewing.
+| Role | Access | Collection |
+|------|--------|------------|
+| `ADMIN` | Allowed | `company_admins.username` |
+| `MR` | Allowed | `mrs.username` |
+| `DOCTOR` | Allowed (DRX forwards doctor tokens) | `doctors.username` |
+| Service JWT | Allowed (background/machine-to-machine) | — |
 
-### Deprecated endpoints:
+---
 
-`POST /auth/login`, `/auth/reset-password`, `/auth/forgot-password` — return `410 Gone`.
+## DRX ↔ MRX Communication
+
+### User-driven (DRX → MRX):
+DRX forwards the **same Proxzar JWT** received from the logged-in user. MRX independently verifies it via Proxzar JWKS.
+
+### User-driven (MRX → DRX):
+MRX forwards the **same Proxzar JWT** to DRX. DRX independently verifies it.
+
+### Background/Machine-to-machine:
+Uses existing Service JWT (`POST /integration/auth/service-token` with `client_id` + `client_secret`).
+
+No `client_id`/`client_secret` needed for user-driven communication.
+
+---
+
+## Username (Global Identity)
+
+All users have a `username` field — the same identity across Proxzar, DOBO, DRX, and MRX.
+
+```
+Proxzar sub = rahul_mehta
+MRX username = rahul_mehta
+DRX username = rahul_mehta
+```
+
+Username is **required** when creating any user (Admin, MR, or Doctor). Do not derive it from email.
+
+---
+
+## Deprecated Endpoints
+
+| Endpoint | Status |
+|----------|--------|
+| `POST /auth/login` | `410 Gone` — use Proxzar |
+| `POST /auth/reset-password` | `410 Gone` — use Proxzar |
+| `POST /auth/forgot-password` | `410 Gone` — use Proxzar |
+| `POST /auth/forgot-password/verify` | `410 Gone` — use Proxzar |
 """,
     docs_url="/mrxdb/docs",
     redoc_url="/mrxdb/redoc",
@@ -107,7 +169,7 @@ app.include_router(api_router, prefix="/mrxdb")
 # Root route — prevents 404 when browsers hit the base URL
 @app.get("/mrxdb", include_in_schema=False)
 async def root():
-    return {"service": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/docs"}
+    return {"service": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/mrxdb/docs"}
 
 
 # Favicon — prevents 404 from browser favicon requests

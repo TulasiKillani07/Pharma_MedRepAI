@@ -652,16 +652,16 @@ async def drx_health_check(current_user=Depends(require_admin)):
     return await drx_client.health_check()
 
 
-@router.get("/drx/doctors/search", summary="Search Doctors on DRX (Admin)")
+@router.get("/drx/doctors/search", summary="Search Doctors on DRX")
 async def search_drx_doctors(
     q: str = Query("", description="Search by name or doctor_gid"),
-    current_user=Depends(require_admin),
+    org_context=Depends(require_integration_auth),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
-    **Purpose:** Search doctors on DRX Doctor Platform (proxy through MRX for admin use).
+    **Purpose:** Search doctors on DRX Doctor Platform (proxy through MRX).
 
-    **Access:** Admin only
+    **Access:** Any valid Proxzar JWT (ADMIN, MR, DOCTOR) or Service JWT
 
     **Response:** List of matching doctors from DRX.
     """
@@ -679,16 +679,16 @@ async def search_drx_doctors(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
-@router.get("/drx/doctors/{doctor_gid}", summary="Get Doctor from DRX (Admin)")
+@router.get("/drx/doctors/{doctor_gid}", summary="Get Doctor from DRX")
 async def get_drx_doctor(
     doctor_gid: str,
-    current_user=Depends(require_admin),
+    org_context=Depends(require_integration_auth),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
     **Purpose:** Get a doctor's profile from DRX by their GID.
 
-    **Access:** Admin only
+    **Access:** Any valid Proxzar JWT (ADMIN, MR, DOCTOR) or Service JWT
 
     **Response:** Doctor profile from DRX (no sensitive data).
     """
