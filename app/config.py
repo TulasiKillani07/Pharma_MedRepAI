@@ -34,8 +34,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     
-    # Default password for doctors/MRs created by admin
-    DEFAULT_USER_PASSWORD: str = "Welcome@123"
+
     
     # NER API Configuration
     NER_API_URL: str = "https://ner-medrep.onrender.com/predict"  # NER API endpoint
@@ -74,6 +73,12 @@ class Settings(BaseSettings):
     MRX_TO_DRX_URL: str = "http://localhost:8002"
     MRX_TO_DRX_CLIENT_ID: Optional[str] = None
     MRX_TO_DRX_SECRET: Optional[str] = None
+    
+    # Proxzar OAuth2 Configuration (MRX authenticates users via Proxzar only)
+    PROXZAR_ISSUER: str = "https://oauth2.proxzar.ai"
+    PROXZAR_JWKS_URL: str = "https://oauth2.proxzar.ai/api/v1/jwks"
+    PROXZAR_AUDIENCE: str = "MRX"
+    PROXZAR_JWKS_CACHE_TTL: int = 3600  # Cache JWKS keys for 1 hour
     
     class Config:
         """

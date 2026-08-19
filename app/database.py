@@ -655,6 +655,37 @@ async def initialize_collections():
     except Exception as e:
         logger.warning(f"Index creation issue: {e}")
 
+    # ── username unique indexes — global identity across Proxzar, DOBO, DRX, MRX ──
+    try:
+        await database["company_admins"].create_index(
+            "username",
+            unique=True,
+            sparse=True,
+            name="admin_username_unique_idx"
+        )
+    except Exception as e:
+        logger.warning(f"Index creation issue: {e}")
+
+    try:
+        await database["mrs"].create_index(
+            "username",
+            unique=True,
+            sparse=True,
+            name="mr_username_unique_idx"
+        )
+    except Exception as e:
+        logger.warning(f"Index creation issue: {e}")
+
+    try:
+        await database["doctors"].create_index(
+            "username",
+            unique=True,
+            sparse=True,
+            name="doctor_username_unique_idx"
+        )
+    except Exception as e:
+        logger.warning(f"Index creation issue: {e}")
+
     logger.info("Collections and indexes initialized successfully")
 
 

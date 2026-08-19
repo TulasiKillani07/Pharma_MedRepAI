@@ -9,6 +9,7 @@ from datetime import datetime
 
 class AdminBase(BaseModel):
     """Base schema for Admin with common fields"""
+    username: str = Field(..., description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     email: EmailStr
     full_name: str
     phone: str

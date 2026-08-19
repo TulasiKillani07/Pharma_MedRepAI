@@ -38,9 +38,10 @@ def get_company_database():
 
 
 async def create_mr(
+    username: str,
     name: str,
     email: str,
-    password: Optional[str],
+    password: str,
     phone: str,
     zone: str,
     state: str,
@@ -54,9 +55,10 @@ async def create_mr(
     Only company admin can create MRs.
     
     Args:
+        username: Global unique username (same across Proxzar, DOBO, DRX, MRX)
         name: MR's full name
         email: MR's email
-        password: Plain text password (optional, uses default if not provided)
+        password: Plain text password (mandatory)
         phone: Phone number
         zone: Geographic zone (e.g., South)
         state: State (e.g., Telangana, Karnataka)
@@ -69,10 +71,18 @@ async def create_mr(
         dict: Success message and MR ID
     
     Raises:
-        HTTPException: If email already exists or doctors already assigned
+        HTTPException: If email/username already exists or doctors already assigned
     """
     # Get company database
     company_db = get_company_database()
+    
+    # Check if username already exists
+    existing_username = await company_db.mrs.find_one({"username": username})
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
     
     # Check if email already exists
     existing_mr = await company_db.mrs.find_one({"email": email})
@@ -105,10 +115,6 @@ async def create_mr(
                         detail=f"Doctor {doctor_name} is already assigned to MR {existing_assignment.get('name')}"
                     )
     
-    # Use default password if not provided
-    if not password:
-        password = generate_random_password()  # Generate strong random password
-    
     # Store plain password for email (before hashing)
     plain_password = password
     
@@ -117,6 +123,7 @@ async def create_mr(
     
     # RULE 1: INSERT with Pydantic Model
     mr = MRInDB(
+        username=username,
         name=name,
         email=email,
         password_hash=password_hash,

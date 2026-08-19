@@ -14,6 +14,7 @@ logger = get_medrep_logger(__name__)
 
 
 async def create_department_admin(
+    username: str,
     email: str,
     password: str,
     full_name: str,
@@ -26,6 +27,7 @@ async def create_department_admin(
     Only general admin can create department admins.
     
     Args:
+        username: Global unique username (same across Proxzar, DOBO, DRX, MRX)
         email: Admin email
         password: Plain text password
         full_name: Admin full name
@@ -37,7 +39,7 @@ async def create_department_admin(
         dict: Success message with admin details
     
     Raises:
-        HTTPException: If email already exists, department is invalid, or access limit reached
+        HTTPException: If email/username already exists, department is invalid, or access limit reached
     """
     db = get_database()
     
@@ -57,6 +59,14 @@ async def create_department_admin(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Admin user limit reached. Maximum allowed: {max_admin_users}. Current: {current_admin_count}. Please contact support to increase your license limit."
             )
+    
+    # Check if username already exists
+    existing_username = await db.company_admins.find_one({"username": username})
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
     
     # Check if email already exists
     existing_user = await db.company_admins.find_one({"email": email})
@@ -80,6 +90,7 @@ async def create_department_admin(
     # Create admin using AdminInDB model
     from app.models.admin_model import AdminInDB
     admin = AdminInDB(
+        username=username,
         email=email,
         password_hash=password_hash,
         full_name=full_name,

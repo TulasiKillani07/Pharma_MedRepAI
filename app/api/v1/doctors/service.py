@@ -35,9 +35,10 @@ def get_company_database():
 
 
 async def create_doctor(
+    username: str,
     name: str,
     email: str,
-    password: Optional[str],
+    password: str,
     phone: str,
     specialization: str,
     classification: str,
@@ -51,9 +52,10 @@ async def create_doctor(
     Only company admin can create doctors.
     
     Args:
+        username: Global unique username (same across Proxzar, DOBO, DRX, MRX)
         name: Doctor's full name
         email: Doctor's email
-        password: Plain text password (optional, uses default if not provided)
+        password: Plain text password (mandatory)
         phone: Phone number
         specialization: Medical specialization
         classification: Doctor classification (A/B/C) for SFE tracking
@@ -66,10 +68,18 @@ async def create_doctor(
         dict: Success message and doctor ID
     
     Raises:
-        HTTPException: If email already exists
+        HTTPException: If email or username already exists
     """
     # Get company database
     company_db = get_company_database()
+    
+    # Check if username already exists
+    existing_username = await company_db.doctors.find_one({"username": username})
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
     
     # Check if email already exists
     existing_doctor = await company_db.doctors.find_one({"email": email})
@@ -86,10 +96,6 @@ async def create_doctor(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Phone number already registered"
         )
-
-    # Use default password if not provided
-    if not password:
-        password = generate_random_password()
 
     # Store plain password for email (before hashing)
     plain_password = password
@@ -110,6 +116,7 @@ async def create_doctor(
     # RULE 1: INSERT with Pydantic Model
     doctor = DoctorInDB(
         doctor_uid=doctor_uid,
+        username=username,
         name=name,
         email=email,
         password_hash=password_hash,
@@ -863,6 +870,7 @@ async def bulk_upload_doctors(
 # ============================================================================
 
 async def create_doctor_request(
+    username: str,
     name: str,
     email: str,
     phone: str,
@@ -878,6 +886,7 @@ async def create_doctor_request(
     MR submits doctor details, admin must approve before doctor is created.
     
     Args:
+        username: Global unique username (same across Proxzar, DOBO, DRX, MRX)
         name: Doctor's full name
         email: Doctor's email
         phone: Phone number
@@ -892,13 +901,21 @@ async def create_doctor_request(
         dict: Success message and request ID
     
     Raises:
-        HTTPException: If email already exists or request already pending
+        HTTPException: If email/username already exists or request already pending
     """
     from app.api.v1.notifications.service import create_notification
     from app.models.notification_model import NotificationType
     
     # Get company database
     company_db = get_company_database()
+    
+    # Check if username already exists in doctors collection
+    existing_username = await company_db.doctors.find_one({"username": username})
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Doctor with this username already exists in the system"
+        )
     
     # Check if email already exists in doctors collection
     existing_doctor = await company_db.doctors.find_one({"email": email})
@@ -925,6 +942,7 @@ async def create_doctor_request(
         requested_by_name=current_user["name"],
         requested_by_email=current_user["email"],
         status=RequestStatus.PENDING,
+        username=username,
         name=name,
         email=email,
         phone=phone,
@@ -1133,6 +1151,7 @@ async def approve_doctor_request(
     # RULE 1: INSERT with Pydantic Model
     doctor = DoctorInDB(
         doctor_uid=approved_doctor_uid,
+        username=request["username"],
         name=request["name"],
         email=request["email"],
         password_hash=password_hash,

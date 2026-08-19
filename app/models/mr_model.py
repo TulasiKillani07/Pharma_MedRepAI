@@ -9,6 +9,7 @@ from datetime import datetime
 
 class MRBase(BaseModel):
     """Base schema for MR with common fields"""
+    username: str = Field(..., description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     email: EmailStr
     name: str  # Changed from full_name to match DB structure
     phone: str

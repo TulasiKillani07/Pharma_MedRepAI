@@ -77,6 +77,7 @@ async def create_new_department_admin(
     ```
     """
     result = await create_department_admin(
+        username=request.username,
         email=request.email,
         password=request.password,
         full_name=request.full_name,

@@ -33,6 +33,7 @@ class DoctorRequestInDB(BaseModel):
     status: RequestStatus = Field(default=RequestStatus.PENDING, description="Request status")
     
     # Doctor details
+    username: str = Field(..., description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     name: str = Field(..., min_length=2, max_length=100, description="Doctor's full name")
     email: EmailStr = Field(..., description="Doctor's email address")
     phone: str = Field(..., description="Doctor's phone number")

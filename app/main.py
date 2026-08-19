@@ -62,7 +62,7 @@ async def shutdown_event():
 
 # Include API routes
 # All API endpoints will be prefixed with /api/v1
-app.include_router(api_router, prefix="/mrx/api/v1")
+app.include_router(api_router, prefix="/mrxdb")
 
 
 # Root route — prevents 404 when browsers hit the base URL

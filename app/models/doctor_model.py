@@ -69,6 +69,7 @@ def generate_doctor_uid() -> str:
 
 class DoctorBase(BaseModel):
     """Base schema for Doctor with common fields"""
+    username: str = Field(..., description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     email: EmailStr
     name: str
     phone: str

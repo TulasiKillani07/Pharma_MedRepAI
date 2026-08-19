@@ -12,7 +12,7 @@ from app.core.validators import PhoneValidator, NameValidator, EmailValidator, T
 class MRCreateRequest(BaseModel):
     """
     Schema for creating a new MR (Admin only).
-    Password is optional - if not provided, default password will be used.
+    Password is mandatory.
     Zone, State, Territory are required for communications targeting.
     
     Phone Number Format:
@@ -20,9 +20,10 @@ class MRCreateRequest(BaseModel):
     - 10-digit numbers are automatically converted to +919876543210
     - International numbers must include country code (e.g., +14155552671)
     """
+    username: str = Field(..., min_length=3, max_length=50, description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     name: str = Field(..., min_length=2, max_length=100, description="MR's full name")
     email: EmailStr = Field(..., description="MR's email address")
-    password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
+    password: str = Field(..., min_length=8, max_length=72, description="Password (mandatory)")
     phone: str = Field(..., description="Phone number: 9876543210 or +919876543210")
     
     # Geographic fields (required for communications targeting) - Fixed values with dropdowns
@@ -55,8 +56,10 @@ class MRCreateRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
+                "username": "rajesh_kumar",
                 "name": "Rajesh Kumar",
                 "email": "rajesh@xyzpharma.com",
+                "password": "SecurePass123!",
                 "phone": "9876543210",
                 "zone": "South",
                 "state": "Telangana",

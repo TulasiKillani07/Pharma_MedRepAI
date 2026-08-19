@@ -109,6 +109,7 @@ async def add_doctor(
     ```
     """
     return await create_doctor(
+        username=request.username,
         name=request.name,
         email=request.email,
         password=request.password,
@@ -558,6 +559,7 @@ async def request_add_doctor(
         )
     
     return await create_doctor_request(
+        username=request.username,
         name=request.name,
         email=request.email,
         phone=request.phone,

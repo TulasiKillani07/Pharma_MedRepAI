@@ -84,6 +84,7 @@ async def add_mr(
     - Invitation email is sent automatically with login credentials
     """
     return await create_mr(
+        username=request.username,
         name=request.name,
         email=request.email,
         password=request.password,

@@ -64,6 +64,7 @@ class RegisterAdminRequest(BaseModel):
     """
     Schema for admin registration (self-registration for first admin).
     """
+    username: str = Field(..., min_length=3, max_length=50, description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     email: EmailStr = Field(..., description="Admin email address")
     password: str = Field(..., min_length=8, max_length=72, description="Password (8-72 characters)")
     full_name: str = Field(..., description="Full name")
@@ -92,6 +93,7 @@ class RegisterAdminRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
+                "username": "john_admin",
                 "email": "admin@xyzpharma.com",
                 "password": "SecurePass123",
                 "full_name": "John Admin",

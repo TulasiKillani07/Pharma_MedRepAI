@@ -12,7 +12,7 @@ from app.core.validators import PhoneValidator, NameValidator, EmailValidator, L
 class DoctorCreateRequest(BaseModel):
     """
     Schema for creating a new doctor (Admin only).
-    Password is optional - if not provided, default password will be used.
+    Password is mandatory.
     Classification is mandatory for SFE (Sales Force Effectiveness) tracking.
     
     Phone Number Format:
@@ -25,9 +25,10 @@ class DoctorCreateRequest(BaseModel):
     - Class B: Medium-value doctors, requires 1 visit per month
     - Class C: Low-value doctors, requires 1 visit per 2 months
     """
+    username: str = Field(..., min_length=3, max_length=50, description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     name: str = Field(..., min_length=2, max_length=100, description="Doctor's full name")
     email: EmailStr = Field(..., description="Doctor's email address")
-    password: Optional[str] = Field(None, min_length=8, max_length=72, description="Password (optional, default: Welcome@123)")
+    password: str = Field(..., min_length=8, max_length=72, description="Password (mandatory)")
     phone: str = Field(..., description="Phone number: 9876543210 or +919876543210")
     specialization: str = Field(..., description="Medical specialization (e.g., Cardiologist)")
     classification: Literal["A", "B", "C"] = Field(..., description="Doctor classification for SFE: A (2 visits/month), B (1 visit/month), C (1 visit/2 months)")
@@ -62,8 +63,10 @@ class DoctorCreateRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
+                "username": "dr_sarah_sharma",
                 "name": "Dr. Sarah Sharma",
                 "email": "sharma@gmail.com",
+                "password": "SecurePass123!",
                 "phone": "9876543210",
                 "specialization": "Cardiologist",
                 "classification": "A",
@@ -284,6 +287,7 @@ class DoctorRequestCreate(BaseModel):
     MR provides doctor details, admin must approve before doctor is created.
     Classification is mandatory for SFE tracking.
     """
+    username: str = Field(..., min_length=3, max_length=50, description="Global unique username (same across Proxzar, DOBO, DRX, MRX)")
     name: str = Field(..., min_length=2, max_length=100, description="Doctor's full name")
     email: EmailStr = Field(..., description="Doctor's email address")
     phone: str = Field(..., description="Phone number: 9876543210 or +919876543210")

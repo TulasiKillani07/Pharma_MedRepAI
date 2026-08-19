@@ -175,11 +175,12 @@ async def login_user(email: str, password: str, role: UserRole, request: Optiona
     }
 
 
-async def register_admin(email: str, password: str, full_name: str, phone: str, company_name: str) -> dict:
+async def register_admin(username: str, email: str, password: str, full_name: str, phone: str, company_name: str) -> dict:
     """
     Register a new company admin and update company name.
     
     Args:
+        username: Global unique username (same across Proxzar, DOBO, DRX, MRX)
         email: Admin email
         password: Plain text password
         full_name: Admin full name
@@ -190,12 +191,20 @@ async def register_admin(email: str, password: str, full_name: str, phone: str, 
         dict: Success message and user ID
     
     Raises:
-        HTTPException: If email already exists
+        HTTPException: If email or username already exists
     
     Note: This is for self-registration of the first admin.
     Updates the single company document with the provided company name.
     """
     db = get_database()
+    
+    # Check if username already exists
+    existing_username = await db.company_admins.find_one({"username": username})
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered",
+        )
     
     # Check if email already exists
     existing_user = await db.company_admins.find_one({"email": email})
@@ -210,6 +219,7 @@ async def register_admin(email: str, password: str, full_name: str, phone: str, 
     
     # Create admin document (RULE 1: INSERT with Pydantic Model)
     admin = AdminInDB(
+        username=username,
         email=email,
         password_hash=password_hash,
         full_name=full_name,
