@@ -53,7 +53,18 @@ async def require_integration_auth(
             detail=f"Role '{role}' is not permitted to access MRX integration endpoints.",
         )
 
-    # Resolve user by username
+    # For DOCTOR role: no MRX database lookup needed.
+    # Doctors are managed on DRX — MRX just trusts the verified Proxzar token.
+    if role == UserRole.DOCTOR.value:
+        return {
+            "auth_type": "proxzar",
+            "sub": username,
+            "role": role,
+            "client_id": f"proxzar_user:{username}",
+            "user": {"username": username, "role": role}
+        }
+
+    # For ADMIN/MR: resolve user by username in MRX database
     try:
         user_role = UserRole(role)
         collection_name = get_collection_name(user_role)
