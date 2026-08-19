@@ -550,7 +550,7 @@ async def update_field(template_id: str, field_id: str, field_data: FieldDefinit
 
 # ============ DRUG SERVICES ============
 
-async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, Any]:
+async def create_drug(drug_data: DrugCreate, current_user: Dict, user_token: Optional[str] = None) -> Dict[str, Any]:
     """Create a new drug"""
     db = get_database()
     
@@ -657,12 +657,12 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict) -> Dict[str, An
     try:
         from app.services.drx_client import drx_client
         if drx_client.is_configured:
-            await drx_client._request("POST", "/drx/api/v1/integration/notifications/push", json_body={
-                "title": "New Drug Launched",
-                "message": f"{drug_name} is now available",
-                "type": "new_drug",
-                "metadata": {"drug_id": str(result.inserted_id), "drug_name": drug_name, "manufacturer": manufacturer}
-            })
+            await drx_client.push_notification(
+                title="New Drug Launched",
+                message=f"{drug_name} is now available",
+                data={"type": "new_drug", "metadata": {"drug_id": str(result.inserted_id), "drug_name": drug_name, "manufacturer": manufacturer}},
+                user_token=user_token
+            )
     except Exception:
         pass  # DRX notification is best-effort, never blocks drug creation
     

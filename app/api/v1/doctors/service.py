@@ -45,7 +45,8 @@ async def create_doctor(
     hospital: Optional[str],
     license_number: Optional[str],
     address: Optional[str] = None,
-    current_user: Dict[str, Any] = None
+    current_user: Dict[str, Any] = None,
+    user_token: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Create a new doctor account.
@@ -156,7 +157,7 @@ async def create_doctor(
             import asyncio
             _logger.info(f"Syncing doctor {email} to DRX...")
             drx_result = await asyncio.wait_for(
-                drx_client.register_doctor(name=name, email=email, phone=phone),
+                drx_client.register_doctor(name=name, email=email, phone=phone, user_token=user_token),
                 timeout=30
             )
             if drx_result and drx_result.get("doctor_gid"):

@@ -3,6 +3,7 @@ Drug and Drug Field Template Management Endpoints
 """
 
 from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, RedirectResponse
 from typing import Dict, Any
 from app.core.auth import require_admin, get_current_user
@@ -322,7 +323,11 @@ async def update_field_endpoint(template_id: str, field_id: str, field_data: Fie
 # ============ DRUG ENDPOINTS ============
 
 @router.post("", response_model=DrugResponse)
-async def create_drug_endpoint(drug_data: DrugCreate, current_user: Dict = Depends(require_admin)):
+async def create_drug_endpoint(
+    drug_data: DrugCreate,
+    current_user: Dict = Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
     """
     Create a new drug.
     
@@ -365,7 +370,7 @@ async def create_drug_endpoint(drug_data: DrugCreate, current_user: Dict = Depen
     
     **Get `field_id` values from `GET /drugs/templates`**
     """
-    return await service.create_drug(drug_data, current_user)
+    return await service.create_drug(drug_data, current_user, user_token=credentials.credentials)
 
 
 @router.get("", response_model=DrugListResponse)

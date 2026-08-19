@@ -3,6 +3,7 @@ CME Event Management Endpoints
 """
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict, Any
 from app.core.auth import require_admin, get_current_user
 from app.api.v1.cme.schemas import (
@@ -20,7 +21,11 @@ router = APIRouter()
 # ============ ADMIN ENDPOINTS (Create, Update, Delete) ============
 
 @router.post("", response_model=CMEEventResponse, status_code=status.HTTP_201_CREATED)
-async def create_cme_event_endpoint(event_data: CMEEventCreate, current_user: Dict = Depends(require_admin)):
+async def create_cme_event_endpoint(
+    event_data: CMEEventCreate,
+    current_user: Dict = Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
     """
     Create a new CME (Continuing Medical Education) event.
     
@@ -166,7 +171,7 @@ async def create_cme_event_endpoint(event_data: CMEEventCreate, current_user: Di
     - event_recording is always null on creation
     - Can only be added via PUT /api/v1/cme/{id} after status is "completed"
     """
-    return await service.create_cme_event(event_data, current_user)
+    return await service.create_cme_event(event_data, current_user, user_token=credentials.credentials)
 
 
 @router.put("/{event_id}", response_model=CMEEventResponse)

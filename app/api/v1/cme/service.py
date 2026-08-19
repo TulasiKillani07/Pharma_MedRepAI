@@ -14,7 +14,7 @@ from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
 
 
-async def create_cme_event(event_data: CMEEventCreate, current_user: Dict) -> Dict[str, Any]:
+async def create_cme_event(event_data: CMEEventCreate, current_user: Dict, user_token: Optional[str] = None) -> Dict[str, Any]:
     """Create a new CME event"""
     db = get_database()
     
@@ -91,17 +91,20 @@ async def create_cme_event(event_data: CMEEventCreate, current_user: Dict) -> Di
     try:
         from app.services.drx_client import drx_client
         if drx_client.is_configured:
-            await drx_client._request("POST", "/drx/api/v1/integration/notifications/push", json_body={
-                "title": "New CME Event",
-                "message": f"{event_data.title} on {event_data.event_date.strftime('%b %d, %Y')}",
-                "type": "new_cme_event",
-                "metadata": {
-                    "event_id": str(result.inserted_id),
-                    "event_title": event_data.title,
-                    "event_date": event_data.event_date.strftime("%Y-%m-%d"),
-                    "event_mode": event_data.event_mode
-                }
-            })
+            await drx_client.push_notification(
+                title="New CME Event",
+                message=f"{event_data.title} on {event_data.event_date.strftime('%b %d, %Y')}",
+                data={
+                    "type": "new_cme_event",
+                    "metadata": {
+                        "event_id": str(result.inserted_id),
+                        "event_title": event_data.title,
+                        "event_date": event_data.event_date.strftime("%Y-%m-%d"),
+                        "event_mode": event_data.event_mode
+                    }
+                },
+                user_token=user_token
+            )
     except Exception:
         pass  # DRX notification is best-effort, never blocks CME creation
     

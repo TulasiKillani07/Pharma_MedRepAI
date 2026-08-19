@@ -3,6 +3,7 @@ Doctor routes - API endpoints for doctor management.
 """
 
 from fastapi import APIRouter, Depends, status, UploadFile, File, HTTPException, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any, Optional
 from app.api.v1.doctors.schemas import (
     DoctorCreateRequest,
@@ -46,7 +47,8 @@ router = APIRouter()
 @router.post("", response_model=DoctorCreateResponse, status_code=status.HTTP_201_CREATED, summary="Add Doctor")
 async def add_doctor(
     request: DoctorCreateRequest,
-    current_user: Dict = Depends(require_admin)
+    current_user: Dict = Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
     Add a new doctor (Admin only).
@@ -119,7 +121,8 @@ async def add_doctor(
         hospital=request.hospital,
         license_number=request.license_number,
         address=request.address,
-        current_user=current_user
+        current_user=current_user,
+        user_token=credentials.credentials
     )
 
 

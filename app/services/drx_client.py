@@ -71,14 +71,14 @@ class DRXClient:
     async def _request_token(self) -> str:
         """
         Request a new Service JWT from DRX.
-        POST {DRX_URL}/drx/api/v1/integration/auth/service-token
+        POST {DRX_URL}/drxdb/integration/auth/service-token
         """
         if not self.is_configured:
             raise DRXClientError(
                 "DRX integration not configured. Set DRX_URL, DRX_CLIENT_ID, DRX_CLIENT_SECRET in .env"
             )
 
-        url = f"{self.base_url}/drx/api/v1/integration/auth/service-token"
+        url = f"{self.base_url}/drxdb/integration/auth/service-token"
 
         async with httpx.AsyncClient(timeout=30) as client:
             try:
@@ -124,8 +124,9 @@ class DRXClient:
         retry_on_401: bool = True
     ) -> Dict[str, Any]:
         """
-        Send an authenticated request to DRX Integration API.
+        Send an authenticated request to DRX Integration API using service token.
         Automatically refreshes token on 401 (once).
+        Used for background/machine-to-machine calls where no user token exists.
         """
         token = await self._get_token()
         url = f"{self.base_url}{path}"
@@ -159,40 +160,121 @@ class DRXClient:
 
         return response.json()
 
+    async def _request_with_user_token(
+        self,
+        method: str,
+        path: str,
+        user_token: str,
+        params: Optional[Dict] = None,
+        json_body: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """
+        Send a request to DRX forwarding the user's Proxzar JWT.
+        Used for user-driven calls where the original Proxzar token is available.
+        
+        No token refresh or retry on 401 — if DRX rejects the token,
+        propagate the error to the caller.
+        """
+        url = f"{self.base_url}{path}"
+        headers = {"Authorization": f"Bearer {user_token}"}
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            try:
+                response = await client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    params=params,
+                    json=json_body
+                )
+            except httpx.ConnectError:
+                raise DRXClientError(f"Cannot connect to DRX at {url}", status_code=503)
+            except httpx.TimeoutException:
+                raise DRXClientError(f"DRX request timed out: {method} {path}", status_code=504)
+
+        if response.status_code >= 400:
+            raise DRXClientError(
+                f"DRX API error: {response.status_code} {response.text}",
+                status_code=response.status_code
+            )
+
+        return response.json()
+
     # ══════════════════════════════════════════════════════════
     # Public API Methods
     # ══════════════════════════════════════════════════════════
 
-    async def search_doctors(self, query: str = "") -> Dict[str, Any]:
+    async def search_doctors(self, query: str = "", user_token: Optional[str] = None) -> Dict[str, Any]:
         """
         Search doctors on DRX.
-        GET /drx/api/v1/integration/doctors/search?q=<query>
+        GET /drxdb/integration/doctors/search?q=<query>
+        
+        Args:
+            query: Search query string
+            user_token: If provided, forwards user's Proxzar JWT. Otherwise uses service token.
         
         Returns: {"total": int, "doctors": [...], "organization": str}
         """
-        return await self._request("GET", "/drx/api/v1/integration/doctors/search", params={"q": query})
+        path = "/drxdb/integration/doctors/search"
+        if user_token:
+            return await self._request_with_user_token("GET", path, user_token, params={"q": query})
+        return await self._request("GET", path, params={"q": query})
 
-    async def get_doctor(self, doctor_gid: str) -> Dict[str, Any]:
+    async def get_doctor(self, doctor_gid: str, user_token: Optional[str] = None) -> Dict[str, Any]:
         """
         Get doctor profile by GID from DRX.
-        GET /drx/api/v1/integration/doctors/{doctor_gid}
+        GET /drxdb/integration/doctors/{doctor_gid}
+        
+        Args:
+            doctor_gid: Doctor's global identifier (e.g. PRXDOC482915)
+            user_token: If provided, forwards user's Proxzar JWT. Otherwise uses service token.
         
         Returns: Doctor profile dict (no password_hash, no internal _id)
         """
-        return await self._request("GET", f"/drx/api/v1/integration/doctors/{doctor_gid}")
+        path = f"/drxdb/integration/doctors/{doctor_gid}"
+        if user_token:
+            return await self._request_with_user_token("GET", path, user_token)
+        return await self._request("GET", path)
 
-    async def register_doctor(self, name: str, email: str, phone: str) -> Dict[str, Any]:
+    async def register_doctor(self, name: str, email: str, phone: str, user_token: Optional[str] = None) -> Dict[str, Any]:
         """
         Register a doctor on DRX. If email exists, returns existing GID (no duplicate).
-        POST /drx/api/v1/integration/doctors/register
+        POST /drxdb/integration/doctors/register
+        
+        Args:
+            name: Doctor's name
+            email: Doctor's email
+            phone: Doctor's phone
+            user_token: If provided, forwards user's Proxzar JWT. Otherwise uses service token.
         
         Returns: {"status": "created"|"exists", "doctor_gid": "PRXDOC...", "message": "..."}
         """
-        return await self._request("POST", "/drx/api/v1/integration/doctors/register", json_body={
-            "name": name,
-            "email": email,
-            "phone": phone
-        })
+        path = "/drxdb/integration/doctors/register"
+        body = {"name": name, "email": email, "phone": phone}
+        if user_token:
+            return await self._request_with_user_token("POST", path, user_token, json_body=body)
+        return await self._request("POST", path, json_body=body)
+
+    async def push_notification(self, title: str, message: str, data: Optional[Dict] = None, user_token: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Push a notification to DRX.
+        POST /drxdb/integration/notifications/push
+        
+        Args:
+            title: Notification title
+            message: Notification message
+            data: Additional notification data
+            user_token: If provided, forwards user's Proxzar JWT. Otherwise uses service token.
+        
+        Returns: Response from DRX
+        """
+        path = "/drxdb/integration/notifications/push"
+        body = {"title": title, "message": message}
+        if data:
+            body.update(data)
+        if user_token:
+            return await self._request_with_user_token("POST", path, user_token, json_body=body)
+        return await self._request("POST", path, json_body=body)
 
     async def health_check(self) -> Dict[str, Any]:
         """

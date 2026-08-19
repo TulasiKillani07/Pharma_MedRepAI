@@ -16,7 +16,8 @@ Outbound (MRX → DRX):
   MRX → drx_client.py → DRX Integration APIs
 """
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
@@ -24,7 +25,8 @@ from bson import ObjectId
 from app.config import settings
 from app.database import get_database
 from app.core.security import verify_password
-from app.core.service_auth import create_service_token, require_service_auth, SERVICE_TOKEN_EXPIRE_MINUTES
+from app.core.service_auth import create_service_token, SERVICE_TOKEN_EXPIRE_MINUTES
+from app.core.integration_auth import require_integration_auth
 from app.core.auth import require_admin
 from app.utils.logger import get_medrep_logger
 
@@ -120,7 +122,7 @@ async def list_drugs_integration(
     search: Optional[str] = Query(None, description="Search by drug name"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** List drugs (lightweight card data for DRX doctor view).
@@ -196,7 +198,7 @@ async def list_drugs_integration(
 @router.get("/drugs/{drug_id}", summary="Get Drug Detail (Service API)")
 async def get_drug_integration(
     drug_id: str,
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** Get full drug detail (all fields, packaging). Tracks doctor view for analytics.
@@ -236,7 +238,7 @@ async def list_cme_integration(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter: UPCOMING, ONGOING, COMPLETED"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** List CME events (used by DRX to show events doctors can register for).
@@ -282,7 +284,7 @@ async def list_cme_integration(
 @router.post("/cme/register", summary="Register Doctor for CME (Service API)")
 async def register_cme_integration(
     request: dict,
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** DRX registers a doctor for a CME event. MRX owns the registration.
@@ -367,7 +369,7 @@ async def register_cme_integration(
 @router.get("/cme/my-registrations", summary="Get Doctor's CME Registrations (Service API)")
 async def get_my_cme_integration(
     doctor_gid: str = Query(..., description="Doctor GID"),
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** DRX fetches a doctor's CME registrations from MRX.
@@ -422,7 +424,7 @@ async def get_my_cme_integration(
 @router.get("/dashboard", summary="Dashboard Data for Doctor (Service API)")
 async def get_dashboard_integration(
     doctor_gid: str = Query(None, description="Doctor GID (optional, for doctor-specific data)"),
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** Single endpoint for DRX to get all pharma-owned dashboard data in one call.
@@ -484,7 +486,7 @@ async def get_dashboard_integration(
 @router.post("/drug-views", summary="Record Drug View (Service API)")
 async def record_drug_view(
     request: dict,
-    org_context=Depends(require_service_auth)
+    org_context=Depends(require_integration_auth)
 ):
     """
     **Purpose:** DRX pushes drug view events so MRX admin can see analytics.
@@ -653,7 +655,8 @@ async def drx_health_check(current_user=Depends(require_admin)):
 @router.get("/drx/doctors/search", summary="Search Doctors on DRX (Admin)")
 async def search_drx_doctors(
     q: str = Query("", description="Search by name or doctor_gid"),
-    current_user=Depends(require_admin)
+    current_user=Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
     **Purpose:** Search doctors on DRX Doctor Platform (proxy through MRX for admin use).
@@ -671,7 +674,7 @@ async def search_drx_doctors(
         )
 
     try:
-        return await drx_client.search_doctors(query=q)
+        return await drx_client.search_doctors(query=q, user_token=credentials.credentials)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
@@ -679,7 +682,8 @@ async def search_drx_doctors(
 @router.get("/drx/doctors/{doctor_gid}", summary="Get Doctor from DRX (Admin)")
 async def get_drx_doctor(
     doctor_gid: str,
-    current_user=Depends(require_admin)
+    current_user=Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
     **Purpose:** Get a doctor's profile from DRX by their GID.
@@ -697,6 +701,6 @@ async def get_drx_doctor(
         )
 
     try:
-        return await drx_client.get_doctor(doctor_gid=doctor_gid)
+        return await drx_client.get_doctor(doctor_gid=doctor_gid, user_token=credentials.credentials)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
