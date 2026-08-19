@@ -22,13 +22,6 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"  # Algorithm for JWT encoding
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # Token expires after 60 minutes
     
-    # Service-to-Service JWT Secret (isolated from user JWTs)
-    SERVICE_JWT_SECRET: str = "mrx-service-jwt-secret-change-in-production-min-32-chars"
-    
-    # DRX calls ME (inbound) — I verify these
-    DRX_TO_MRX_CLIENT_ID: str = "drx_doctor_platform"
-    DRX_TO_MRX_SECRET_HASH: str = ""  # bcrypt hash of the inbound client secret
-    
     # Application Configuration
     APP_NAME: str = "MedRepAI"
     APP_VERSION: str = "1.0.0"
@@ -69,10 +62,9 @@ class Settings(BaseSettings):
     TEMP_LOCATION_MIN_USAGE_COUNT: int = 5  # Minimum visits before suggesting location
     REJECTED_LOCATION_COOLDOWN_DAYS: int = 180  # Days before re-suggesting rejected location
     
-    # I call DRX (outbound) — I send these
+    # DRX URL (outbound — MRX calls DRX with user's Proxzar token)
     MRX_TO_DRX_URL: str = "http://localhost:8002"
-    MRX_TO_DRX_CLIENT_ID: Optional[str] = None
-    MRX_TO_DRX_SECRET: Optional[str] = None
+    MRX_TO_DRX_API_PREFIX: str = "/drxdb/integration"  # DRX integration endpoint prefix
     
     # Proxzar OAuth2 Configuration (MRX authenticates users via Proxzar only)
     PROXZAR_ISSUER: str = "https://oauth2.proxzar.ai"

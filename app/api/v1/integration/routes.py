@@ -24,8 +24,6 @@ from datetime import datetime
 from bson import ObjectId
 from app.config import settings
 from app.database import get_database
-from app.core.security import verify_password
-from app.core.service_auth import create_service_token, SERVICE_TOKEN_EXPIRE_MINUTES
 from app.core.integration_auth import require_integration_auth
 from app.core.auth import require_admin
 from app.utils.logger import get_medrep_logger
@@ -36,85 +34,7 @@ router = APIRouter()
 
 
 # ══════════════════════════════════════════════════════════════
-# Schemas
-# ══════════════════════════════════════════════════════════════
-
-class ServiceTokenRequest(BaseModel):
-    client_id: str = Field(..., description="Service client_id")
-    client_secret: str = Field(..., description="Service client_secret")
-
-
-class ServiceTokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "Bearer"
-    expires_in: int = Field(description="Token lifetime in seconds")
-
-
-# ══════════════════════════════════════════════════════════════
-# Service Token Endpoint — Single trusted caller (DRX)
-# ══════════════════════════════════════════════════════════════
-
-@router.post("/auth/service-token", response_model=ServiceTokenResponse,
-             summary="Get MRX Service Token")
-async def get_service_token(request: ServiceTokenRequest):
-    """
-    **Purpose:** Exchange client_id + client_secret for a short-lived MRX Service JWT.
-
-    **Access:** DRX backend only (single trusted caller)
-
-    **Request Body:**
-    ```json
-    {
-      "client_id": "drx_doctor_platform",
-      "client_secret": "drx-calls-mrx-secret..."
-    }
-    ```
-
-    **Response:**
-    ```json
-    {
-      "access_token": "eyJhbGciOiJIUzI1NiIs...",
-      "token_type": "Bearer",
-      "expires_in": 900
-    }
-    ```
-
-    **Validations:**
-    - client_id must match INBOUND_CLIENT_ID from env
-    - client_secret is hashed and compared against INBOUND_CLIENT_SECRET_HASH
-
-    **Token lifetime:** 15 minutes
-
-    **Why no DB lookup?** MRX is a single-company backend. Only one external caller
-    (DRX) is trusted. Credentials live in env — no need for a multi-client collection.
-    **Why hash?** Even if .env is leaked, the actual secret isn't exposed.
-    """
-    # Verify client_id
-    if request.client_id != settings.DRX_TO_MRX_CLIENT_ID:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    # Verify client_secret against stored hash (like password verification)
-    if not verify_password(request.client_secret, settings.DRX_TO_MRX_SECRET_HASH):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-
-    # Generate service token
-    token = create_service_token(
-        organization_id="drx",
-        organization_name="DRX",
-        client_id=request.client_id
-    )
-
-    logger.info(f"Service token issued for inbound caller: {request.client_id}")
-
-    return {
-        "access_token": token,
-        "token_type": "Bearer",
-        "expires_in": SERVICE_TOKEN_EXPIRE_MINUTES * 60
-    }
-
-
-# ══════════════════════════════════════════════════════════════
-# Protected Integration APIs (Service JWT only — DRX calls these)
+# Protected Integration APIs (Proxzar JWT — DRX calls these)
 # ══════════════════════════════════════════════════════════════
 
 @router.get("/drugs", summary="List Drugs (Service API)")
