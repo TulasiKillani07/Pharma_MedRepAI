@@ -40,14 +40,20 @@ MRX uses **Proxzar** as its sole authentication provider. Local email/password l
 | `iss` | `https://oauth2.proxzar.ai` |
 | `aud` | Must include `MRX` |
 | `sub` | Your global username (e.g. `rahul_mehta`) |
-| `role` | `ADMIN` or `MR` |
+| `role` | `ADMIN`, `MR`, or `DOCTOR` (depending on endpoint) |
 
-### MRX login roles:
+### MRX user-facing roles:
 
-- **ADMIN** — Full platform access
-- **MR** — Medical Representative access
+- **ADMIN** — Full platform access (dashboard, doctors, MRs, drugs, CME, analytics)
+- **MR** — Medical Representative access (visits, assigned doctors, RCPA)
 
-> `DOCTOR` tokens are rejected by MRX. Doctors use the DRX platform.
+> `DOCTOR` tokens are rejected on MRX user-facing endpoints. Doctors use the DRX platform.
+
+### Integration endpoints (DRX ↔ MRX):
+
+Integration endpoints (`/integration/*`) accept **all three roles** (`ADMIN`, `MR`, `DOCTOR`) via Proxzar JWT, as well as Service JWT for background calls.
+
+This allows DRX to forward a doctor's Proxzar token to MRX for drug/CME viewing.
 
 ### Deprecated endpoints:
 

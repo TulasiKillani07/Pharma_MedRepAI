@@ -29,8 +29,9 @@ logger = get_medrep_logger(__name__)
 
 _integration_security = HTTPBearer()
 
-# MRX login roles — DOCTOR is not an MRX login role
-MRX_LOGIN_ROLES = {UserRole.ADMIN.value, UserRole.MR.value}
+# Integration endpoints accept all Proxzar roles (ADMIN, MR, DOCTOR)
+# because DRX forwards doctor tokens for drug/CME viewing
+INTEGRATION_ALLOWED_ROLES = {UserRole.ADMIN.value, UserRole.MR.value, UserRole.DOCTOR.value}
 
 
 async def require_integration_auth(
@@ -80,11 +81,11 @@ async def _verify_as_proxzar(token: str) -> Dict[str, Any]:
     username: str = payload.get("sub")
     role: str = payload.get("role")
 
-    # Reject DOCTOR — not an MRX login role
-    if role not in MRX_LOGIN_ROLES:
+    # Validate role is one of the allowed roles
+    if role not in INTEGRATION_ALLOWED_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Role '{role}' is not permitted to access MRX. Doctors use DRX.",
+            detail=f"Role '{role}' is not permitted to access MRX integration endpoints.",
         )
 
     # Resolve user by username
