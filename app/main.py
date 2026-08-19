@@ -19,10 +19,43 @@ logger = get_medrep_logger(__name__)
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="""MedRep AI - Pharmaceutical Sales Force Automation Platform""",
-    docs_url="/docs",  # Swagger UI at http://localhost:8000/docs
-    redoc_url="/redoc",  # ReDoc at http://localhost:8000/redoc
-    default_response_class=CustomJSONResponse  # Use custom JSON response for datetime serialization
+    description="""# MedRep AI - Pharmaceutical Sales Force Automation Platform
+
+## Authentication
+
+MRX uses **Proxzar** as its sole authentication provider. Local email/password login has been deprecated.
+
+### How to authenticate:
+
+1. Obtain a JWT from Proxzar OAuth (`https://oauth2.proxzar.ai`)
+2. Include it in every request:
+   ```
+   Authorization: Bearer <Proxzar JWT>
+   ```
+
+### Token requirements:
+
+| Claim | Expected value |
+|-------|---------------|
+| `iss` | `https://oauth2.proxzar.ai` |
+| `aud` | Must include `MRX` |
+| `sub` | Your global username (e.g. `rahul_mehta`) |
+| `role` | `ADMIN` or `MR` |
+
+### MRX login roles:
+
+- **ADMIN** — Full platform access
+- **MR** — Medical Representative access
+
+> `DOCTOR` tokens are rejected by MRX. Doctors use the DRX platform.
+
+### Deprecated endpoints:
+
+`POST /auth/login`, `/auth/reset-password`, `/auth/forgot-password` — return `410 Gone`.
+""",
+    docs_url="/mrxdb/docs",
+    redoc_url="/mrxdb/redoc",
+    default_response_class=CustomJSONResponse
 )
 
 # Configure CORS (Cross-Origin Resource Sharing)
@@ -66,7 +99,7 @@ app.include_router(api_router, prefix="/mrxdb")
 
 
 # Root route — prevents 404 when browsers hit the base URL
-@app.get("/", include_in_schema=False)
+@app.get("/mrxdb", include_in_schema=False)
 async def root():
     return {"service": settings.APP_NAME, "version": settings.APP_VERSION, "docs": "/docs"}
 
