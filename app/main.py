@@ -22,6 +22,7 @@ app = FastAPI(
     description="""# MedRep AI - Pharmaceutical Sales Force Automation Platform""",
     docs_url="/mrxdb/docs",
     redoc_url="/mrxdb/redoc",
+    openapi_url="/mrxdb/openapi.json",
     default_response_class=CustomJSONResponse
 )
 
