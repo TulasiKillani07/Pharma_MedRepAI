@@ -17,11 +17,7 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = "medrepai_db"
     
-    # JWT (JSON Web Token) Configuration
-    SECRET_KEY: str  # Must be set in .env - used to sign JWT tokens
-    ALGORITHM: str = "HS256"  # Algorithm for JWT encoding
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # Token expires after 60 minutes
-    
+
     # Application Configuration
     APP_NAME: str = "MedRepAI"
     APP_VERSION: str = "1.0.0"
