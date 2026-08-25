@@ -693,3 +693,46 @@ async def request_doctor_from_drx(
     except Exception as e:
         logger.error(f"Failed to send doctor request to DRX: {str(e)}")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+
+@router.get("/drx/doctor-requests", summary="Get Doctor Requests (Admin)")
+async def get_doctor_requests_from_drx(
+    current_user=Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """
+    **Purpose:** Get all doctor requests made by this organization from DRX.
+
+    **Access:** Admin only
+
+    **Response:** List of requests with status (pending, accepted, rejected, approved)
+
+    Shows which doctors were requested and their current status.
+    """
+    from app.services.drx_client import drx_client
+
+    if not drx_client.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="DRX integration not configured"
+        )
+
+    # Get organization_gid from company document
+    db = get_database()
+    company = await db.company.find_one({}, {"organization_gid": 1})
+
+    if not company or not company.get("organization_gid"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Organization GID not configured in company settings"
+        )
+
+    organization_gid = company["organization_gid"]
+
+    try:
+        return await drx_client.get_doctor_requests(
+            organization_gid=organization_gid,
+            user_token=credentials.credentials
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))

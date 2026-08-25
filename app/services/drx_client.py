@@ -137,12 +137,18 @@ class DRXClient:
         """
         Request a doctor from DRX to be added to MRX.
         POST {api_prefix}/doctor-requests
-
-        MRX Admin sends this request. DRX notifies the doctor.
-        If doctor accepts → DRX admin approves → doctor added to MRX.
         """
         return await self._request("POST", f"{self.api_prefix}/doctor-requests", user_token, json_body={
             "username": username,
+            "organization_gid": organization_gid
+        })
+
+    async def get_doctor_requests(self, organization_gid: str, user_token: str = "") -> Dict[str, Any]:
+        """
+        Get all doctor requests for this organization from DRX.
+        GET {api_prefix}/doctor-requests?organization_gid=<org_gid>
+        """
+        return await self._request("GET", f"{self.api_prefix}/doctor-requests", user_token, params={
             "organization_gid": organization_gid
         })
 
