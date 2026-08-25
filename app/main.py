@@ -19,7 +19,74 @@ logger = get_medrep_logger(__name__)
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="""# MedRep AI - Pharmaceutical Sales Force Automation Platform""",
+    description="""# MedRep AI - Pharmaceutical Sales Force Automation Platform
+
+## Authentication
+
+MRX uses **Proxzar** (`https://oauth2.proxzar.ai`) as its **sole authentication provider**.
+
+### How to authenticate:
+
+Include a Proxzar JWT in every request:
+```
+Authorization: Bearer <Proxzar JWT>
+```
+
+### Token claims:
+
+| Claim | Expected |
+|-------|----------|
+| `iss` | `https://oauth2.proxzar.ai` |
+| `aud` | Must include `MRX` |
+| `sub` | Global username |
+| `role` | `ADMIN`, `MR`, or `DOCTOR` |
+
+### Roles & Access:
+
+**User-facing endpoints** (`/auth/me`, `/doctors`, `/mrs`, `/drugs`, `/visits`, etc.):
+- `ADMIN` — Full access
+- `MR` — MR access
+- `DOCTOR` — Rejected (use DRX)
+
+**Integration endpoints** (`/integration/*`):
+- `ADMIN`, `MR`, `DOCTOR` — All accepted (DRX forwards tokens)
+
+**DRX outbound** (`/integration/drx/*`):
+- `ADMIN` only — Search/view/request DRX doctors
+
+---
+
+## DRX ↔ MRX Communication
+
+All communication uses the same Proxzar JWT. No client_id/secret/service token.
+
+| Direction | How |
+|-----------|-----|
+| MRX → DRX | Forwards user's Proxzar JWT |
+| DRX → MRX | Forwards user's Proxzar JWT |
+
+---
+
+## Doctor Request Flow (MRX → DRX)
+
+```
+MRX Admin
+    ↓
+POST /integration/drx/doctor-requests {"username": "rahul_mehta"}
+    ↓
+MRX attaches organization_gid, forwards to DRX
+    ↓
+DRX notifies doctor
+    ↓
+Doctor accepts → DRX Admin approves → Doctor added to MRX
+```
+
+---
+
+## Deprecated Endpoints
+
+`POST /auth/login`, `/auth/reset-password`, `/auth/forgot-password` — return `410 Gone`.
+""",
     docs_url="/mrxdb/docs",
     redoc_url="/mrxdb/redoc",
     openapi_url="/mrxdb/openapi.json",

@@ -133,7 +133,7 @@ class DRXClient:
             body.update(data)
         return await self._request("POST", f"{self.api_prefix}/notifications/push", user_token, json_body=body)
 
-    async def request_doctor(self, doctor_gid: str, organization_gid: str, user_token: str = "") -> Dict[str, Any]:
+    async def request_doctor(self, username: str, organization_gid: str, user_token: str = "") -> Dict[str, Any]:
         """
         Request a doctor from DRX to be added to MRX.
         POST {api_prefix}/doctor-requests
@@ -142,7 +142,7 @@ class DRXClient:
         If doctor accepts → DRX admin approves → doctor added to MRX.
         """
         return await self._request("POST", f"{self.api_prefix}/doctor-requests", user_token, json_body={
-            "doctor_gid": doctor_gid,
+            "username": username,
             "organization_gid": organization_gid
         })
 

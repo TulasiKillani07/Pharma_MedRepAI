@@ -631,7 +631,7 @@ async def get_drx_doctor(
 # ══════════════════════════════════════════════════════════════
 
 class DoctorRequestToDRX(BaseModel):
-    doctor_gid: str = Field(..., description="Doctor's global identifier (e.g. PRXDOC482915)")
+    username: str = Field(..., description="Doctor's global username (e.g. rahul_mehta)")
 
 
 @router.post("/drx/doctor-requests", summary="Request Doctor from DRX (Admin)", status_code=status.HTTP_201_CREATED)
@@ -646,7 +646,7 @@ async def request_doctor_from_drx(
     **Access:** Admin only
 
     **Flow:**
-    1. MRX Admin sends request with doctor_gid
+    1. MRX Admin sends request with doctor_username
     2. MRX forwards to DRX with organization_gid
     3. DRX notifies the doctor
     4. Doctor accepts/rejects on DRX
@@ -656,7 +656,7 @@ async def request_doctor_from_drx(
     **Request Body:**
     ```json
     {
-      "doctor_gid": "PRXDOC482915"
+      "username": "rahul_mehta"
     }
     ```
 
@@ -684,11 +684,11 @@ async def request_doctor_from_drx(
 
     try:
         result = await drx_client.request_doctor(
-            doctor_gid=request.doctor_gid,
+            username=request.username,
             organization_gid=organization_gid,
             user_token=credentials.credentials
         )
-        logger.info(f"Doctor request sent to DRX - Doctor GID: {request.doctor_gid}, Org: {organization_gid}, Requested by: {current_user.get('username')}")
+        logger.info(f"Doctor request sent to DRX - Doctor: {request.username}, Org: {organization_gid}, Requested by: {current_user.get('username')}")
         return result
     except Exception as e:
         logger.error(f"Failed to send doctor request to DRX: {str(e)}")
