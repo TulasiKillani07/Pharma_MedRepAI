@@ -30,9 +30,13 @@ def get_log_directory() -> Path:
     Returns:
         Path object for log directory
     """
-    # Check environment variable first
-    if log_dir_env := os.getenv("LOG_DIR"):
-        return Path(log_dir_env)
+    # Check settings first (loaded from .env by Pydantic)
+    from app.config import settings
+    if settings.LOG_DIR:
+        print(f"[DEBUG] LOG_DIR from settings: {settings.LOG_DIR}")
+        return Path(settings.LOG_DIR)
+    
+    print(f"[DEBUG] LOG_DIR not set, using platform default")
     
     # Platform-specific defaults
     system = platform.system()
@@ -116,6 +120,7 @@ def get_medrep_logger(
     # Create log directory if it doesn't exist
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[DEBUG] Log directory created/exists: {log_dir}")
     except PermissionError:
         # If can't create in default location, fall back to temp directory
         import tempfile
@@ -125,7 +130,7 @@ def get_medrep_logger(
         sys.stderr.write(f"[WARNING] Could not create log directory. Using temp: {log_dir}\n")
     
     # Log file path
-    log_file = log_dir / "app.log"
+    log_file = log_dir / "mrx.log"
     
     # Create formatter
     fmt_string = (
