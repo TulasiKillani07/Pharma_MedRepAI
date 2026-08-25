@@ -572,16 +572,16 @@ async def drx_health_check(current_user=Depends(require_admin)):
     return await drx_client.health_check()
 
 
-@router.get("/drx/doctors/search", summary="Search Doctors on DRX")
+@router.get("/drx/doctors/search", summary="Search Doctors on DRX (Admin)")
 async def search_drx_doctors(
     q: str = Query("", description="Search by name or doctor_gid"),
-    org_context=Depends(require_integration_auth),
+    current_user=Depends(require_admin),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
     **Purpose:** Search doctors on DRX Doctor Platform (proxy through MRX).
 
-    **Access:** Any valid Proxzar JWT (ADMIN, MR, DOCTOR) or Service JWT
+    **Access:** Admin only
 
     **Response:** List of matching doctors from DRX.
     """
@@ -590,7 +590,7 @@ async def search_drx_doctors(
     if not drx_client.is_configured:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="DRX integration not configured. Set DRX_CLIENT_ID and DRX_CLIENT_SECRET in .env"
+            detail="DRX integration not configured"
         )
 
     try:
@@ -599,16 +599,16 @@ async def search_drx_doctors(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
 
 
-@router.get("/drx/doctors/{doctor_gid}", summary="Get Doctor from DRX")
+@router.get("/drx/doctors/{doctor_gid}", summary="Get Doctor from DRX (Admin)")
 async def get_drx_doctor(
     doctor_gid: str,
-    org_context=Depends(require_integration_auth),
+    current_user=Depends(require_admin),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
 ):
     """
     **Purpose:** Get a doctor's profile from DRX by their GID.
 
-    **Access:** Any valid Proxzar JWT (ADMIN, MR, DOCTOR) or Service JWT
+    **Access:** Admin only
 
     **Response:** Doctor profile from DRX (no sensitive data).
     """
@@ -623,4 +623,73 @@ async def get_drx_doctor(
     try:
         return await drx_client.get_doctor(doctor_gid=doctor_gid, user_token=credentials.credentials)
     except Exception as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════
+# Doctor Request — MRX Admin requests a doctor from DRX
+# ══════════════════════════════════════════════════════════════
+
+class DoctorRequestToDRX(BaseModel):
+    doctor_gid: str = Field(..., description="Doctor's global identifier (e.g. PRXDOC482915)")
+
+
+@router.post("/drx/doctor-requests", summary="Request Doctor from DRX (Admin)", status_code=status.HTTP_201_CREATED)
+async def request_doctor_from_drx(
+    request: DoctorRequestToDRX,
+    current_user=Depends(require_admin),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+):
+    """
+    **Purpose:** MRX Admin requests a doctor from DRX to be added to this organization.
+
+    **Access:** Admin only
+
+    **Flow:**
+    1. MRX Admin sends request with doctor_gid
+    2. MRX forwards to DRX with organization_gid
+    3. DRX notifies the doctor
+    4. Doctor accepts/rejects on DRX
+    5. If doctor accepts → DRX Admin approves
+    6. Doctor gets added to MRX
+
+    **Request Body:**
+    ```json
+    {
+      "doctor_gid": "PRXDOC482915"
+    }
+    ```
+
+    **Response:** DRX response (request status)
+    """
+    from app.services.drx_client import drx_client
+
+    if not drx_client.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="DRX integration not configured"
+        )
+
+    # Get organization_gid from company document
+    db = get_database()
+    company = await db.company.find_one({}, {"organization_gid": 1})
+
+    if not company or not company.get("organization_gid"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Organization GID not configured in company settings"
+        )
+
+    organization_gid = company["organization_gid"]
+
+    try:
+        result = await drx_client.request_doctor(
+            doctor_gid=request.doctor_gid,
+            organization_gid=organization_gid,
+            user_token=credentials.credentials
+        )
+        logger.info(f"Doctor request sent to DRX - Doctor GID: {request.doctor_gid}, Org: {organization_gid}, Requested by: {current_user.get('username')}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to send doctor request to DRX: {str(e)}")
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))

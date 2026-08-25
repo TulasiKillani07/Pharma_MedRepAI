@@ -253,6 +253,7 @@ async def initialize_collections():
             {},  # Match any document
             {
                 "$setOnInsert": {  # Only set these if inserting new document
+                    "organization_gid": "PRXORG631774",
                     "company_name": "Your Company Name",
                     "company_logo_url": None,
                     "company_description": None,
@@ -278,7 +279,11 @@ async def initialize_collections():
         if result.upserted_id:
             pass
         else:
-            pass
+            # Ensure organization_gid is set on existing document
+            await database["company"].update_one(
+                {"organization_gid": {"$exists": False}},
+                {"$set": {"organization_gid": "PRXORG631774"}}
+            )
             
         # Ensure only one company document exists (cleanup if multiple)
         company_count = await database["company"].count_documents({})
