@@ -97,7 +97,6 @@ async def add_mr(
         current_user=current_user
     )
 
-
 @router.get("/download-template", dependencies=[Depends(require_admin)])
 async def download_mrs_template_endpoint():
     """

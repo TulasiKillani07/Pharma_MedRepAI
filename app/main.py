@@ -3,8 +3,10 @@ MedRepAI - Main Application Entry Point
 This is where the FastAPI application is created and configured.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import traceback
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
 from app.api.v1.router import api_router
@@ -102,6 +104,19 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE, etc.)
     allow_headers=["*"],  # Allow all headers
 )
+
+
+# Global exception handler — catches unhandled errors, logs full traceback
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}: {str(exc)}",
+        exc_info=True
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Check logs for details."}
+    )
 
 
 # Event: Application Startup
