@@ -1339,7 +1339,8 @@ async def get_sfe_dashboard(
         # Get MCR
         try:
             mcr_data = await get_mcr_report(month, year, mr_id, {"_id": current_user["_id"], "role": "ADMIN"})
-        except:
+        except Exception as e:
+            logger.warning(f"MCR report failed for MR {mr_id}: {e}")
             mcr_data = {
                 "mcr_percentage": 0.0,
                 "total_assigned": 0,
@@ -1349,7 +1350,8 @@ async def get_sfe_dashboard(
         # Get MVC
         try:
             mvc_data = await get_mvc_report(month, year, mr_id, {"_id": current_user["_id"], "role": "ADMIN"})
-        except:
+        except Exception as e:
+            logger.warning(f"MVC report failed for MR {mr_id}: {e}")
             mvc_data = {
                 "mvc_percentage": 0.0,
                 "avg_compliance": 0.0
@@ -1604,7 +1606,8 @@ async def get_mr_drilldown(
                 "mvc": trend_mvc["mvc_percentage"],
                 "avg_compliance": trend_mvc["avg_compliance"]
             })
-        except:
+        except Exception as e:
+            logger.warning(f"Performance trend calculation failed for {trend_month}/{trend_year}: {e}")
             performance_trend.append({
                 "month": trend_month,
                 "year": trend_year,

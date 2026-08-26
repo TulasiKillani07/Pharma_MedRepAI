@@ -4,8 +4,10 @@ This is where the FastAPI application is created and configured.
 """
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import traceback
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
@@ -109,13 +111,42 @@ app.add_middleware(
 # Global exception handler — catches unhandled errors, logs full traceback
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
     logger.error(
         f"Unhandled exception on {request.method} {request.url.path}: {str(exc)}",
         exc_info=True
     )
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error. Check logs for details."}
+        content={
+            "detail": str(exc),
+            "path": request.url.path,
+            "method": request.method,
+            "traceback": tb
+        }
+    )
+
+
+# Log HTTP exceptions (401, 403, 404, etc.) as warnings
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code >= 500:
+        logger.error(f"HTTP {exc.status_code} on {request.method} {request.url.path}: {exc.detail}")
+    elif exc.status_code >= 400:
+        logger.warning(f"HTTP {exc.status_code} on {request.method} {request.url.path}: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
+
+# Log validation errors (422) as warnings
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(f"Validation error on {request.method} {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()}
     )
 
 
@@ -159,6 +190,63 @@ async def root():
 async def favicon():
     from fastapi.responses import Response
     return Response(status_code=204)
+
+
+# ══════════════════════════════════════════════════════════════
+# Logs API — Admin-only access to mrx.log via API
+# ══════════════════════════════════════════════════════════════
+
+from fastapi import Depends, Query
+from app.core.auth import require_admin
+from app.utils.logger import get_log_directory
+
+
+@app.get("/mrxdb/logs", summary="View Application Logs (Admin)", tags=["System"])
+async def get_logs(
+    lines: int = Query(100, ge=1, le=5000, description="Number of lines to return (from end)"),
+    search: str = Query(None, description="Filter logs containing this text (e.g. ERROR, add_mr, 500)"),
+    current_user=Depends(require_admin)
+):
+    """
+    **Purpose:** View the MRX application log file via API. No SSH needed.
+
+    **Access:** Admin only
+
+    **Query params:**
+    - `lines` — Number of lines from end (default: 100, max: 5000)
+    - `search` — Filter lines containing this text (case-insensitive)
+
+    **Examples:**
+    - Last 100 lines: `GET /mrxdb/logs`
+    - Last 50 errors: `GET /mrxdb/logs?lines=50&search=ERROR`
+    - Find MR issues: `GET /mrxdb/logs?search=create_mr`
+    - Find 500s: `GET /mrxdb/logs?search=Unhandled exception`
+    """
+    log_file = get_log_directory() / "mrx.log"
+
+    if not log_file.exists():
+        return {"lines": 0, "content": [], "log_file": str(log_file), "message": "Log file not found"}
+
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+    except Exception as e:
+        return {"lines": 0, "content": [], "log_file": str(log_file), "message": f"Error reading log: {str(e)}"}
+
+    # Filter by search term if provided
+    if search:
+        all_lines = [line for line in all_lines if search.lower() in line.lower()]
+
+    # Get last N lines
+    result_lines = all_lines[-lines:]
+
+    return {
+        "total_lines": len(all_lines),
+        "returned_lines": len(result_lines),
+        "search": search,
+        "log_file": str(log_file),
+        "content": [line.rstrip() for line in result_lines]
+    }
 
 
 if __name__ == "__main__":

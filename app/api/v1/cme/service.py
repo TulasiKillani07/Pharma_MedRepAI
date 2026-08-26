@@ -105,8 +105,8 @@ async def create_cme_event(event_data: CMEEventCreate, current_user: Dict, user_
                 },
                 user_token=user_token
             )
-    except Exception:
-        pass  # DRX notification is best-effort, never blocks CME creation
+    except Exception as e:
+        logger.warning(f"DRX notification failed for new CME event: {e}")  # best-effort, never blocks CME creation
     
     # Return the created event
     return await get_cme_event_by_id(str(result.inserted_id))

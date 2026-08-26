@@ -7,6 +7,9 @@ from bson import ObjectId
 from datetime import datetime
 from typing import Dict, Any, List
 from app.database import get_database
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 async def get_admin_dashboard() -> Dict[str, Any]:
@@ -256,8 +259,8 @@ async def get_mr_dashboard(mr_id: str) -> Dict[str, Any]:
                 )
                 if doctor:
                     doctor_specialization = doctor.get("specialization")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to fetch doctor specialization: {e}")
         
         upcoming_visits.append({
             "visit_id": str(visit["_id"]),

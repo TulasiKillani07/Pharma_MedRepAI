@@ -321,12 +321,12 @@ async def initialize_collections():
         # Drop old stale index that used doctor_id (integration uses doctor_gid)
         try:
             await database["cme_registrations"].drop_index("registration_unique_idx")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Old index drop skipped (registration_unique_idx): {e}")
         try:
             await database["cme_registrations"].drop_index("registration_doctor_idx")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Old index drop skipped (registration_doctor_idx): {e}")
 
         # Index 1: Compound unique index on (cme_id, doctor_gid) - Prevent duplicate registrations
         await database["cme_registrations"].create_index(

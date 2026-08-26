@@ -663,8 +663,8 @@ async def create_drug(drug_data: DrugCreate, current_user: Dict, user_token: Opt
                 data={"type": "new_drug", "metadata": {"drug_id": str(result.inserted_id), "drug_name": drug_name, "manufacturer": manufacturer}},
                 user_token=user_token
             )
-    except Exception:
-        pass  # DRX notification is best-effort, never blocks drug creation
+    except Exception as e:
+        logger.warning(f"DRX notification failed for new drug: {e}")  # best-effort, never blocks drug creation
     
     return drug_doc
 
