@@ -12,6 +12,9 @@ from app.api.v1.notifications.helpers import notify_cme_created, notify_cme_upda
 from app.models.cme_model import CMEEventInDB, CMEEventMode, CMEEventStatus
 from app.api.v1.activity_logs.helpers import log_activity
 from app.models.activity_log_model import ActivityLogAction, ActorRole, TargetType, LogSeverity
+from app.utils.logger import get_medrep_logger
+
+logger = get_medrep_logger(__name__)
 
 
 async def create_cme_event(event_data: CMEEventCreate, current_user: Dict, user_token: Optional[str] = None) -> Dict[str, Any]:
