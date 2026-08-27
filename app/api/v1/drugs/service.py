@@ -1007,8 +1007,115 @@ async def delete_drug(drug_id: str, current_user: Dict) -> Dict[str, str]:
 
 # ============ DRUG BROCHURE SERVICES ============
 
-async def upload_drug_brochure(drug_id: str, file: UploadFile, current_user: Dict) -> Dict[str, Any]:
-    """Upload brochure PDF for a drug - updates brochure fields in field_values"""
+
+async def extract_brochure_text(drug_id: str) -> None:
+    """
+    Extract text from a drug's brochure PDF and save it to the drug document.
+
+    This function is designed to run as a background task after brochure upload.
+    It is idempotent and retryable — calling it multiple times is safe.
+
+    Flow:
+        1. Load drug from DB, get brochure_url from field_values
+        2. Download PDF bytes via httpx
+        3. Extract text using PyMuPDF (fitz)
+        4. Update drug: brochure_text, status=SUCCESS, extracted_at=now
+        On any failure: status=FAILED, brochure_text=None
+
+    Args:
+        drug_id: MongoDB ObjectId string of the drug
+    """
+    from app.database import get_database
+    from app.api.v1.ai.service import extract_text_from_pdf
+    import httpx
+    from datetime import datetime
+    from bson import ObjectId
+
+    db = get_database()
+
+    try:
+        # Step 1: Load drug
+        if not ObjectId.is_valid(drug_id):
+            logger.error(f"Brochure extraction: invalid drug_id {drug_id}")
+            return
+
+        drug = await db.drugs.find_one({"_id": ObjectId(drug_id)})
+        if not drug:
+            logger.error(f"Brochure extraction: drug {drug_id} not found")
+            return
+
+        # Step 2: Get brochure_url from flat field or field_values
+        brochure_url = drug.get("brochure_url")
+        if not brochure_url:
+            # Fallback: scan field_values
+            for fv in drug.get("field_values", []):
+                if fv.get("key") == "brochure_url" and fv.get("value"):
+                    brochure_url = fv["value"]
+                    break
+
+        if not brochure_url:
+            logger.warning(f"Brochure extraction: no brochure_url for drug {drug_id} — skipping")
+            await db.drugs.update_one(
+                {"_id": ObjectId(drug_id)},
+                {"$set": {
+                    "brochure_extraction_status": "FAILED",
+                    "brochure_text": None,
+                    "updated_at": datetime.utcnow()
+                }}
+            )
+            return
+
+        logger.info(f"Brochure extraction started - Drug: {drug_id}, URL: {brochure_url[:60]}...")
+
+        # Step 3: Download PDF bytes
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(brochure_url)
+            response.raise_for_status()
+            pdf_bytes = response.content
+
+        # Step 4: Extract text using existing fitz extractor
+        brochure_text = extract_text_from_pdf(pdf_bytes)
+
+        if not brochure_text:
+            logger.warning(f"Brochure extraction: empty text extracted for drug {drug_id}")
+
+        # Step 5: Save to DB
+        await db.drugs.update_one(
+            {"_id": ObjectId(drug_id)},
+            {"$set": {
+                "brochure_text": brochure_text or None,
+                "brochure_extraction_status": "SUCCESS" if brochure_text else "FAILED",
+                "brochure_extracted_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+        logger.info(f"Brochure extraction SUCCESS - Drug: {drug_id}, chars: {len(brochure_text)}")
+
+    except httpx.HTTPError as e:
+        logger.error(f"Brochure extraction FAILED (download error) - Drug: {drug_id}: {e}")
+        await db.drugs.update_one(
+            {"_id": ObjectId(drug_id)},
+            {"$set": {
+                "brochure_extraction_status": "FAILED",
+                "brochure_text": None,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+    except Exception as e:
+        logger.error(f"Brochure extraction FAILED - Drug: {drug_id}: {e}", exc_info=True)
+        await db.drugs.update_one(
+            {"_id": ObjectId(drug_id)},
+            {"$set": {
+                "brochure_extraction_status": "FAILED",
+                "brochure_text": None,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+
+
+async def upload_drug_brochure(drug_id: str, file: UploadFile, current_user: Dict, background_tasks=None) -> Dict[str, Any]:
+    """Upload brochure PDF for a drug - updates brochure fields in field_values and triggers background text extraction"""
     from app.services.cloudinary_service import upload_drug_brochure as cloudinary_upload, delete_drug_brochure
     
     db = get_database()
@@ -1106,13 +1213,16 @@ async def upload_drug_brochure(drug_id: str, file: UploadFile, current_user: Dic
     normalized_field_values = normalize_field_values(updated_field_values, template_fields)
     flat_fields = build_flat_fields(normalized_field_values)
     
-    # Update drug document
+    # Update drug document — include PENDING extraction status
     await db["drugs"].update_one(
         {"_id": ObjectId(drug_id)},
         {
             "$set": {
                 "field_values": normalized_field_values,
                 **flat_fields,
+                "brochure_extraction_status": "PENDING",
+                "brochure_text": None,
+                "brochure_extracted_at": None,
                 "updated_at": datetime.utcnow()
             }
         }
@@ -1136,13 +1246,19 @@ async def upload_drug_brochure(drug_id: str, file: UploadFile, current_user: Dic
         details={"action": "brochure_uploaded"},
         severity=LogSeverity.INFO
     )
+
+    # Trigger background text extraction
+    if background_tasks is not None:
+        background_tasks.add_task(extract_brochure_text, drug_id)
+        logger.info(f"Brochure extraction queued for drug {drug_id}")
     
     return {
         "drug_id": drug_id,
         "drug_name": drug_name,
         "brochure_url": upload_result["secure_url"],
         "brochure_size_kb": round(upload_result["bytes"] / 1024, 2),
-        "message": "Brochure uploaded successfully"
+        "brochure_extraction_status": "PENDING",
+        "message": "Brochure uploaded successfully. Text extraction running in background."
     }
 
 

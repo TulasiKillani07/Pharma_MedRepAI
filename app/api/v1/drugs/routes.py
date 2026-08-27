@@ -2,7 +2,7 @@
 Drug and Drug Field Template Management Endpoints
 """
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, RedirectResponse
 from typing import Dict, Any
@@ -580,6 +580,7 @@ async def delete_drug_endpoint(drug_id: str, current_user: Dict = Depends(requir
 @router.post("/{drug_id}/brochure")
 async def upload_drug_brochure_endpoint(
     drug_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="PDF brochure file (max 10MB)"),
     current_user: Dict = Depends(require_admin)
 ):
@@ -635,7 +636,7 @@ async def upload_drug_brochure_endpoint(
     - Brochure URL is accessible to all authenticated users
     - MRs can share brochure link with doctors
     """
-    return await service.upload_drug_brochure(drug_id, file, current_user)
+    return await service.upload_drug_brochure(drug_id, file, current_user, background_tasks)
 
 
 @router.get("/{drug_id}/brochure/download")
@@ -709,3 +710,78 @@ async def delete_drug_brochure_endpoint(drug_id: str):
     - Clear brochure before uploading new version
     """
     return await service.delete_drug_brochure(drug_id)
+
+
+@router.post("/{drug_id}/extract-brochure", dependencies=[Depends(require_admin)])
+async def extract_brochure_endpoint(
+    drug_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    **Purpose:** Manually trigger brochure text extraction for a drug (Admin only).
+
+    **Access:** Admin only
+
+    **When to use:**
+    - After a failed extraction (`brochure_extraction_status = FAILED`)
+    - When a drug has a brochure but `brochure_text` is null
+    - For one-time backfill of existing drugs
+
+    **Response:**
+    ```json
+    {
+        "drug_id": "...",
+        "message": "Brochure text extraction started in background",
+        "brochure_extraction_status": "PENDING"
+    }
+    ```
+
+    The extraction runs in the background. Check the drug's `brochure_extraction_status`
+    field after a few seconds to see when it completes (`SUCCESS` or `FAILED`).
+    """
+    from bson import ObjectId
+    from app.database import get_database
+    from app.api.v1.drugs.service import extract_brochure_text
+    from datetime import datetime
+
+    if not ObjectId.is_valid(drug_id):
+        raise HTTPException(status_code=400, detail="Invalid drug ID")
+
+    db = get_database()
+    drug = await db.drugs.find_one(
+        {"_id": ObjectId(drug_id), "is_active": True},
+        {"brochure_url": 1, "field_values": 1}
+    )
+
+    if not drug:
+        raise HTTPException(status_code=404, detail="Drug not found")
+
+    # Check drug has a brochure
+    brochure_url = drug.get("brochure_url")
+    if not brochure_url:
+        for fv in drug.get("field_values", []):
+            if fv.get("key") == "brochure_url" and fv.get("value"):
+                brochure_url = fv["value"]
+                break
+
+    if not brochure_url:
+        raise HTTPException(status_code=400, detail="Drug has no brochure. Upload a brochure first.")
+
+    # Reset to PENDING before queuing
+    await db.drugs.update_one(
+        {"_id": ObjectId(drug_id)},
+        {"$set": {
+            "brochure_extraction_status": "PENDING",
+            "brochure_text": None,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+
+    # Queue background extraction
+    background_tasks.add_task(extract_brochure_text, drug_id)
+
+    return {
+        "drug_id": drug_id,
+        "message": "Brochure text extraction started in background",
+        "brochure_extraction_status": "PENDING"
+    }

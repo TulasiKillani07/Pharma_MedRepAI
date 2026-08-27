@@ -82,6 +82,11 @@ class DrugInDB(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     is_active: bool = Field(default=True, description="Soft delete flag")
     
+    # Brochure text extraction metadata (for Virtual MR)
+    brochure_text: Optional[str] = Field(None, description="Extracted text from brochure PDF")
+    brochure_extraction_status: Optional[str] = Field(None, description="Extraction status: PENDING, SUCCESS, FAILED")
+    brochure_extracted_at: Optional[datetime] = Field(None, description="When brochure text was last extracted")
+    
     @field_validator('template_id')
     @classmethod
     def validate_template_id(cls, v: str) -> str:

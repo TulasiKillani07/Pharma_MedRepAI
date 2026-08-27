@@ -87,6 +87,54 @@ Doctor accepts → DRX Admin approves → Doctor added to MRX
 
 ---
 
+## Drug Brochure Text Extraction (Virtual MR)
+
+MRX extracts text from brochure PDFs to power Virtual MR in DRX.
+
+### Flow when admin uploads a brochure:
+
+```
+POST /drugs/{drug_id}/brochure
+    ↓
+Upload PDF to Cloudinary
+    ↓
+Save brochure_url
+    ↓
+Return response immediately (status = PENDING)
+    ↓
+Background task:
+    ↓
+Download PDF → PyMuPDF extract → Save brochure_text
+    ↓
+status = SUCCESS / FAILED
+```
+
+### Brochure extraction fields on each drug:
+
+| Field | Values |
+|-------|--------|
+| `brochure_text` | Extracted PDF text (null if not extracted) |
+| `brochure_extraction_status` | `PENDING` / `SUCCESS` / `FAILED` / null |
+| `brochure_extracted_at` | Timestamp of last extraction |
+
+### Re-trigger failed extraction:
+
+```
+POST /drugs/{drug_id}/extract-brochure
+```
+
+Admin-only. Sets status back to `PENDING` and queues background extraction.
+
+### DRX access to brochure text:
+
+```
+GET /integration/drugs/{drug_id}
+```
+
+Returns full drug data including `brochure_text` for Virtual MR context building.
+
+---
+
 ## Deprecated Endpoints
 
 `POST /auth/login`, `/auth/reset-password`, `/auth/forgot-password` — return `410 Gone`.

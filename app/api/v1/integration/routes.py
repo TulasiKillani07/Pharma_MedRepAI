@@ -121,11 +121,18 @@ async def get_drug_integration(
     org_context=Depends(require_integration_auth)
 ):
     """
-    **Purpose:** Get full drug detail (all fields, packaging). Tracks doctor view for analytics.
+    **Purpose:** Get full drug detail (all fields, packaging, brochure text). Tracks doctor view for analytics.
 
-    **Access:** Service JWT only (backend-to-backend)
+    **Access:** Proxzar JWT (ADMIN, MR, DOCTOR) — forward user's token from DRX
 
-    **Response:** Full drug document (all flat fields + packaging). No field_values duplication.
+    **Response:** Full drug document including:
+    - All flat fields (drug_name, indications, mechanism_of_action, etc.)
+    - `field_values` array enriched with field types
+    - `packaging` object
+    - `brochure_url` — Cloudinary PDF URL
+    - `brochure_text` — Extracted PDF text (null if not yet extracted or FAILED)
+    - `brochure_extraction_status` — PENDING / SUCCESS / FAILED / null
+    - `brochure_extracted_at` — Timestamp of last successful extraction
     """
     db = get_database()
 
